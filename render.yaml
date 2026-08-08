@@ -27,20 +27,10 @@ services:
         value: write_products,read_products,read_themes,write_inventory,read_orders,write_metaobjects,write_metaobject_definitions
       - key: SHOPIFY_APP_URL
         sync: false
-
-  - type: cron
-    name: shubh-gems-customizer-cleanup
-    runtime: node
-    # Render doesn't offer a free plan for Cron Job services (only web
-    # services and databases have one) — "starter" is the cheapest tier
-    # that works here. This job runs for a few seconds once a day, so
-    # actual usage/cost is minimal regardless of plan.
-    plan: starter
-    schedule: "0 3 * * *"
-    buildCommand: npm install && npx prisma generate
-    startCommand: node scripts/cleanup-variants.mjs
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: shubh-gems-customizer-db
-          property: connectionString
+      # Shared secret for GET /cron/cleanup — set this to any random
+      # string, then use the SAME value in whatever free external
+      # scheduler hits that URL daily. See DEPLOYMENT.md. Render doesn't
+      # offer a free plan for its own Cron Job service type, so this
+      # avoids that cost entirely for something this cheap to run.
+      - key: CRON_SECRET
+        generateValue: true
