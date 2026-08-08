@@ -63,7 +63,12 @@ export async function getThemeSettings(admin, themeGid) {
   const json = await res.json();
   const content = json.data?.theme?.files?.nodes?.[0]?.body?.content;
   if (!content) throw new Error(`Could not read settings_data.json for theme ${themeGid}`);
-  const parsed = JSON.parse(content);
+  // Shopify prepends an auto-generated-file warning comment
+  // (/* ... */) to settings_data.json on some themes, the same way it
+  // does to template JSON files — strip it before parsing, since plain
+  // JSON.parse chokes on it.
+  const withoutLeadingComment = content.replace(/^﻿?\s*\/\*[\s\S]*?\*\/\s*/, "");
+  const parsed = JSON.parse(withoutLeadingComment);
   // settings_data.json's "current" is either the live settings object
   // directly, or a string naming a preset in "presets" — mirror Shopify's
   // own resolution so this matches what `settings.*` means in Liquid.
