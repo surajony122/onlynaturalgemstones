@@ -282,6 +282,15 @@ export async function createCustomizedVariant(admin, productGid, { title, total,
             price: total.toFixed(2),
             optionValues: [{ optionName: "Title", name: uniqueOptionValue }],
             inventoryPolicy: "CONTINUE",
+            // Untracked, not just "continue selling when out of stock" —
+            // a tracked variant that's never been activated/stocked at a
+            // location gets reported as sold out by /cart/add.js
+            // regardless of inventoryPolicy (confirmed live: got a real
+            // 422 "already sold out" error with tracked left at its
+            // default). These are one-off virtual variants with nothing
+            // to actually track, so untracked is correct anyway, not just
+            // a workaround.
+            inventoryItem: { tracked: false },
             metafields: [
               {
                 namespace: "custom",
