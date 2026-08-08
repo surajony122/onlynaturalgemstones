@@ -1,0 +1,42 @@
+databases:
+  - name: shubh-gems-customizer-db
+    plan: free
+    postgresMajorVersion: "16"
+
+services:
+  - type: web
+    name: shubh-gems-customizer-app
+    runtime: node
+    plan: free
+    buildCommand: npm install && npx prisma generate && npx prisma migrate deploy && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: shubh-gems-customizer-db
+          property: connectionString
+      - key: NODE_VERSION
+        value: 20.19.0
+      # Set these manually in the Render dashboard after the app is
+      # created in Dev Dashboard — see DEPLOYMENT.md.
+      - key: SHOPIFY_API_KEY
+        sync: false
+      - key: SHOPIFY_API_SECRET
+        sync: false
+      - key: SCOPES
+        value: write_products,read_products,read_themes,write_inventory,read_orders,write_metaobjects,write_metaobject_definitions
+      - key: SHOPIFY_APP_URL
+        sync: false
+
+  - type: cron
+    name: shubh-gems-customizer-cleanup
+    runtime: node
+    plan: free
+    schedule: "0 3 * * *"
+    buildCommand: npm install && npx prisma generate
+    startCommand: node scripts/cleanup-variants.mjs
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: shubh-gems-customizer-db
+          property: connectionString

@@ -1,0 +1,73 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "24a6c503d46ca4f07024783f33b4b23d"
+name = "Shubh Gems varint options"
+application_url = "https://example.com"
+embedded = true
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+# write_products: creates the priced customization variants (never used to
+#   edit an existing product's own price — see app/utils/pricing.server.js)
+# read_products: reads gemstone variant price, design metaobjects
+# read_themes: reads config/settings_data.json for metal/cert rates
+# write_inventory: lets the orders/create webhook decrement the real
+#   gemstone's stock, since the real gemstone product never goes in the cart
+# read_orders: required to receive the orders/create webhook
+scopes = "write_products,read_products,read_themes,write_inventory,read_orders,write_metaobjects,write_metaobject_definitions"
+
+# Lets the theme call https://<store-domain>/apps/customize , which Shopify
+# signs and proxies to this app's /proxy route — see app/routes/proxy.jsx.
+# TODO once hosting is live: confirm this matches the real deployed URL
+# (it's derived from application_url below by `shopify app dev`/`deploy`,
+# but double-check after the first deploy).
+[app_proxy]
+url = "https://example.com/proxy"
+subpath = "customize"
+prefix = "apps"
+
+[product.metafields.app.demo_info]
+type = "single_line_text_field"
+name = "Demo Source Info"
+description = "Tracks products created by the Shopify app template for development"
+
+  [product.metafields.app.demo_info.access]
+  admin = "merchant_read_write"
+
+[metaobjects.app.example]
+name = "Example"
+description = "An example metaobject definition created by this template"
+
+  [metaobjects.app.example.access]
+  admin = "merchant_read_write"
+
+[metaobjects.app.example.fields.title]
+name = "Title"
+type = "single_line_text_field"
+required = true
+
+[metaobjects.app.example.fields.description]
+name = "Description"
+type = "multi_line_text_field"
+
+[webhooks]
+api_version = "2026-10"
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/uninstalled"
+  topics = [ "app/uninstalled" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/scopes_update"
+  topics = [ "app/scopes_update" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/orders/create"
+  topics = [ "orders/create" ]
+
+[auth]
+redirect_urls = [ "https://example.com/api/auth" ]
+
+[build]
+include_config_on_deploy = true
+automatically_update_urls_on_dev = true
