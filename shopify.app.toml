@@ -2,7 +2,7 @@
 
 client_id = "24a6c503d46ca4f07024783f33b4b23d"
 name = "Shubh Gems varint options"
-application_url = "https://example.com"
+application_url = "https://shubh-gems-customizer-app.onrender.com"
 embedded = true
 
 [access_scopes]
@@ -18,11 +18,8 @@ scopes = "write_products,read_products,read_themes,write_inventory,read_orders,w
 
 # Lets the theme call https://<store-domain>/apps/customize , which Shopify
 # signs and proxies to this app's /proxy route — see app/routes/proxy.jsx.
-# TODO once hosting is live: confirm this matches the real deployed URL
-# (it's derived from application_url below by `shopify app dev`/`deploy`,
-# but double-check after the first deploy).
 [app_proxy]
-url = "https://example.com/proxy"
+url = "https://shubh-gems-customizer-app.onrender.com/proxy"
 subpath = "customize"
 prefix = "apps"
 
@@ -66,8 +63,7 @@ api_version = "2026-10"
   topics = [ "orders/create" ]
 
 [auth]
-redirect_urls = [ "https://example.com/api/auth" ]
+redirect_urls = [ "https://shubh-gems-customizer-app.onrender.com/api/auth" ]
 
 [build]
-include_config_on_deploy = true
 automatically_update_urls_on_dev = true
