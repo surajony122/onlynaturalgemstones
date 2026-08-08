@@ -31,7 +31,11 @@ services:
   - type: cron
     name: shubh-gems-customizer-cleanup
     runtime: node
-    plan: free
+    # Render doesn't offer a free plan for Cron Job services (only web
+    # services and databases have one) — "starter" is the cheapest tier
+    # that works here. This job runs for a few seconds once a day, so
+    # actual usage/cost is minimal regardless of plan.
+    plan: starter
     schedule: "0 3 * * *"
     buildCommand: npm install && npx prisma generate
     startCommand: node scripts/cleanup-variants.mjs
