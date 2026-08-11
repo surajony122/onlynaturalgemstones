@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useFetcher } from "react-router";
+import { useFetcher, useLoaderData } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
@@ -7,7 +7,12 @@ import { repriceDesignVariants, PRODUCT_ID_NUMERIC } from "../utils/repriceDesig
 
 export const loader = async ({ request }) => {
   await authenticate.admin(request);
-  return null;
+  // PRODUCT_ID_NUMERIC lives in a .server.js file — React Router strips
+  // server-only modules from the client bundle, so a component can't
+  // import it directly for use in JSX (that broke the build). Returning
+  // it from the loader and reading it via useLoaderData is the
+  // server -> client handoff React Router actually supports.
+  return { productId: PRODUCT_ID_NUMERIC };
 };
 
 export const action = async ({ request }) => {
@@ -21,6 +26,7 @@ export const action = async ({ request }) => {
 };
 
 export default function Index() {
+  const { productId } = useLoaderData();
   const fetcher = useFetcher();
   const shopify = useAppBridge();
   const isLoading =
@@ -83,7 +89,7 @@ export default function Index() {
 
       <s-section slot="aside" heading="Product">
         <s-paragraph>
-          Numeric ID: <s-text>{PRODUCT_ID_NUMERIC}</s-text>
+          Numeric ID: <s-text>{productId}</s-text>
         </s-paragraph>
       </s-section>
     </s-page>
