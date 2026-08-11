@@ -21,33 +21,39 @@ export const loader = async ({ request }) => {
 
   const { admin } = await shopify.unauthenticated.admin(session.shop);
 
-  const res = await admin.graphql(
-    `#graphql
-    query FindCustomizerProducts($handle: String!) {
-      productByHandle: product(handle: $handle) {
-        id
-        handle
-        title
-        status
-        metafield(namespace: "custom", key: "customization_options") {
-          value
-          references(first: 10) {
-            nodes {
-              ... on Product {
-                id
-                handle
-                title
-                status
-                publishedOnCurrentPublication
+  try {
+    const res = await admin.graphql(
+      `#graphql
+      query FindCustomizerProducts($handle: String!) {
+        productByHandle: product(handle: $handle) {
+          id
+          handle
+          title
+          status
+          metafield(namespace: "custom", key: "customization_options") {
+            value
+            references(first: 10) {
+              nodes {
+                ... on Product {
+                  id
+                  handle
+                  title
+                  status
+                  publishedOnCurrentPublication
+                }
               }
             }
           }
         }
-      }
-    }`,
-    { variables: { handle: url.searchParams.get("handle") || "ruby-4-72-carat" } },
-  );
-  const json = await res.json();
-
-  return Response.json({ ok: true, result: json.data?.productByHandle, errors: json.errors });
+      }`,
+      { variables: { handle: url.searchParams.get("handle") || "ruby-4-72-carat" } },
+    );
+    const json = await res.json();
+    if (json.errors) {
+      return Response.json({ ok: false, errors: json.errors }, { status: 500 });
+    }
+    return Response.json({ ok: true, result: json.data?.productByHandle });
+  } catch (err) {
+    return Response.json({ ok: false, error: String(err?.message || err) }, { status: 500 });
+  }
 };
