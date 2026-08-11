@@ -107,17 +107,20 @@ async function fetchStonePrice(admin, productGid) {
     `#graphql
     query GetStonePrice($id: ID!) {
       product(id: $id) {
-        variants(first: 1, query: "option1:Loose") {
-          nodes { price }
+        variants(first: 250) {
+          nodes { price selectedOptions { name value } }
         }
       }
     }`,
     { variables: { id: productGid } },
   );
   const json = await res.json();
-  const price = json.data?.product?.variants?.nodes?.[0]?.price;
-  if (!price) throw new Error("Could not find a Loose variant to read the stone's own price from");
-  return parseFloat(price);
+  const nodes = json.data?.product?.variants?.nodes || [];
+  const looseVariant = nodes.find((v) =>
+    v.selectedOptions.some((o) => o.name === "Customised" && o.value === "Loose"),
+  );
+  if (!looseVariant) throw new Error("Could not find a Loose variant to read the stone's own price from");
+  return parseFloat(looseVariant.price);
 }
 
 async function runMigration(admin) {
