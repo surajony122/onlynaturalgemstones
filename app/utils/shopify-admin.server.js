@@ -132,7 +132,15 @@ export async function getProductDesigns(admin, productGid, type, metalTitleLower
           references(first: 100) {
             nodes {
               ... on Metaobject {
-                fields { key value }
+                fields {
+                  key
+                  value
+                  reference {
+                    ... on MediaImage {
+                      image { url }
+                    }
+                  }
+                }
               }
             }
           }
@@ -148,6 +156,19 @@ export async function getProductDesigns(admin, productGid, type, metalTitleLower
     for (const k of keys) {
       const f = fields.find((x) => x.key === k);
       if (f && f.value !== null && f.value !== "") return f.value;
+    }
+    return null;
+  };
+  // Design images are a "file" reference field in the metaobject (not
+  // plain text), same as the Liquid template's own
+  // entry.design_image.value | ... | image_url fallback chain — resolve
+  // via `reference.image.url` first, fall back to a plain-text `value`
+  // in case a field is set up as a URL string instead of a file field.
+  const fieldImage = (fields, keys) => {
+    for (const k of keys) {
+      const f = fields.find((x) => x.key === k);
+      if (f?.reference?.image?.url) return f.reference.image.url;
+      if (f && f.value) return f.value;
     }
     return null;
   };
@@ -169,10 +190,15 @@ export async function getProductDesigns(admin, productGid, type, metalTitleLower
       (metalTitleLower.includes("copper") && entryMetal.includes("copper")) ||
       (metalTitleLower.includes("tamba") && entryMetal.includes("tamba"));
     if (!matched) continue;
+    const priceStr = fieldVal(fields, ["price"]);
     matches.push({
       design: fieldVal(fields, ["design_name", "design", "name", "title"]) || "",
-      weight: parseFloat(fieldVal(fields, ["metal_weight", "weight", "estimated_weight"]) || "4.0"),
-      price: parseFloat(fieldVal(fields, ["price"]) || "0"),
+      // Only set weight/price when the field actually has a value —
+      // computeVariants treats "has an explicit price" vs "fall back to
+      // weight-based calc" as mutually exclusive, same as the global
+      // catalog entries do (see repriceDesignVariants.server.js).
+      ...(priceStr ? { price: parseFloat(priceStr) } : { weight: parseFloat(fieldVal(fields, ["metal_weight", "weight", "estimated_weight"]) || "4.0") }),
+      image: fieldImage(fields, ["design_image", "image", "photo"]) || "",
     });
   }
   return matches;
