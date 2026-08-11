@@ -161,19 +161,29 @@ export async function getOrCreateCertProduct(admin) {
 
   // Publish to Online Store explicitly — same reason as the old
   // synthetic-variant approach: an unpublished product's variants get
-  // rejected by /cart/add.js.
-  const pubRes = await admin.graphql(`#graphql
-    query OnlineStorePublication { publications(first: 10) { nodes { id name } } }`);
-  const pubJson = await pubRes.json();
-  const onlineStore = pubJson.data?.publications?.nodes?.find((p) => p.name === "Online Store");
-  if (onlineStore) {
-    await admin.graphql(
-      `#graphql
-      mutation PublishToOnlineStore($id: ID!, $input: [PublicationInput!]!) {
-        publishablePublish(id: $id, input: $input) { userErrors { field message } }
-      }`,
-      { variables: { id: productId, input: [{ publicationId: onlineStore.id }] } },
-    );
+  // rejected by /cart/add.js. Non-fatal: this app's current scopes
+  // (shopify.app.toml) don't include read_publications/write_publications
+  // yet, so this throws until that's added and the merchant re-approves
+  // scopes — but the product itself is already created at this point, so
+  // don't let a missing scope block getting its variant IDs back. If
+  // this fails, publish "Certification Upgrade" to Online Store manually
+  // in Admin -> Products (one checkbox) until the scope lands.
+  try {
+    const pubRes = await admin.graphql(`#graphql
+      query OnlineStorePublication { publications(first: 10) { nodes { id name } } }`);
+    const pubJson = await pubRes.json();
+    const onlineStore = pubJson.data?.publications?.nodes?.find((p) => p.name === "Online Store");
+    if (onlineStore) {
+      await admin.graphql(
+        `#graphql
+        mutation PublishToOnlineStore($id: ID!, $input: [PublicationInput!]!) {
+          publishablePublish(id: $id, input: $input) { userErrors { field message } }
+        }`,
+        { variables: { id: productId, input: [{ publicationId: onlineStore.id }] } },
+      );
+    }
+  } catch (err) {
+    console.error("[getOrCreateCertProduct] publish step failed (non-fatal):", err);
   }
   return productId;
 }

@@ -14,7 +14,11 @@ embedded = true
 # write_inventory: lets the orders/create webhook decrement the real
 #   gemstone's stock, since the real gemstone product never goes in the cart
 # read_orders: required to receive the orders/create webhook
-scopes = "write_products,read_products,read_themes,write_inventory,read_orders,write_metaobjects,write_metaobject_definitions"
+# write_publications: publishes the shared "Certification Upgrade" addon
+#   product to the Online Store channel — an unpublished product's
+#   variants get rejected by /cart/add.js, same reason as the gemstone
+#   customization product
+scopes = "write_products,read_products,read_themes,write_inventory,read_orders,write_metaobjects,write_metaobject_definitions,write_publications"
 
 # Lets the theme call https://<store-domain>/apps/customize , which Shopify
 # signs and proxies to this app's /proxy route — see app/routes/proxy.jsx.
