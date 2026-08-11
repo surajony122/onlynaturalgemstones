@@ -141,7 +141,6 @@ export async function getOrCreateCertProduct(admin) {
           title: "Certification Upgrade",
           handle: "certification-upgrade",
           status: "ACTIVE",
-          published: true,
           vendor: "Internal",
           tags: ["internal-do-not-list"],
           productOptions: [{ name: "Lab", position: 1, values: CERT_UPGRADES.map((c) => ({ name: c.key })) }],
