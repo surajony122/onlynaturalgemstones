@@ -46,6 +46,11 @@ export const loader = async ({ request }) => {
     if (!collection) return Response.json({ ok: false, error: "Collection not found" }, { status: 404 });
 
     const tabFields = (collection.metafields?.nodes || []).filter((m) => /^tab_\d+_content$/.test(m.key));
+    const full = url.searchParams.get("full");
+    if (full) {
+      const match = tabFields.find((m) => m.key === full);
+      return Response.json({ ok: true, key: full, value: match?.value || null });
+    }
     const summary = tabFields.map((m) => ({
       key: m.key,
       hasFaq: m.value.includes("shubh-faq") || m.value.toLowerCase().includes("faq"),
