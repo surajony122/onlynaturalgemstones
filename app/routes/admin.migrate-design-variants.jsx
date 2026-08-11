@@ -62,28 +62,35 @@ const CATALOG = {
 
 const LOOSE_METALS = ["Silver", "Panchdhatu", "Copper", "22k Yellow Gold", "18K Yellow Gold", "14K Yellow Gold", "18K White Gold", "14K White Gold"];
 
-function computeVariants() {
+function computeVariants(stonePrice) {
   const variants = [];
   const designValues = new Set(["N/A"]);
 
-  // Existing Loose variants — untouched, just need a Design value now that
-  // Design becomes a real option on this product.
+  // Existing Loose variants — the stone on its own, untouched price, just
+  // need a Design value now that Design becomes a real option.
   for (const metal of LOOSE_METALS) {
-    variants.push({ options: ["Loose", metal, "N/A"], price: "10.00" });
+    variants.push({ options: ["Loose", metal, "N/A"], price: stonePrice.toFixed(2) });
   }
 
   for (const [key, entries] of Object.entries(CATALOG)) {
     const [type, metal] = key.split("|");
     for (const entry of entries) {
-      let price;
+      let settingCost;
       if (entry.price) {
-        price = entry.price;
+        settingCost = entry.price;
       } else if (entry.weight) {
         const rate = RATES[metal] ?? 0;
-        price = entry.weight * (rate + MAKING_CHARGE_PER_GRAM);
+        settingCost = entry.weight * (rate + MAKING_CHARGE_PER_GRAM);
       } else {
         continue;
       }
+      // Total charged = the stone itself + the setting/design cost. The
+      // catalog's `price`/weight-derived numbers were always just the
+      // setting cost (see the old shubh-gems-customizer breakdown: "Loose
+      // Gemstone Price" + "Setting Cost" as separate rows) — a bare
+      // variant price needs both added together, or the stone's own
+      // value silently disappears from what the customer is charged.
+      const price = stonePrice + settingCost;
       designValues.add(entry.design);
       variants.push({
         options: [type, metal, entry.design],
@@ -95,9 +102,28 @@ function computeVariants() {
   return { variants, designValues: [...designValues] };
 }
 
+async function fetchStonePrice(admin, productGid) {
+  const res = await admin.graphql(
+    `#graphql
+    query GetStonePrice($id: ID!) {
+      product(id: $id) {
+        variants(first: 1, query: "option1:Loose") {
+          nodes { price }
+        }
+      }
+    }`,
+    { variables: { id: productGid } },
+  );
+  const json = await res.json();
+  const price = json.data?.product?.variants?.nodes?.[0]?.price;
+  if (!price) throw new Error("Could not find a Loose variant to read the stone's own price from");
+  return parseFloat(price);
+}
+
 async function runMigration(admin) {
-  const { variants, designValues } = computeVariants();
   const productGid = `gid://shopify/Product/${PRODUCT_ID_NUMERIC}`;
+  const stonePrice = await fetchStonePrice(admin, productGid);
+  const { variants, designValues } = computeVariants(stonePrice);
 
   const input = {
     id: productGid,
@@ -128,7 +154,7 @@ async function runMigration(admin) {
     { variables: { input } },
   );
   const json = await res.json();
-  return { requestedVariantCount: variants.length, designValueCount: designValues.length, result: json };
+  return { stonePrice, requestedVariantCount: variants.length, designValueCount: designValues.length, result: json };
 }
 
 export const loader = async ({ request }) => {
