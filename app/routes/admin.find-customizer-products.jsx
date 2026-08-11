@@ -25,7 +25,7 @@ export const loader = async ({ request }) => {
     const res = await admin.graphql(
       `#graphql
       query FindCustomizerProducts($handle: String!) {
-        productByHandle: product(handle: $handle) {
+        productByHandle(handle: $handle) {
           id
           handle
           title
