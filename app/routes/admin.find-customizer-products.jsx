@@ -23,29 +23,31 @@ export const loader = async ({ request }) => {
 
   const res = await admin.graphql(
     `#graphql
-    query FindCustomizerProducts {
-      products(first: 20, query: "status:active", sortKey: UPDATED_AT, reverse: true) {
-        nodes {
-          id
-          handle
-          title
-          status
-          metafield(namespace: "custom", key: "customization_options") {
-            value
+    query FindCustomizerProducts($handle: String!) {
+      productByHandle: product(handle: $handle) {
+        id
+        handle
+        title
+        status
+        metafield(namespace: "custom", key: "customization_options") {
+          value
+          references(first: 10) {
+            nodes {
+              ... on Product {
+                id
+                handle
+                title
+                status
+                publishedOnCurrentPublication
+              }
+            }
           }
         }
       }
     }`,
+    { variables: { handle: url.searchParams.get("handle") || "ruby-4-72-carat" } },
   );
   const json = await res.json();
-  const nodes = json.data?.products?.nodes || [];
-  const withCustomizer = nodes
-    .filter((p) => p.metafield?.value && p.metafield.value !== "[]")
-    .map((p) => ({ handle: p.handle, title: p.title, status: p.status }));
 
-  return Response.json({
-    ok: true,
-    checked: nodes.length,
-    withCustomizerEnabled: withCustomizer,
-  });
+  return Response.json({ ok: true, result: json.data?.productByHandle, errors: json.errors });
 };
