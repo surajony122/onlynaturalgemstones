@@ -43,6 +43,11 @@ export const loader = async ({ request }) => {
     if (!collection) return Response.json({ ok: false, error: "Collection not found" }, { status: 404 });
 
     const tabFields = (collection.metafields?.nodes || []).filter((m) => /^tab_\d+_content$/.test(m.key));
+    const full = url.searchParams.get("full");
+    if (full) {
+      const match = tabFields.find((m) => m.key === full);
+      return Response.json({ ok: true, key: full, value: match?.value || null });
+    }
     const report = tabFields
       .map((m) => {
         const openCount = (m.value.match(/<a\s/g) || []).length;
