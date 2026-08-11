@@ -115,6 +115,37 @@ const CERT_UPGRADES = [
  * upgrade over their gemstone's free included certification. The free
  * cert never needs this — it's just a line-item property on the main
  * line, nothing to charge for. */
+async function ensurePublishedOnlineStore(admin, productId) {
+  const diag = { attempted: true };
+  try {
+    const pubRes = await admin.graphql(`#graphql
+      query OnlineStorePublication { publications(first: 10) { nodes { id name } } }`);
+    const pubJson = await pubRes.json();
+    if (pubJson.errors) {
+      diag.error = `publications query: ${JSON.stringify(pubJson.errors)}`;
+      return diag;
+    }
+    const onlineStore = pubJson.data?.publications?.nodes?.find((p) => p.name === "Online Store");
+    diag.foundOnlineStore = !!onlineStore;
+    if (onlineStore) {
+      const publishRes = await admin.graphql(
+        `#graphql
+        mutation PublishToOnlineStore($id: ID!, $input: [PublicationInput!]!) {
+          publishablePublish(id: $id, input: $input) { userErrors { field message } }
+        }`,
+        { variables: { id: productId, input: [{ publicationId: onlineStore.id }] } },
+      );
+      const publishJson = await publishRes.json();
+      diag.userErrors = publishJson.data?.publishablePublish?.userErrors || [];
+      diag.graphqlErrors = publishJson.errors || null;
+    }
+  } catch (err) {
+    diag.error = String(err.message || err);
+    console.error("[ensurePublishedOnlineStore] failed (non-fatal):", err);
+  }
+  return diag;
+}
+
 export async function getOrCreateCertProduct(admin) {
   const findRes = await admin.graphql(
     `#graphql
@@ -125,7 +156,10 @@ export async function getOrCreateCertProduct(admin) {
   );
   const findJson = await findRes.json();
   const existing = findJson.data?.products?.nodes?.[0];
-  if (existing) return existing.id;
+  if (existing) {
+    const publishDiagnostic = await ensurePublishedOnlineStore(admin, existing.id);
+    return { productId: existing.id, publishDiagnostic };
+  }
 
   const createRes = await admin.graphql(
     `#graphql
@@ -161,38 +195,19 @@ export async function getOrCreateCertProduct(admin) {
 
   // Publish to Online Store explicitly — same reason as the old
   // synthetic-variant approach: an unpublished product's variants get
-  // rejected by /cart/add.js. Non-fatal: this app's current scopes
-  // (shopify.app.toml) don't include read_publications/write_publications
-  // yet, so this throws until that's added and the merchant re-approves
-  // scopes — but the product itself is already created at this point, so
-  // don't let a missing scope block getting its variant IDs back. If
-  // this fails, publish "Certification Upgrade" to Online Store manually
-  // in Admin -> Products (one checkbox) until the scope lands.
-  try {
-    const pubRes = await admin.graphql(`#graphql
-      query OnlineStorePublication { publications(first: 10) { nodes { id name } } }`);
-    const pubJson = await pubRes.json();
-    const onlineStore = pubJson.data?.publications?.nodes?.find((p) => p.name === "Online Store");
-    if (onlineStore) {
-      await admin.graphql(
-        `#graphql
-        mutation PublishToOnlineStore($id: ID!, $input: [PublicationInput!]!) {
-          publishablePublish(id: $id, input: $input) { userErrors { field message } }
-        }`,
-        { variables: { id: productId, input: [{ publicationId: onlineStore.id }] } },
-      );
-    }
-  } catch (err) {
-    console.error("[getOrCreateCertProduct] publish step failed (non-fatal):", err);
-  }
-  return productId;
+  // rejected by /cart/add.js. Non-fatal: if this app's scopes don't
+  // include write_publications yet, this fails without blocking getting
+  // the variant IDs back — publish "Certification Upgrade" to Online
+  // Store manually in Admin -> Products (one checkbox) until it lands.
+  const publishDiagnostic = await ensurePublishedOnlineStore(admin, productId);
+  return { productId, publishDiagnostic };
 }
 
 /** Returns { GJI: numericVariantId, IGI: ..., GIA: ... } for the theme
  * JS to embed directly — these are real, pre-existing, already-priced
  * variants, nothing created per-order. */
 export async function getCertVariantIds(admin) {
-  const productGid = await getOrCreateCertProduct(admin);
+  const { productId, publishDiagnostic } = await getOrCreateCertProduct(admin);
   const res = await admin.graphql(
     `#graphql
     query GetCertVariants($id: ID!) {
@@ -200,7 +215,7 @@ export async function getCertVariantIds(admin) {
         variants(first: 10) { nodes { id selectedOptions { name value } } }
       }
     }`,
-    { variables: { id: productGid } },
+    { variables: { id: productId } },
   );
   const json = await res.json();
   const nodes = json.data?.product?.variants?.nodes || [];
@@ -209,7 +224,7 @@ export async function getCertVariantIds(admin) {
     const lab = v.selectedOptions.find((o) => o.name === "Lab")?.value;
     if (lab) map[lab] = v.id.split("/").pop();
   }
-  return map;
+  return { variantIds: map, publishDiagnostic };
 }
 
 export async function repriceDesignVariants(admin) {

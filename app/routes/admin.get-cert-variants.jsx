@@ -25,8 +25,8 @@ export const loader = async ({ request }) => {
 
   try {
     const { admin } = await shopify.unauthenticated.admin(session.shop);
-    const variantIds = await getCertVariantIds(admin);
-    return Response.json({ ok: true, variantIds });
+    const { variantIds, publishDiagnostic } = await getCertVariantIds(admin);
+    return Response.json({ ok: true, variantIds, publishDiagnostic });
   } catch (err) {
     console.error("[admin.get-cert-variants] failed:", err);
     return Response.json({ error: String(err) }, { status: 500 });
