@@ -27,41 +27,55 @@ export const loader = async ({ request }) => {
   const { admin } = await shopify.unauthenticated.admin(session.shop);
   const productGid = `gid://shopify/Product/${PRODUCT_ID_NUMERIC}`;
 
-  // Find the actual metafield ids to delete (namespace "custom").
-  const findRes = await admin.graphql(
-    `#graphql
-    query FindStrayMetafields($id: ID!) {
-      product(id: $id) {
-        ring: metafield(namespace: "custom", key: "ring_designs") { id }
-        pandent: metafield(namespace: "custom", key: "pandent_designs") { id }
-        bracelet: metafield(namespace: "custom", key: "bracelet_designs") { id }
-      }
-    }`,
-    { variables: { id: productGid } },
-  );
-  const findJson = await findRes.json();
-  const fields = findJson.data?.product || {};
-  const ids = [fields.ring?.id, fields.pandent?.id, fields.bracelet?.id].filter(Boolean);
-
-  if (ids.length === 0) {
-    return Response.json({ ok: true, message: "No stray metafields found, nothing to clear.", found: fields });
-  }
-
-  const results = [];
-  for (const id of ids) {
-    const delRes = await admin.graphql(
+  try {
+    // Find the actual metafield ids to delete (namespace "custom").
+    const findRes = await admin.graphql(
       `#graphql
-      mutation DeleteStrayMetafield($input: MetafieldDeleteInput!) {
-        metafieldDelete(input: $input) {
-          deletedId
-          userErrors { field message }
+      query FindStrayMetafields($id: ID!) {
+        product(id: $id) {
+          ring: metafield(namespace: "custom", key: "ring_designs") { id }
+          pandent: metafield(namespace: "custom", key: "pandent_designs") { id }
+          bracelet: metafield(namespace: "custom", key: "bracelet_designs") { id }
         }
       }`,
-      { variables: { input: { id } } },
+      { variables: { id: productGid } },
     );
-    const delJson = await delRes.json();
-    results.push(delJson.data?.metafieldDelete);
-  }
+    const findJson = await findRes.json();
+    if (findJson.errors) {
+      return Response.json({ ok: false, step: "find", errors: findJson.errors }, { status: 500 });
+    }
+    const fields = findJson.data?.product || {};
+    const ids = [fields.ring?.id, fields.pandent?.id, fields.bracelet?.id].filter(Boolean);
 
-  return Response.json({ ok: true, clearedIds: ids, results });
+    if (ids.length === 0) {
+      return Response.json({ ok: true, message: "No stray metafields found, nothing to clear.", found: fields });
+    }
+
+    const results = [];
+    for (const id of ids) {
+      const delRes = await admin.graphql(
+        `#graphql
+        mutation DeleteStrayMetafield($input: MetafieldDeleteInput!) {
+          metafieldDelete(input: $input) {
+            deletedId
+            userErrors { field message }
+          }
+        }`,
+        { variables: { input: { id } } },
+      );
+      const delJson = await delRes.json();
+      if (delJson.errors) {
+        results.push({ id, errors: delJson.errors });
+      } else {
+        results.push({ id, result: delJson.data?.metafieldDelete });
+      }
+    }
+
+    return Response.json({ ok: true, clearedIds: ids, results });
+  } catch (err) {
+    return Response.json(
+      { ok: false, error: String(err?.message || err), stack: String(err?.stack || "") },
+      { status: 500 },
+    );
+  }
 };
