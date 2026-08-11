@@ -39,7 +39,6 @@ export const loader = async ({ request }) => {
                   handle
                   title
                   status
-                  publishedOnCurrentPublication
                 }
               }
             }
