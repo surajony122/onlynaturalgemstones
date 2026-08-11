@@ -103,6 +103,106 @@ async function fetchStonePrice(admin, productGid) {
   return parseFloat(looseVariant.price);
 }
 
+const CERT_UPGRADES = [
+  { key: "GJI", price: 1000 },
+  { key: "IGI", price: 1750 },
+  { key: "GIA", price: 3500 },
+];
+
+/** Finds (or, on first use, creates) the shared "Certification Upgrade"
+ * product — one real variant per paid upgrade (GJI/IGI/GIA), added to
+ * cart as a second real line item only when a customer picks a paid
+ * upgrade over their gemstone's free included certification. The free
+ * cert never needs this — it's just a line-item property on the main
+ * line, nothing to charge for. */
+export async function getOrCreateCertProduct(admin) {
+  const findRes = await admin.graphql(
+    `#graphql
+    query FindCertProduct($query: String!) {
+      products(first: 1, query: $query) { nodes { id } }
+    }`,
+    { variables: { query: "handle:certification-upgrade" } },
+  );
+  const findJson = await findRes.json();
+  const existing = findJson.data?.products?.nodes?.[0];
+  if (existing) return existing.id;
+
+  const createRes = await admin.graphql(
+    `#graphql
+    mutation CreateCertProduct($input: ProductSetInput!) {
+      productSet(input: $input, synchronous: true) {
+        product { id }
+        userErrors { field message }
+      }
+    }`,
+    {
+      variables: {
+        input: {
+          title: "Certification Upgrade",
+          handle: "certification-upgrade",
+          status: "ACTIVE",
+          published: true,
+          vendor: "Internal",
+          tags: ["internal-do-not-list"],
+          productOptions: [{ name: "Lab", position: 1, values: CERT_UPGRADES.map((c) => ({ name: c.key })) }],
+          variants: CERT_UPGRADES.map((c) => ({
+            optionValues: [{ optionName: "Lab", name: c.key }],
+            price: c.price.toFixed(2),
+            inventoryPolicy: "CONTINUE",
+            inventoryItem: { tracked: false },
+          })),
+        },
+      },
+    },
+  );
+  const createJson = await createRes.json();
+  const errs = createJson.data?.productSet?.userErrors;
+  if (errs?.length) throw new Error(`Creating cert product failed: ${JSON.stringify(errs)}`);
+  const productId = createJson.data?.productSet?.product?.id;
+
+  // Publish to Online Store explicitly — same reason as the old
+  // synthetic-variant approach: an unpublished product's variants get
+  // rejected by /cart/add.js.
+  const pubRes = await admin.graphql(`#graphql
+    query OnlineStorePublication { publications(first: 10) { nodes { id name } } }`);
+  const pubJson = await pubRes.json();
+  const onlineStore = pubJson.data?.publications?.nodes?.find((p) => p.name === "Online Store");
+  if (onlineStore) {
+    await admin.graphql(
+      `#graphql
+      mutation PublishToOnlineStore($id: ID!, $input: [PublicationInput!]!) {
+        publishablePublish(id: $id, input: $input) { userErrors { field message } }
+      }`,
+      { variables: { id: productId, input: [{ publicationId: onlineStore.id }] } },
+    );
+  }
+  return productId;
+}
+
+/** Returns { GJI: numericVariantId, IGI: ..., GIA: ... } for the theme
+ * JS to embed directly — these are real, pre-existing, already-priced
+ * variants, nothing created per-order. */
+export async function getCertVariantIds(admin) {
+  const productGid = await getOrCreateCertProduct(admin);
+  const res = await admin.graphql(
+    `#graphql
+    query GetCertVariants($id: ID!) {
+      product(id: $id) {
+        variants(first: 10) { nodes { id selectedOptions { name value } } }
+      }
+    }`,
+    { variables: { id: productGid } },
+  );
+  const json = await res.json();
+  const nodes = json.data?.product?.variants?.nodes || [];
+  const map = {};
+  for (const v of nodes) {
+    const lab = v.selectedOptions.find((o) => o.name === "Lab")?.value;
+    if (lab) map[lab] = v.id.split("/").pop();
+  }
+  return map;
+}
+
 export async function repriceDesignVariants(admin) {
   const productGid = `gid://shopify/Product/${PRODUCT_ID_NUMERIC}`;
   const stonePrice = await fetchStonePrice(admin, productGid);
