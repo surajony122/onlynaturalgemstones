@@ -28,14 +28,14 @@ export const loader = async ({ request }) => {
   const productGid = `gid://shopify/Product/${PRODUCT_ID_NUMERIC}`;
 
   try {
-    // Find the actual metafield ids to delete (namespace "custom").
+    // Find which of the 3 stray metafields actually exist (namespace "custom").
     const findRes = await admin.graphql(
       `#graphql
       query FindStrayMetafields($id: ID!) {
         product(id: $id) {
-          ring: metafield(namespace: "custom", key: "ring_designs") { id }
-          pandent: metafield(namespace: "custom", key: "pandent_designs") { id }
-          bracelet: metafield(namespace: "custom", key: "bracelet_designs") { id }
+          ring: metafield(namespace: "custom", key: "ring_designs") { key }
+          pandent: metafield(namespace: "custom", key: "pandent_designs") { key }
+          bracelet: metafield(namespace: "custom", key: "bracelet_designs") { key }
         }
       }`,
       { variables: { id: productGid } },
@@ -45,33 +45,32 @@ export const loader = async ({ request }) => {
       return Response.json({ ok: false, step: "find", errors: findJson.errors }, { status: 500 });
     }
     const fields = findJson.data?.product || {};
-    const ids = [fields.ring?.id, fields.pandent?.id, fields.bracelet?.id].filter(Boolean);
+    const keys = [fields.ring?.key, fields.pandent?.key, fields.bracelet?.key].filter(Boolean);
 
-    if (ids.length === 0) {
+    if (keys.length === 0) {
       return Response.json({ ok: true, message: "No stray metafields found, nothing to clear.", found: fields });
     }
 
-    const results = [];
-    for (const id of ids) {
-      const delRes = await admin.graphql(
-        `#graphql
-        mutation DeleteStrayMetafield($input: MetafieldDeleteInput!) {
-          metafieldDelete(input: $input) {
-            deletedId
-            userErrors { field message }
-          }
-        }`,
-        { variables: { input: { id } } },
-      );
-      const delJson = await delRes.json();
-      if (delJson.errors) {
-        results.push({ id, errors: delJson.errors });
-      } else {
-        results.push({ id, result: delJson.data?.metafieldDelete });
-      }
+    const delRes = await admin.graphql(
+      `#graphql
+      mutation DeleteStrayMetafields($metafields: [MetafieldIdentifierInput!]!) {
+        metafieldsDelete(metafields: $metafields) {
+          deletedMetafields { key }
+          userErrors { field message }
+        }
+      }`,
+      {
+        variables: {
+          metafields: keys.map((key) => ({ ownerId: productGid, namespace: "custom", key })),
+        },
+      },
+    );
+    const delJson = await delRes.json();
+    if (delJson.errors) {
+      return Response.json({ ok: false, step: "delete", errors: delJson.errors }, { status: 500 });
     }
 
-    return Response.json({ ok: true, clearedIds: ids, results });
+    return Response.json({ ok: true, clearedKeys: keys, result: delJson.data?.metafieldsDelete });
   } catch (err) {
     return Response.json(
       { ok: false, error: String(err?.message || err), stack: String(err?.stack || "") },
