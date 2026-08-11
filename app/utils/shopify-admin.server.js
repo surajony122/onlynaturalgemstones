@@ -315,5 +315,46 @@ export async function createCustomizedVariant(admin, productGid, { title, total,
   if (errs?.length) throw new Error(`Creating customized variant failed: ${JSON.stringify(errs)}`);
   const variant = json.data?.productVariantsBulkCreate?.productVariants?.[0];
   if (!variant) throw new Error("Variant creation returned no variant");
+
+  // A variant that was JUST created via the Admin API isn't always visible
+  // yet to the storefront's legacy /cart/add.js — confirmed live: even with
+  // inventoryItem.tracked=false above, a cart/add.js call made immediately
+  // after this mutation returns can still 422 "already sold out", because
+  // that endpoint reads from a storefront cache that trails the Admin API's
+  // write by a short, variable window. This isn't fixed by any variant
+  // field — it's a replication delay, so the fix is to wait it out here
+  // (once, server-side, before the client ever tries to add to cart)
+  // rather than have every customer's browser discover it via a failed
+  // add-to-cart. Polling availableForSale confirms the write has become
+  // visible on Shopify's read path at all; the fixed floor below covers
+  // the extra storefront-cache hop that availableForSale alone doesn't
+  // account for.
+  await waitUntilAvailableForSale(admin, variant.id);
+
   return { variantGid: variant.id, numericId: variant.id.split("/").pop() };
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function waitUntilAvailableForSale(admin, variantGid, { attempts = 5, intervalMs = 350, floorMs = 900 } = {}) {
+  for (let i = 0; i < attempts; i++) {
+    await sleep(i === 0 ? floorMs : intervalMs);
+    try {
+      const res = await admin.graphql(
+        `#graphql
+        query CheckVariantAvailable($id: ID!) {
+          productVariant(id: $id) { availableForSale }
+        }`,
+        { variables: { id: variantGid } },
+      );
+      const json = await res.json();
+      if (json.data?.productVariant?.availableForSale) return;
+    } catch (err) {
+      // Availability-check failures shouldn't block the purchase — the
+      // floor delay above already happened, so fall through and let the
+      // customer's cart/add.js attempt be the real judge.
+      console.error(`[waitUntilAvailableForSale] check failed for ${variantGid}:`, err);
+    }
+  }
+  console.warn(`[waitUntilAvailableForSale] ${variantGid} still not confirmed available after waiting`);
 }
