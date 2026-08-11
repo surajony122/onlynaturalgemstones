@@ -14,19 +14,32 @@
  * formula — so re-run this whenever those rates change.
  */
 
-export const PRODUCT_ID_NUMERIC = "10522275741995"; // "test" product
+import { getThemeSettings } from "./shopify-admin.server";
 
-const RATES = {
-  Silver: 400,
-  Panchdhatu: 0,
-  Copper: 0,
-  "22k Yellow Gold": 16000,
-  "18K Yellow Gold": 13200,
-  "18K White Gold": 13700,
-  "14K Yellow Gold": 10500,
-  "14K White Gold": 10900,
-};
-const MAKING_CHARGE_PER_GRAM = 1500;
+export const PRODUCT_ID_NUMERIC = "10522275741995"; // "test" product
+const THEME_GID = "gid://shopify/OnlineStoreTheme/190151065899"; // "product" theme
+
+/** Rates/making-charge used to be hardcoded here, which is exactly the
+ * bug that made "I set making charge to 0 in theme settings" have no
+ * effect — this now reads config/settings_data.json live via the same
+ * getThemeSettings() the original app pricing used, so a rate changed in
+ * the theme customizer is what a Reprice click actually applies. */
+async function fetchRatesFromTheme(admin) {
+  const settings = await getThemeSettings(admin, THEME_GID);
+  return {
+    rates: {
+      Silver: parseFloat(settings.shubh_rate_silver ?? 0),
+      Panchdhatu: parseFloat(settings.shubh_rate_panchdhatu ?? 0),
+      Copper: parseFloat(settings.shubh_rate_copper ?? 0),
+      "22k Yellow Gold": parseFloat(settings.shubh_rate_gold_22k_y ?? 0),
+      "18K Yellow Gold": parseFloat(settings.shubh_rate_gold_18k_y ?? 0),
+      "18K White Gold": parseFloat(settings.shubh_rate_gold_18k_w ?? 0),
+      "14K Yellow Gold": parseFloat(settings.shubh_rate_gold_14k_y ?? 0),
+      "14K White Gold": parseFloat(settings.shubh_rate_gold_14k_w ?? 0),
+    },
+    makingChargePerGram: parseFloat(settings.shubh_making_charge ?? 0),
+  };
+}
 
 const LOOSE_METALS = ["Silver", "Panchdhatu", "Copper", "22k Yellow Gold", "18K Yellow Gold", "14K Yellow Gold", "18K White Gold", "14K White Gold"];
 
@@ -50,7 +63,7 @@ const CATALOG = {
   "Pendent|14K White Gold": [{"design":"PD01","weight":3,"image":"https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD01-silver.jpg"},{"design":"PD02","weight":4,"image":"https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD02-silver.jpg"},{"design":"PD03","weight":4,"image":"https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD03-silver.jpg"},{"design":"PD04","weight":3,"image":"https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD04-silver.jpg"},{"design":"PD05","weight":4,"image":"https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD05-silver.jpg"},{"design":"PD06","weight":6,"image":"https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD06-silver.jpg"},{"design":"PD08","weight":6,"image":"https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD08-silver.jpg"},{"design":"Customised","weight":10,"image":"https://cdn.shopify.com/s/files/1/0992/9929/5531/files/custom_design.jpg"}]
 };
 
-function computeVariants(stonePrice) {
+function computeVariants(stonePrice, rates, makingChargePerGram) {
   const variants = [];
   const designValues = new Set(["N/A"]);
 
@@ -65,8 +78,8 @@ function computeVariants(stonePrice) {
       if (entry.price) {
         settingCost = entry.price;
       } else if (entry.weight) {
-        const rate = RATES[metal] ?? 0;
-        settingCost = entry.weight * (rate + MAKING_CHARGE_PER_GRAM);
+        const rate = rates[metal] ?? 0;
+        settingCost = entry.weight * (rate + makingChargePerGram);
       } else {
         continue;
       }
@@ -229,8 +242,11 @@ export async function getCertVariantIds(admin) {
 
 export async function repriceDesignVariants(admin) {
   const productGid = `gid://shopify/Product/${PRODUCT_ID_NUMERIC}`;
-  const stonePrice = await fetchStonePrice(admin, productGid);
-  const { variants, designValues } = computeVariants(stonePrice);
+  const [stonePrice, { rates, makingChargePerGram }] = await Promise.all([
+    fetchStonePrice(admin, productGid),
+    fetchRatesFromTheme(admin),
+  ]);
+  const { variants, designValues } = computeVariants(stonePrice, rates, makingChargePerGram);
 
   const input = {
     id: productGid,
@@ -263,5 +279,11 @@ export async function repriceDesignVariants(admin) {
   const userErrors = json.data?.productSet?.userErrors || [];
   if (userErrors.length) throw new Error(`productSet failed: ${JSON.stringify(userErrors)}`);
 
-  return { stonePrice, variantCount: variants.length, designValueCount: designValues.length };
+  return {
+    stonePrice,
+    variantCount: variants.length,
+    designValueCount: designValues.length,
+    ratesUsed: rates,
+    makingChargePerGram,
+  };
 }
