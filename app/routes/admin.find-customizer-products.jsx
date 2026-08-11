@@ -24,34 +24,25 @@ export const loader = async ({ request }) => {
   try {
     const res = await admin.graphql(
       `#graphql
-      query FindCustomizerProducts($handle: String!) {
-        productByHandle(handle: $handle) {
-          id
-          handle
-          title
-          status
-          metafield(namespace: "custom", key: "customization_options") {
-            value
-            references(first: 10) {
-              nodes {
-                ... on Product {
-                  id
-                  handle
-                  title
-                  status
-                }
-              }
+      query CheckMetafieldDefs {
+        definitions: metafieldDefinitions(first: 20, namespace: "custom", ownerType: PRODUCT) {
+          nodes {
+            key
+            name
+            namespace
+            access {
+              admin
+              storefront
             }
           }
         }
       }`,
-      { variables: { handle: url.searchParams.get("handle") || "ruby-4-72-carat" } },
     );
     const json = await res.json();
     if (json.errors) {
       return Response.json({ ok: false, errors: json.errors }, { status: 500 });
     }
-    return Response.json({ ok: true, result: json.data?.productByHandle });
+    return Response.json({ ok: true, definitions: json.data?.definitions?.nodes });
   } catch (err) {
     return Response.json({ ok: false, error: String(err?.message || err) }, { status: 500 });
   }
