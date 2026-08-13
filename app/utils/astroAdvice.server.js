@@ -308,7 +308,16 @@ async function syncLeadToShopify(admin, data, birthDetails, recommendation, astr
   if (existing) {
     const tags = existing.tags || [];
     if (tags.indexOf("gem-lead") === -1) tags.push("gem-lead");
-    const mergedNote = existing.note ? existing.note + "\n" + noteLine : noteLine;
+    // Shopify caps Customer.note at 5000 characters and rejects the whole
+    // update (not just truncates) if it's over — a repeat customer with
+    // enough submissions over time would eventually hit that and start
+    // silently failing the tag/note sync. Keep only the most recent
+    // ~4900 chars (a little headroom under the real 5000 limit) so this
+    // never happens; older history is still in the astro_advice metafield
+    // (which gets fully overwritten each time, not appended) and the
+    // database/Sheet, this note is just a quick-glance log.
+    const rawMergedNote = existing.note ? existing.note + "\n" + noteLine : noteLine;
+    const mergedNote = rawMergedNote.length > 4900 ? rawMergedNote.slice(rawMergedNote.length - 4900) : rawMergedNote;
     const updateInput = { id: existing.id, tags, note: mergedNote, metafields: astroMetafields };
     if (phone) updateInput.phone = phone;
 
