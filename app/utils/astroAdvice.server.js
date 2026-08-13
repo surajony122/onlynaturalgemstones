@@ -235,12 +235,6 @@ export async function handleAstroAdviceSubmission(admin, shop, data) {
   if (data.debug === true) {
     successResponse.shopifySyncStatus = shopifySyncStatus;
     successResponse.emailSendStatus = emailSendStatus;
-    // TEMPORARY — see the matching comment in getShopFooterInfo.
-    try {
-      successResponse.shopFooterInfoDebug = await getShopFooterInfo(admin);
-    } catch (e) {
-      successResponse.shopFooterInfoDebugError = String(e);
-    }
   }
   return successResponse;
 }
@@ -530,10 +524,12 @@ const collectionImageCache = new Map(); // handle -> { value, expiresAt }
 async function shopifyAdminGraphQLSimple(admin, query, variables) {
   try {
     const res = await admin.graphql(query, { variables: variables || {} });
-    // TEMPORARY: surface the raw response status/body on a non-OK
-    // response instead of silently continuing to res.json() (which can
-    // itself throw obscuring the real cause) — helps diagnose exactly
-    // why a query is failing (bad scope, bad query, etc).
+    // Surface the raw response status/body on a non-OK response instead
+    // of silently continuing to res.json() (which can itself throw,
+    // obscuring the real cause) — the shape (_debugHttpError/_debugBody
+    // or _debugThrew) is what caught the invalid `brand` field earlier;
+    // kept permanently since callers already treat a falsy/error-shaped
+    // result as "this field didn't resolve" either way.
     if (!res.ok) {
       const text = await res.text();
       console.error(`[astroAdvice] GraphQL HTTP ${res.status}:`, text.slice(0, 500));
@@ -553,9 +549,15 @@ async function shopifyAdminGraphQLSimple(admin, query, variables) {
  * throughout sections/*.liquid in this theme). Cached 6 hours since it's
  * identical for every email regardless of which lead triggered it.
  */
-// Fallback used whenever Settings -> Brand has no logo configured in
-// Shopify Admin (brand.logo comes back null) — the theme's own header
-// logo, so the email at least matches what customers already see on-site.
+// Store logo — always this fixed URL (the theme's own header logo, same
+// one customers already see on-site). `Shop.brand` (which would have
+// let this be fetched live from Settings -> Brand instead) doesn't exist
+// on this app's pinned Admin API version (2025-10) — confirmed via a
+// GraphQL "Field 'brand' doesn't exist on type 'Shop'" error, which was
+// also silently breaking the ENTIRE shop query (GraphQL fails a whole
+// operation on any one invalid field, not just that field) — that's why
+// name/address/phone were ALSO coming back empty, not because they were
+// unset in Shopify. Removing the bad field fixes all of it at once.
 const FALLBACK_LOGO_URL = "https://onlynaturalgemstones.com/cdn/shop/files/ONG_logo_home.png";
 
 async function getShopFooterInfo(admin) {
@@ -581,21 +583,13 @@ async function getShopFooterInfo(admin) {
         name
         primaryDomain { url }
         billingAddress { address1 address2 city province zip country phone }
-        brand { logo { image { url } } }
       }
     }`
   );
-  // TEMPORARY debug capture — helps diagnose whether billingAddress came
-  // back genuinely empty (not filled in under Admin -> Settings -> Store
-  // details) vs. a query/permission problem. Read via the {"debug":true}
-  // response, remove once address/phone are confirmed working.
-  info._debugRawShopResult = result;
-
   const s = result?.data?.shop;
   if (s) {
     info.name = s.name || info.name;
     info.url = s.primaryDomain?.url || info.url;
-    info.logoUrl = s.brand?.logo?.image?.url || FALLBACK_LOGO_URL;
     if (s.billingAddress) {
       const a = s.billingAddress;
       info.addressLine = [a.address1, a.address2, a.city, a.province, a.zip, a.country].filter(Boolean).join(", ");
