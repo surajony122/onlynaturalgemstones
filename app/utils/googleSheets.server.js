@@ -5,11 +5,14 @@
  * though the database (see prisma/schema.prisma) is now the real source
  * of truth for this data.
  *
- * Entirely optional: if GOOGLE_SERVICE_ACCOUNT_EMAIL /
- * GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY / ASTRO_LEADS_SPREADSHEET_ID aren't
- * all set in the environment, every function here just logs once and
- * returns — never throws, never blocks the caller. See MERGE_ASTRO_ADVICE.md
- * for how to create the service account and share the Sheet with it.
+ * Takes a resolved settings object (see appSettings.server.js's
+ * getAppSettings) rather than reading process.env directly — settings
+ * are per-shop and may come from the Settings page (app.settings.jsx)
+ * instead of an env var. Entirely optional: if the settings passed in
+ * don't have all three of googleServiceAccountEmail /
+ * googleServiceAccountPrivateKey / astroLeadsSpreadsheetId, every
+ * function here just logs once per key and returns — never throws,
+ * never blocks the caller.
  */
 import { google } from "googleapis";
 
@@ -24,37 +27,42 @@ const LEADS_HEADER = [
 ];
 const EMAIL_EVENTS_HEADER = ["Timestamp", "Tracking ID", "Event", "Detail"];
 
-let cachedSheetsClient = null;
-let warnedMissingConfig = false;
+// Cache Sheets clients per spreadsheet+service-account-email pair, since
+// settings can now differ across shops (in a future multi-shop world) —
+// keyed loosely rather than assuming one global client is always right.
+const clientCache = new Map();
+const warnedMissingConfig = new Set();
 
-function isConfigured() {
+function isConfigured(settings, cacheKey) {
   const configured =
-    !!process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL &&
-    !!process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY &&
-    !!process.env.ASTRO_LEADS_SPREADSHEET_ID;
-  if (!configured && !warnedMissingConfig) {
-    warnedMissingConfig = true;
+    !!settings?.googleServiceAccountEmail &&
+    !!settings?.googleServiceAccountPrivateKey &&
+    !!settings?.astroLeadsSpreadsheetId;
+  if (!configured && !warnedMissingConfig.has(cacheKey)) {
+    warnedMissingConfig.add(cacheKey);
     console.warn(
-      "[googleSheets.server] GOOGLE_SERVICE_ACCOUNT_EMAIL / GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY / " +
-        "ASTRO_LEADS_SPREADSHEET_ID not fully set — Sheet mirroring is disabled, the database is " +
-        "still the source of truth. See MERGE_ASTRO_ADVICE.md."
+      "[googleSheets.server] Google service account email/private key/spreadsheet ID not fully set " +
+        "(Settings page or env vars) — Sheet mirroring is disabled, the database is still the source of truth."
     );
   }
   return configured;
 }
 
-function getSheetsClient() {
-  if (cachedSheetsClient) return cachedSheetsClient;
-  // Render's env var UI can't hold real newlines — the private key is
-  // stored with literal "\n" sequences and un-escaped here.
-  const privateKey = (process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || "").replace(/\\n/g, "\n");
+function getSheetsClient(settings) {
+  const cacheKeyForClient = settings.googleServiceAccountEmail + "|" + settings.astroLeadsSpreadsheetId;
+  if (clientCache.has(cacheKeyForClient)) return clientCache.get(cacheKeyForClient);
+  // The private key field can't hold real newlines in a Render env var or
+  // a plain <textarea> paste — stored/entered with literal "\n"
+  // sequences, un-escaped here.
+  const privateKey = (settings.googleServiceAccountPrivateKey || "").replace(/\\n/g, "\n");
   const auth = new google.auth.JWT({
-    email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+    email: settings.googleServiceAccountEmail,
     key: privateKey,
     scopes: ["https://www.googleapis.com/auth/spreadsheets"],
   });
-  cachedSheetsClient = google.sheets({ version: "v4", auth });
-  return cachedSheetsClient;
+  const client = google.sheets({ version: "v4", auth });
+  clientCache.set(cacheKeyForClient, client);
+  return client;
 }
 
 /** Ensures a tab with the given name + header row exists, creating both
@@ -78,11 +86,12 @@ async function ensureSheetWithHeader(sheets, spreadsheetId, sheetName, header) {
   }
 }
 
-async function appendRow(sheetName, header, row) {
-  if (!isConfigured()) return;
+async function appendRow(settings, sheetName, header, row) {
+  const cacheKey = (settings?.astroLeadsSpreadsheetId || "") + ":" + sheetName;
+  if (!isConfigured(settings, cacheKey)) return;
   try {
-    const sheets = getSheetsClient();
-    const spreadsheetId = process.env.ASTRO_LEADS_SPREADSHEET_ID;
+    const sheets = getSheetsClient(settings);
+    const spreadsheetId = settings.astroLeadsSpreadsheetId;
     await ensureSheetWithHeader(sheets, spreadsheetId, sheetName, header);
     await sheets.spreadsheets.values.append({
       spreadsheetId,
@@ -99,9 +108,9 @@ async function appendRow(sheetName, header, row) {
   }
 }
 
-export async function mirrorLeadToSheet(lead) {
+export async function mirrorLeadToSheet(settings, lead) {
   const rec = lead.recommendation || {};
-  await appendRow(LEADS_SHEET_NAME, LEADS_HEADER, [
+  await appendRow(settings, LEADS_SHEET_NAME, LEADS_HEADER, [
     new Date(lead.createdAt).toISOString(),
     lead.name || "",
     lead.email || "",
@@ -124,8 +133,8 @@ export async function mirrorLeadToSheet(lead) {
   ]);
 }
 
-export async function mirrorEmailEventToSheet(trackingId, event, detail) {
-  await appendRow(EMAIL_EVENTS_SHEET_NAME, EMAIL_EVENTS_HEADER, [
+export async function mirrorEmailEventToSheet(settings, trackingId, event, detail) {
+  await appendRow(settings, EMAIL_EVENTS_SHEET_NAME, EMAIL_EVENTS_HEADER, [
     new Date().toISOString(),
     trackingId || "",
     event || "",

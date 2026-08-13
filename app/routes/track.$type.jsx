@@ -16,6 +16,7 @@
  */
 import prisma from "../db.server";
 import { mirrorEmailEventToSheet } from "../utils/googleSheets.server";
+import { getAppSettings } from "../utils/appSettings.server";
 
 const STORE_DOMAIN = "onlynaturalgemstones.com";
 
@@ -31,8 +32,13 @@ async function logEvent(trackingId, event, detail) {
   } catch (err) {
     console.error(`[track.$type] failed to log "${event}" event for ${trackingId}:`, err);
   }
+  // This route has no login/session context (hit directly by mail
+  // clients) — resolve which shop's Sheet to mirror into by looking up
+  // the lead this trackingId belongs to.
   try {
-    await mirrorEmailEventToSheet(trackingId, event, detail);
+    const lead = trackingId ? await prisma.astroLead.findUnique({ where: { trackingId } }) : null;
+    const settings = await getAppSettings(lead?.shop);
+    await mirrorEmailEventToSheet(settings, trackingId, event, detail);
   } catch (err) {
     console.error(`[track.$type] failed to mirror "${event}" event to sheet:`, err);
   }

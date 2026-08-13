@@ -50,7 +50,22 @@ Then visit the app's "Test your app" install link again from
 permissions — existing functionality (the jewelry customizer) is
 unaffected, this just adds the two new scopes to the same install.
 
-## 2. Set the new environment variables on Render
+## 2. Set the Gmail/Sheets config — either on Render, or on the app's own Settings page
+
+There are now two ways to provide this config, and either works (a
+saved Settings-page value takes priority; env vars are the fallback):
+
+- **The app's own Settings page** — once deployed, open the app from
+  Shopify Admin's Apps list → **Settings** in its nav. Lets you paste in
+  the Gmail address/App Password and the Sheets service account details
+  directly, no Render dashboard needed. The App Password and service
+  account private key are never re-displayed after saving (shown as
+  "already set" instead) — leaving those fields blank on a later save
+  keeps the existing value rather than clearing it.
+- **Render env vars** — same as before, described below. Useful as a
+  default/fallback, or if you'd rather manage secrets there instead.
+
+## 2b. (Alternative) Set the new environment variables on Render
 
 Web service → **Environment**, add:
 

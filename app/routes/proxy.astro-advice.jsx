@@ -17,7 +17,7 @@ import { authenticate } from "../shopify.server";
 import { handleAstroAdviceSubmission } from "../utils/astroAdvice.server";
 
 export const action = async ({ request }) => {
-  const { admin } = await authenticate.public.appProxy(request);
+  const { admin, session } = await authenticate.public.appProxy(request);
 
   if (!admin) {
     return Response.json({ error: "Shop not authenticated" }, { status: 401 });
@@ -36,7 +36,7 @@ export const action = async ({ request }) => {
   }
 
   try {
-    const result = await handleAstroAdviceSubmission(admin, data);
+    const result = await handleAstroAdviceSubmission(admin, session?.shop, data);
     return Response.json(result);
   } catch (err) {
     console.error("[proxy.astro-advice] unhandled error:", err);

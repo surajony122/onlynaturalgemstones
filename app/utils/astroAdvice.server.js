@@ -27,6 +27,7 @@ import crypto from "node:crypto";
 import nodemailer from "nodemailer";
 import prisma from "../db.server";
 import { mirrorLeadToSheet, mirrorEmailEventToSheet } from "./googleSheets.server";
+import { getAppSettings } from "./appSettings.server";
 
 // The storefront's real customer-facing domain (not the *.myshopify.com
 // admin domain) — used to build the results-page link embedded in the
@@ -80,12 +81,13 @@ function buildRecommendations(gemSuggestion) {
  * (already authenticated by the caller via the app proxy) instead of a
  * manually-managed OAuth token.
  */
-export async function handleAstroAdviceSubmission(admin, data) {
+export async function handleAstroAdviceSubmission(admin, shop, data) {
   if (!data || !data.dob || !data.tob || typeof data.lat !== "number" || typeof data.lon !== "number") {
     return { error: "dob, tob, lat, and lon are all required" };
   }
 
   const trackingId = crypto.randomUUID();
+  const settings = await getAppSettings(shop);
 
   let birthDetails = null;
   let recommendation = null;
@@ -122,6 +124,7 @@ export async function handleAstroAdviceSubmission(admin, data) {
     lead = await prisma.astroLead.create({
       data: {
         trackingId,
+        shop: shop || null,
         name: data.name || null,
         email: data.email || null,
         phone: data.phone || null,
@@ -143,7 +146,7 @@ export async function handleAstroAdviceSubmission(admin, data) {
         astroError: astroError || null,
       },
     });
-    await mirrorLeadToSheet(lead);
+    await mirrorLeadToSheet(settings, lead);
   } catch (dbErr) {
     console.error("[astroAdvice] failed to save lead to database:", dbErr);
   }
@@ -166,7 +169,7 @@ export async function handleAstroAdviceSubmission(admin, data) {
   let emailSendStatus = "not run";
   if (!astroError && data.email) {
     try {
-      emailSendStatus = await sendGemRecommendationEmail(data, birthDetails || {}, recommendation || {}, trackingId);
+      emailSendStatus = await sendGemRecommendationEmail(settings, data, birthDetails || {}, recommendation || {}, trackingId);
     } catch (emailErr) {
       emailSendStatus = "threw: " + emailErr;
       console.error("[astroAdvice] failed to send recommendation email:", emailErr);
@@ -388,13 +391,14 @@ async function shopifyAdminGraphQL(admin, query, variables) {
 /**
  * Sends the personalised gem-recommendation email directly via
  * Nodemailer/Gmail SMTP — same account/behaviour as GmailApp did in the
- * Apps Script version, just called from Node. Requires GMAIL_USER +
- * GMAIL_APP_PASSWORD in the environment (a Gmail App Password, not the
- * account's real password — see MERGE_ASTRO_ADVICE.md).
+ * Apps Script version, just called from Node. Requires a Gmail user +
+ * App Password (not the account's real password), either saved on the
+ * app's own Settings page or set as GMAIL_USER/GMAIL_APP_PASSWORD env
+ * vars — see MERGE_ASTRO_ADVICE.md and app/routes/app.settings.jsx.
  */
-async function sendGemRecommendationEmail(data, birthDetails, recommendation, trackingId) {
-  if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
-    return "skipped: GMAIL_USER / GMAIL_APP_PASSWORD not set";
+async function sendGemRecommendationEmail(settings, data, birthDetails, recommendation, trackingId) {
+  if (!settings.gmailUser || !settings.gmailAppPassword) {
+    return "skipped: Gmail user / app password not set (Settings page or GMAIL_USER / GMAIL_APP_PASSWORD env vars)";
   }
 
   const appUrl = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
@@ -425,11 +429,11 @@ async function sendGemRecommendationEmail(data, birthDetails, recommendation, tr
 
   const transporter = nodemailer.createTransport({
     service: "gmail",
-    auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD },
+    auth: { user: settings.gmailUser, pass: settings.gmailAppPassword },
   });
 
   await transporter.sendMail({
-    from: '"Only Natural Gemstones" <' + process.env.GMAIL_USER + ">",
+    from: '"Only Natural Gemstones" <' + settings.gmailUser + ">",
     to: data.email,
     subject,
     text: plainBody,
@@ -438,7 +442,7 @@ async function sendGemRecommendationEmail(data, birthDetails, recommendation, tr
 
   try {
     await prisma.emailEvent.create({ data: { trackingId, event: "sent", detail: data.email } });
-    await mirrorEmailEventToSheet(trackingId, "sent", data.email);
+    await mirrorEmailEventToSheet(settings, trackingId, "sent", data.email);
   } catch (logErr) {
     console.error("[astroAdvice] email sent OK but failed to log 'sent' event:", logErr);
   }

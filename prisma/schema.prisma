@@ -50,6 +50,12 @@ model Session {
 model AstroLead {
   id              String   @id @default(cuid())
   trackingId      String   @unique
+  // Which store this lead belongs to — lets the public /track routes
+  // (no login context, hit directly by mail clients) resolve the right
+  // shop's Settings row for Sheet mirroring, by looking up the lead's
+  // own shop via its trackingId. Not enforced NOT NULL for backward
+  // compatibility with rows written before this column existed.
+  shop            String?
   createdAt       DateTime @default(now())
   name            String?
   email           String?
@@ -96,4 +102,29 @@ model EmailEvent {
   createdAt  DateTime @default(now())
 
   @@index([trackingId])
+}
+
+// Per-shop configuration editable from the app's own Settings page
+// (app/routes/app.settings.jsx) — Gmail sending credentials and the
+// Google Sheets mirror target, previously only settable as Render
+// environment variables. A row here, when present, takes priority over
+// the matching env var (see app/utils/appSettings.server.js) — so
+// existing env vars keep working as a fallback/default even before
+// anyone visits the Settings page.
+//
+// SECURITY NOTE: these are stored in plaintext in the database (not
+// encrypted at rest) — protected only by Postgres's own access control
+// and the fact that only Shopify-authenticated staff of this store can
+// reach the Settings page at all. Acceptable for a small internal tool;
+// revisit (e.g. encrypt gmailAppPassword/googleServiceAccountPrivateKey
+// with a key held only in an env var) if this ever needs a stronger bar.
+model AppSettings {
+  id                             String   @id @default(cuid())
+  shop                           String   @unique
+  gmailUser                      String?
+  gmailAppPassword               String?
+  googleServiceAccountEmail      String?
+  googleServiceAccountPrivateKey String?
+  astroLeadsSpreadsheetId        String?
+  updatedAt                      DateTime @updatedAt
 }

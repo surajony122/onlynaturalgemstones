@@ -1,0 +1,144 @@
+/**
+ * Astro Advice leads + email tracking viewer. Read-only — shows the
+ * AstroLead rows (most recent first) with a rolled-up email status
+ * (sent / opened count / clicked count) per lead, sourced from
+ * EmailEvent rows matched by trackingId.
+ */
+import { useLoaderData } from "react-router";
+import { boundary } from "@shopify/shopify-app-react-router/server";
+import { authenticate } from "../shopify.server";
+import prisma from "../db.server";
+
+const PAGE_SIZE = 100;
+
+export const loader = async ({ request }) => {
+  await authenticate.admin(request);
+
+  const leads = await prisma.astroLead.findMany({
+    orderBy: { createdAt: "desc" },
+    take: PAGE_SIZE,
+  });
+
+  const trackingIds = leads.map((l) => l.trackingId);
+  const events = trackingIds.length
+    ? await prisma.emailEvent.findMany({ where: { trackingId: { in: trackingIds } } })
+    : [];
+
+  const eventsByTrackingId = {};
+  for (const ev of events) {
+    if (!eventsByTrackingId[ev.trackingId]) eventsByTrackingId[ev.trackingId] = { sent: 0, opened: 0, clicked: 0 };
+    if (eventsByTrackingId[ev.trackingId][ev.event] !== undefined) {
+      eventsByTrackingId[ev.trackingId][ev.event]++;
+    }
+  }
+
+  return {
+    leads: leads.map((l) => ({
+      ...l,
+      createdAt: l.createdAt.toISOString(),
+      emailStatus: eventsByTrackingId[l.trackingId] || { sent: 0, opened: 0, clicked: 0 },
+    })),
+  };
+};
+
+const th = { textAlign: "left", padding: "8px 10px", fontSize: "12px", color: "#6d7175", borderBottom: "1px solid #e1e3e5", whiteSpace: "nowrap" };
+const td = { padding: "8px 10px", fontSize: "13px", borderBottom: "1px solid #f1f2f3", whiteSpace: "nowrap" };
+
+function statusPill(label, active, color) {
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "1px 7px",
+        marginRight: "4px",
+        borderRadius: "10px",
+        fontSize: "11px",
+        fontWeight: 600,
+        background: active ? color + "22" : "#f1f2f3",
+        color: active ? color : "#8c9196",
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+export default function AstroLeadsPage() {
+  const { leads } = useLoaderData();
+
+  return (
+    <s-page heading={`Astro Advice — Leads (${leads.length})`}>
+      <s-section>
+        {leads.length === 0 ? (
+          <s-paragraph>No leads yet.</s-paragraph>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={th}>When</th>
+                  <th style={th}>Name</th>
+                  <th style={th}>Email</th>
+                  <th style={th}>Phone</th>
+                  <th style={th}>Life Stone</th>
+                  <th style={th}>Calculation</th>
+                  <th style={th}>Shopify Sync</th>
+                  <th style={th}>Email</th>
+                </tr>
+              </thead>
+              <tbody>
+                {leads.map((lead) => (
+                  <tr key={lead.id}>
+                    <td style={td}>{new Date(lead.createdAt).toLocaleString()}</td>
+                    <td style={td}>{lead.name || "—"}</td>
+                    <td style={td}>{lead.email || "—"}</td>
+                    <td style={td}>{lead.phone || "—"}</td>
+                    <td style={td}>{lead.lifeStoneGem || "—"}</td>
+                    <td style={td}>
+                      {lead.calculationOk
+                        ? statusPill("OK", true, "#008060")
+                        : statusPill("Failed", true, "#d82c0d")}
+                    </td>
+                    <td style={td} title={lead.shopifySyncStatus || ""}>
+                      {(lead.shopifySyncStatus || "").startsWith("OK")
+                        ? statusPill("Synced", true, "#008060")
+                        : lead.shopifySyncStatus
+                          ? statusPill("Failed", true, "#d82c0d")
+                          : statusPill("—", false, "#8c9196")}
+                    </td>
+                    <td style={td}>
+                      {statusPill("Sent", lead.emailStatus.sent > 0, "#008060")}
+                      {statusPill(
+                        "Opened" + (lead.emailStatus.opened > 1 ? ` ×${lead.emailStatus.opened}` : ""),
+                        lead.emailStatus.opened > 0,
+                        "#6b5ce0"
+                      )}
+                      {statusPill(
+                        "Clicked" + (lead.emailStatus.clicked > 1 ? ` ×${lead.emailStatus.clicked}` : ""),
+                        lead.emailStatus.clicked > 0,
+                        "#2c6ecb"
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </s-section>
+
+      <s-section slot="aside" heading="About this page">
+        <s-paragraph>
+          Shows the most recent {PAGE_SIZE} leads. "Opened" is best-effort
+          (some mail clients block or pre-fetch tracking images); "Clicked"
+          is reliable. There's no real "delivered" signal — code alone
+          can't confirm that, only that the send was accepted.
+        </s-paragraph>
+      </s-section>
+    </s-page>
+  );
+}
+
+export const headers = (headersArgs) => {
+  return boundary.headers(headersArgs);
+};
