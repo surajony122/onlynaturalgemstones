@@ -76,12 +76,30 @@ export default function AstroLeadsPage() {
   const { leads } = useLoaderData();
 
   return (
-    <s-page heading={`Astro Advice — Leads (${leads.length})`}>
+    <s-page heading={`Astro Advice — Leads (${leads.length})`} width="full">
+      {/* Compact single-line info bar instead of the two sidebar boxes —
+          keeps the aside column from splitting the width, and this is a
+          quick reference note, not something that needs its own section. */}
       <s-section>
+        <p style={{ margin: "0 0 14px", fontSize: "12px", color: "#6d7175" }}>
+          Most recent {PAGE_SIZE} leads · "Opened" is best-effort (some mail clients pre-fetch/block tracking
+          images) · "Clicked" is reliable and shows which link on hover · No real "delivered" signal exists · Flow's
+          own run history isn't readable via API —{" "}
+          <a
+            href="https://admin.shopify.com/store/0f9yd0-jr/apps/flow"
+            target="_blank"
+            rel="noreferrer"
+            style={{ color: "#2c6ecb" }}
+          >
+            open Shopify Flow directly
+          </a>
+          .
+        </p>
+
         {leads.length === 0 ? (
           <s-paragraph>No leads yet.</s-paragraph>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ overflowX: "auto", width: "100%" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr>
@@ -93,6 +111,7 @@ export default function AstroLeadsPage() {
                   <th style={th}>Calculation</th>
                   <th style={th}>Shopify Sync</th>
                   <th style={th}>Email</th>
+                  <th style={th}>Clicked Links</th>
                 </tr>
               </thead>
               <tbody>
@@ -122,19 +141,31 @@ export default function AstroLeadsPage() {
                         lead.emailStatus.opened > 0,
                         "#6b5ce0"
                       )}
-                      <span
-                        title={
-                          lead.emailStatus.clickedLinks?.length
-                            ? "Clicked: " + lead.emailStatus.clickedLinks.join(", ")
-                            : ""
-                        }
-                      >
-                        {statusPill(
-                          "Clicked" + (lead.emailStatus.clicked > 1 ? ` ×${lead.emailStatus.clicked}` : ""),
-                          lead.emailStatus.clicked > 0,
-                          "#2c6ecb"
-                        )}
-                      </span>
+                      {statusPill(
+                        "Clicked" + (lead.emailStatus.clicked > 1 ? ` ×${lead.emailStatus.clicked}` : ""),
+                        lead.emailStatus.clicked > 0,
+                        "#2c6ecb"
+                      )}
+                    </td>
+                    <td style={{ ...td, whiteSpace: "normal", minWidth: "180px" }}>
+                      {lead.emailStatus.clickedLinks?.length
+                        ? lead.emailStatus.clickedLinks.map((link, i) => (
+                            <span
+                              key={i}
+                              style={{
+                                display: "inline-block",
+                                fontSize: "11px",
+                                color: "#2c6ecb",
+                                background: "#eaf1fa",
+                                padding: "2px 7px",
+                                borderRadius: "8px",
+                                margin: "1px 3px 1px 0",
+                              }}
+                            >
+                              {link}
+                            </span>
+                          ))
+                        : "—"}
                     </td>
                   </tr>
                 ))}
@@ -142,28 +173,6 @@ export default function AstroLeadsPage() {
             </table>
           </div>
         )}
-      </s-section>
-
-      <s-section slot="aside" heading="About this page">
-        <s-paragraph>
-          Shows the most recent {PAGE_SIZE} leads. "Opened" is best-effort
-          (some mail clients block or pre-fetch tracking images); "Clicked"
-          is reliable. There's no real "delivered" signal — code alone
-          can't confirm that, only that the send was accepted.
-        </s-paragraph>
-      </s-section>
-
-      <s-section slot="aside" heading="Shopify Flow">
-        <s-paragraph>
-          The "Send email to gem-lead customers" Flow (and any other
-          workflow) triggers off the <s-text>gem-lead</s-text> tag this
-          app sets via <s-text>shopifySyncStatus</s-text> above — but
-          Flow's own run history isn't readable through Shopify's API, so
-          it can't be shown inside this table. Check it directly:
-        </s-paragraph>
-        <s-link href="https://admin.shopify.com/store/0f9yd0-jr/apps/flow" target="_blank">
-          Open Shopify Flow →
-        </s-link>
       </s-section>
     </s-page>
   );
