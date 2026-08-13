@@ -273,12 +273,18 @@ async function syncLeadToShopify(admin, data, birthDetails, recommendation, astr
 
   const alreadyUnsubscribed =
     existing && existing.emailMarketingConsent && existing.emailMarketingConsent.marketingState === "UNSUBSCRIBED";
+  // Shopify rejects consentUpdatedAt if it's "in the future" relative to
+  // its own clock — a plain `new Date()` here got flagged even though it
+  // wasn't really in the future, just close enough to trip on ordinary
+  // clock skew/latency between Render's clock and Shopify's validation.
+  // Backdating by a minute gives enough slack to never trip that check
+  // while still being accurate to well within any reasonable tolerance.
   const consentInput = alreadyUnsubscribed
     ? null
     : {
         marketingState: "SUBSCRIBED",
         marketingOptInLevel: "SINGLE_OPT_IN",
-        consentUpdatedAt: new Date().toISOString(),
+        consentUpdatedAt: new Date(Date.now() - 60000).toISOString(),
       };
 
   const metafieldData = {
