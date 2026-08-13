@@ -51,6 +51,22 @@ const GEM_KEY_TO_COLLECTION = {
   opal: { gem: "Opal", collection: "opal" },
 };
 
+// Short benefit taglines shown under each gem name in the result email —
+// AstrologyAPI doesn't supply these, so it's a fixed lookup by the gem's
+// display name (matches GEM_KEY_TO_COLLECTION's "gem" values).
+const GEM_TAGLINE = {
+  Ruby: "for Leadership, Vitality &amp; Success",
+  Pearl: "for Peace, Emotional Balance &amp; Calm",
+  "Red Coral": "for Courage, Strength &amp; Vitality",
+  Emerald: "for Health, Success &amp; Growth",
+  "Yellow Sapphire": "for Wealth, Wisdom &amp; Prosperity",
+  Diamond: "for Luxury, Love &amp; Elegance",
+  "Blue Sapphire": "for Good Fortune, Wealth &amp; Success",
+  Hessonite: "for Protection &amp; Stability",
+  "Cat's Eye": "for Protection &amp; Spiritual Insight",
+  Opal: "for Marital Bliss, Luxury &amp; Pleasure",
+};
+
 function buildGemInfo(entry) {
   if (!entry || !entry.gem_key) return null;
   const info = GEM_KEY_TO_COLLECTION[entry.gem_key] || { gem: entry.name, collection: null };
@@ -169,7 +185,7 @@ export async function handleAstroAdviceSubmission(admin, shop, data) {
   let emailSendStatus = "not run";
   if (!astroError && data.email) {
     try {
-      emailSendStatus = await sendGemRecommendationEmail(settings, data, birthDetails || {}, recommendation || {}, trackingId);
+      emailSendStatus = await sendGemRecommendationEmail(admin, settings, data, birthDetails || {}, recommendation || {}, trackingId);
     } catch (emailErr) {
       emailSendStatus = "threw: " + emailErr;
       console.error("[astroAdvice] failed to send recommendation email:", emailErr);
@@ -396,7 +412,7 @@ async function shopifyAdminGraphQL(admin, query, variables) {
  * app's own Settings page or set as GMAIL_USER/GMAIL_APP_PASSWORD env
  * vars — see MERGE_ASTRO_ADVICE.md and app/routes/app.settings.jsx.
  */
-async function sendGemRecommendationEmail(settings, data, birthDetails, recommendation, trackingId) {
+async function sendGemRecommendationEmail(admin, settings, data, birthDetails, recommendation, trackingId) {
   if (!settings.gmailUser || !settings.gmailAppPassword) {
     return "skipped: Gmail user / app password not set (Settings page or GMAIL_USER / GMAIL_APP_PASSWORD env vars)";
   }
@@ -412,6 +428,10 @@ async function sendGemRecommendationEmail(settings, data, birthDetails, recommen
   const subject = "Your Personalised Gemstone Recommendation";
   const life = recommendation.life || {};
 
+  const shopInfo = await getShopFooterInfo(admin);
+  const collectionHandles = [recommendation.life, recommendation.benefic, recommendation.lucky].map((s) => s && s.collection);
+  const collectionImages = await getCollectionImages(admin, collectionHandles);
+
   const htmlBody = buildRecommendationEmailHtml({
     firstName,
     life,
@@ -419,13 +439,15 @@ async function sendGemRecommendationEmail(settings, data, birthDetails, recommen
     lucky: recommendation.lucky || {},
     resultsUrl: trackedResultsUrl,
     pixelUrl,
+    shopInfo,
+    collectionImages,
   });
 
   const plainBody =
     "Hi " + firstName + ",\n\n" +
     "Based on your birth chart, your recommended gemstone is " + (life.gem || "ready") + ".\n\n" +
     "View your full personalised recommendation (Life, Benefic & Lucky stones): " + resultsPageUrl + "\n\n" +
-    "Only Natural Gemstones — from the House of Shubh Gems";
+    shopInfo.name;
 
   const transporter = nodemailer.createTransport({
     service: "gmail",
@@ -433,7 +455,7 @@ async function sendGemRecommendationEmail(settings, data, birthDetails, recommen
   });
 
   await transporter.sendMail({
-    from: '"Only Natural Gemstones" <' + settings.gmailUser + ">",
+    from: '"' + shopInfo.name + '" <' + settings.gmailUser + ">",
     to: data.email,
     subject,
     text: plainBody,
@@ -474,25 +496,240 @@ function esc(str) {
   return String(str || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function stoneCard(label, stone) {
+// --- Live store info (logo, address, social links, collection images) ---
+// Simple in-process cache (module-level, keyed by field) — Render keeps
+// this Node process warm between requests (unlike Apps Script's stateless
+// per-request execution), so a plain object + timestamp is enough; no
+// need for a separate cache service. 6-hour TTL, same as the Code.gs
+// version used CacheService for.
+const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
+let shopFooterInfoCache = null; // { value, expiresAt }
+const collectionImageCache = new Map(); // handle -> { value, expiresAt }
+
+async function shopifyAdminGraphQLSimple(admin, query, variables) {
+  try {
+    const res = await admin.graphql(query, { variables: variables || {} });
+    return await res.json();
+  } catch (err) {
+    console.error("[astroAdvice] GraphQL call failed:", err);
+    return null;
+  }
+}
+
+/**
+ * Store name/logo/address/phone/domain, live from the Shop's own Admin
+ * API record (name, billingAddress, brand.logo) plus the live theme's
+ * social-link settings (social_*_link, same settings schema used
+ * throughout sections/*.liquid in this theme). Cached 6 hours since it's
+ * identical for every email regardless of which lead triggered it.
+ */
+async function getShopFooterInfo(admin) {
+  if (shopFooterInfoCache && shopFooterInfoCache.expiresAt > Date.now()) {
+    return shopFooterInfoCache.value;
+  }
+
+  const info = {
+    name: "Only Natural Gemstones",
+    url: "https://" + STORE_DOMAIN,
+    logoUrl: "",
+    addressLine: "",
+    phone: "",
+    email: "info@onlynaturalgemstones.com", // deliberately always info@, not shop.email
+    socialLinks: [],
+  };
+
+  const result = await shopifyAdminGraphQLSimple(
+    admin,
+    `#graphql
+    query ShopFooter {
+      shop {
+        name
+        primaryDomain { url }
+        billingAddress { address1 address2 city province zip country phone }
+        brand { logo { image { url } } }
+      }
+    }`
+  );
+  const s = result?.data?.shop;
+  if (s) {
+    info.name = s.name || info.name;
+    info.url = s.primaryDomain?.url || info.url;
+    info.logoUrl = s.brand?.logo?.image?.url || "";
+    if (s.billingAddress) {
+      const a = s.billingAddress;
+      info.addressLine = [a.address1, a.address2, a.city, a.province, a.zip, a.country].filter(Boolean).join(", ");
+      info.phone = a.phone || "";
+    }
+  }
+
+  info.socialLinks = await getSocialLinksFromTheme(admin);
+
+  shopFooterInfoCache = { value: info, expiresAt: Date.now() + SIX_HOURS_MS };
+  return info;
+}
+
+// Matches the "Social media" settings block in this theme's
+// config/settings_schema.json (social_facebook_link, social_instagram_link,
+// etc.) — read live from the published theme's settings_data.json so the
+// email's social row always matches whatever's actually configured there.
+const SOCIAL_LINK_SETTINGS = [
+  { key: "social_facebook_link", label: "Facebook" },
+  { key: "social_instagram_link", label: "Instagram" },
+  { key: "social_twitter_link", label: "Twitter" },
+  { key: "social_pinterest_link", label: "Pinterest" },
+  { key: "social_youtube_link", label: "YouTube" },
+  { key: "social_tiktok_link", label: "TikTok" },
+  { key: "social_snapchat_link", label: "Snapchat" },
+  { key: "social_linkedin_link", label: "LinkedIn" },
+];
+
+async function getSocialLinksFromTheme(admin) {
+  try {
+    const themesResult = await shopifyAdminGraphQLSimple(
+      admin,
+      `#graphql
+      query MainTheme { themes(first: 1, roles: [MAIN]) { nodes { id } } }`
+    );
+    const themeId = themesResult?.data?.themes?.nodes?.[0]?.id;
+    if (!themeId) return [];
+
+    const filesResult = await shopifyAdminGraphQLSimple(
+      admin,
+      `#graphql
+      query ThemeSettings($id: ID!) {
+        theme(id: $id) {
+          files(filenames: ["config/settings_data.json"], first: 1) {
+            nodes { body { ... on OnlineStoreThemeFileBodyText { content } } }
+          }
+        }
+      }`,
+      { id: themeId }
+    );
+    const content = filesResult?.data?.theme?.files?.nodes?.[0]?.body?.content;
+    if (!content) return [];
+
+    // Shopify sometimes prepends an auto-generated-file warning comment —
+    // strip it before parsing, plain JSON.parse chokes on it otherwise.
+    const withoutComment = content.replace(/^﻿?\s*\/\*[\s\S]*?\*\/\s*/, "");
+    const parsed = JSON.parse(withoutComment);
+    const settings = typeof parsed.current === "string" ? parsed.presets?.[parsed.current] || {} : parsed.current || {};
+
+    return SOCIAL_LINK_SETTINGS.filter((s) => settings[s.key]).map((s) => ({ label: s.label, url: settings[s.key] }));
+  } catch (err) {
+    console.error("[astroAdvice] getSocialLinksFromTheme failed:", err);
+    return [];
+  }
+}
+
+/**
+ * Fetches each recommended collection's own image (not a product image —
+ * the recommendation links to a whole collection) via collectionByHandle,
+ * one combined query for all three (aliased) rather than three round
+ * trips. Cached per-handle for 6 hours since a collection's image rarely
+ * changes.
+ */
+async function getCollectionImages(admin, handles) {
+  const images = {};
+  const uniqueHandles = [...new Set((handles || []).filter(Boolean))];
+
+  const toFetch = [];
+  for (const h of uniqueHandles) {
+    const cached = collectionImageCache.get(h);
+    if (cached && cached.expiresAt > Date.now()) {
+      images[h] = cached.value;
+    } else {
+      toFetch.push(h);
+    }
+  }
+
+  if (toFetch.length) {
+    try {
+      const queryParts = toFetch.map((h, i) => `c${i}: collectionByHandle(handle: ${JSON.stringify(h)}) { image { url } }`);
+      const result = await shopifyAdminGraphQLSimple(admin, `#graphql\nquery CollectionImages { ${queryParts.join(" ")} }`);
+      toFetch.forEach((h, i) => {
+        const url = result?.data?.[`c${i}`]?.image?.url || "";
+        images[h] = url;
+        collectionImageCache.set(h, { value: url, expiresAt: Date.now() + SIX_HOURS_MS });
+      });
+    } catch (err) {
+      console.error("[astroAdvice] getCollectionImages failed:", err);
+    }
+  }
+
+  return images;
+}
+
+/**
+ * One recommendation row — collection image on the left, label/gem name/
+ * tagline/Buy Now button on the right. Links to the COLLECTION for that
+ * gem (this is a recommended category, not one specific product).
+ */
+function stoneCard(label, stone, collectionImages) {
   if (!stone || !stone.gem) return "";
+  const imgUrl = (stone.collection && collectionImages[stone.collection]) || "";
+  const buyUrl = stone.collection ? "https://" + STORE_DOMAIN + "/collections/" + stone.collection : "https://" + STORE_DOMAIN;
+  const tagline = GEM_TAGLINE[stone.gem] || "";
+
+  const imageCell = imgUrl
+    ? `<img src="${esc(imgUrl)}" width="90" height="90" alt="${esc(stone.gem)}" style="display:block;width:90px;height:90px;object-fit:cover;border-radius:8px;">`
+    : `<div style="width:90px;height:90px;border-radius:8px;background:#f4f2ed;"></div>`;
+
   return (
-    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eadfd2;border-radius:8px;overflow:hidden;margin-bottom:16px;">' +
-    '<tr><td style="background:#faf6f0;padding:12px 16px;border-bottom:1px solid #eadfd2;">' +
-    '<span style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#8c7a4e;font-weight:bold;">' + esc(label) + " stone</span>" +
-    '<span style="font-size:16px;color:#3a2408;font-weight:bold;margin-left:8px;">' + esc(stone.gem) + "</span>" +
-    "</td></tr>" +
-    '<tr><td style="padding:14px 16px;font-size:13px;color:#5c4a3d;">' +
-    (stone.planet ? "Ruling planet: <strong style=\"color:#3a2408;\">" + esc(stone.planet) + "</strong><br>" : "") +
-    (stone.weightCarat ? "Weight: <strong style=\"color:#3a2408;\">" + esc(stone.weightCarat) + " carat</strong><br>" : "") +
-    (stone.wearMetal ? "Metal: <strong style=\"color:#3a2408;\">" + esc(stone.wearMetal) + "</strong><br>" : "") +
-    (stone.wearFinger ? "Wear on: <strong style=\"color:#3a2408;\">" + esc(stone.wearFinger) + "</strong><br>" : "") +
-    (stone.wearDay ? "Best day: <strong style=\"color:#3a2408;\">" + esc(stone.wearDay) + "</strong>" : "") +
-    "</td></tr></table>"
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-bottom:1px solid #eadfd2;">' +
+    "<tr>" +
+    '<td width="90" style="padding:18px 16px 18px 0;vertical-align:top;">' + imageCell + "</td>" +
+    '<td style="padding:18px 0;text-align:center;vertical-align:middle;">' +
+    '<p style="margin:0 0 2px;font-size:12px;color:#5c4a3d;">' + esc(label) + " Stone</p>" +
+    '<p style="margin:0 0 4px;font-size:18px;font-weight:bold;color:#c8712f;">' + esc(stone.gem) + "</p>" +
+    (tagline ? '<p style="margin:0 0 12px;font-size:12px;color:#5c4a3d;">' + tagline + "</p>" : "") +
+    '<a href="' + esc(buyUrl) + '" style="display:inline-block;background:#8c7a4e;color:#ffffff;font-size:12px;font-weight:bold;letter-spacing:0.5px;text-decoration:none;padding:10px 28px;border-radius:4px;">BUY NOW</a>' +
+    "</td>" +
+    "</tr></table>"
+  );
+}
+
+/**
+ * Footer — "Thanks for choosing <store>!", bold store name + live
+ * address, website/email/phone row, a social-links row (only shown if
+ * any are configured), and a small links row.
+ */
+function footerHtml(shopInfo) {
+  const socialRow = shopInfo.socialLinks?.length
+    ? '<p style="margin:0 0 12px;font-size:12px;">' +
+      shopInfo.socialLinks
+        .map((link) => `<a href="${esc(link.url)}" style="color:#8c7a4e;text-decoration:none;margin:0 6px;">${esc(link.label)}</a>`)
+        .join("&middot;") +
+      "</p>"
+    : "";
+
+  return (
+    '<tr><td style="background:#faf6f0;padding:24px 32px;text-align:center;border-top:1px solid #eadfd2;">' +
+    '<p style="margin:0 0 14px;font-size:13px;color:#3a2408;">Thanks for choosing ' + esc(shopInfo.name) + "!</p>" +
+    '<p style="margin:0 0 4px;font-size:12px;color:#5c4a3d;"><strong>' + esc(shopInfo.name) + "</strong>" +
+    (shopInfo.addressLine ? ", " + esc(shopInfo.addressLine) : "") +
+    "</p>" +
+    '<p style="margin:0 0 14px;font-size:12px;color:#8c7a4e;">' +
+    '<a href="' + esc(shopInfo.url) + '" style="color:#8c7a4e;text-decoration:none;">' + esc(shopInfo.url.replace(/^https?:\/\//, "")) + "</a>" +
+    " &nbsp;&middot;&nbsp; " +
+    '<a href="mailto:' + esc(shopInfo.email) + '" style="color:#8c7a4e;text-decoration:none;">' + esc(shopInfo.email) + "</a>" +
+    (shopInfo.phone ? ' &nbsp;&middot;&nbsp; <a href="tel:' + esc(shopInfo.phone) + '" style="color:#8c7a4e;text-decoration:none;">' + esc(shopInfo.phone) + "</a>" : "") +
+    "</p>" +
+    socialRow +
+    '<p style="margin:12px 0 0;padding-top:12px;border-top:1px solid #eadfd2;font-size:11px;">' +
+    '<a href="' + esc(shopInfo.url) + '/pages/contact" style="color:#8c7a4e;text-decoration:none;margin:0 6px;">Contact Us</a>' +
+    '<a href="' + esc(shopInfo.url) + '" style="color:#8c7a4e;text-decoration:none;margin:0 6px;">Online Store</a>' +
+    '<a href="' + esc(shopInfo.url) + '/policies/terms-of-service" style="color:#8c7a4e;text-decoration:none;margin:0 6px;">Terms &amp; Conditions</a>' +
+    "</p>" +
+    "</td></tr>"
   );
 }
 
 function buildRecommendationEmailHtml(opts) {
+  const shopInfo = opts.shopInfo;
+  const headerContent = shopInfo.logoUrl
+    ? `<img src="${esc(shopInfo.logoUrl)}" alt="${esc(shopInfo.name)}" style="max-height:40px;max-width:220px;">`
+    : `<span style="color:#f4f2ed;font-size:20px;font-weight:bold;letter-spacing:0.5px;">${esc(shopInfo.name)}</span>`;
+
   return (
     "<!DOCTYPE html><html><head><meta charset=\"UTF-8\">" +
     '<meta name="viewport" content="width=device-width, initial-scale=1.0"></head>' +
@@ -501,24 +738,22 @@ function buildRecommendationEmailHtml(opts) {
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f2ed;padding:24px 0;">' +
     "<tr><td align=\"center\">" +
     '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;max-width:600px;width:100%;border-radius:8px;overflow:hidden;">' +
-    '<tr><td style="background:#3a2408;padding:28px 32px;text-align:center;">' +
-    '<span style="color:#f4f2ed;font-size:20px;font-weight:bold;letter-spacing:0.5px;">Only Natural Gemstones</span>' +
+    '<tr><td style="background:#3a2408;padding:24px 32px;text-align:center;">' +
+    headerContent +
     "</td></tr>" +
     '<tr><td style="padding:32px 32px 8px;">' +
     '<h1 style="margin:0 0 8px;font-size:22px;color:#3a2408;">Hi ' + esc(opts.firstName) + ",</h1>" +
     '<p style="margin:0;font-size:15px;line-height:1.6;color:#5c4a3d;">Based on your birth chart, our Vedic astrology experts have put together your personalised gemstone recommendations below.</p>' +
     "</td></tr>" +
-    '<tr><td style="padding:24px 32px 8px;">' +
-    stoneCard("Life", opts.life) +
-    stoneCard("Benefic", opts.benefic) +
-    stoneCard("Lucky", opts.lucky) +
+    '<tr><td style="padding:16px 32px 8px;">' +
+    stoneCard("Life", opts.life, opts.collectionImages) +
+    stoneCard("Benefic", opts.benefic, opts.collectionImages) +
+    stoneCard("Lucky", opts.lucky, opts.collectionImages) +
     "</td></tr>" +
-    '<tr><td style="padding:8px 32px 32px;text-align:center;">' +
+    '<tr><td style="padding:16px 32px 32px;text-align:center;">' +
     '<a href="' + esc(opts.resultsUrl) + '" style="display:inline-block;background:#3a2408;color:#ffffff;font-size:14px;font-weight:bold;text-decoration:none;padding:14px 32px;border-radius:4px;">View My Full Recommendation &rarr;</a>' +
     "</td></tr>" +
-    '<tr><td style="background:#f4f2ed;padding:20px 32px;text-align:center;border-top:1px solid #eadfd2;">' +
-    '<p style="margin:0;font-size:12px;color:#8c7a4e;">Only Natural Gemstones — from the House of Shubh Gems</p>' +
-    "</td></tr>" +
+    footerHtml(shopInfo) +
     "</table></td></tr></table></body></html>"
   );
 }
