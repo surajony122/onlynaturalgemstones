@@ -24,7 +24,7 @@ services:
       - key: SHOPIFY_API_SECRET
         sync: false
       - key: SCOPES
-        value: write_products,read_products,read_themes,write_inventory,read_orders,write_metaobjects,write_metaobject_definitions
+        value: write_products,read_products,read_themes,write_inventory,read_orders,write_metaobjects,write_metaobject_definitions,write_publications,write_customers,read_customers
       - key: SHOPIFY_APP_URL
         sync: false
       # Shared secret for GET /cron/cleanup — set this to any random
@@ -34,3 +34,16 @@ services:
       # avoids that cost entirely for something this cheap to run.
       - key: CRON_SECRET
         generateValue: true
+      # --- Astro Advice / gem-recommendation lead pipeline (merged in
+      # from astro-lead-sync-app) — see MERGE_ASTRO_ADVICE.md for how to
+      # obtain each of these.
+      - key: GMAIL_USER
+        sync: false
+      - key: GMAIL_APP_PASSWORD
+        sync: false
+      - key: GOOGLE_SERVICE_ACCOUNT_EMAIL
+        sync: false
+      - key: GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
+        sync: false
+      - key: ASTRO_LEADS_SPREADSHEET_ID
+        sync: false

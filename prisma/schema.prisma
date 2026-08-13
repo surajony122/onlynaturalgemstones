@@ -39,3 +39,61 @@ model Session {
   refreshToken        String?
   refreshTokenExpires DateTime?
 }
+
+// Astro Advice / gem-recommendation lead — merged in from the standalone
+// astro-lead-sync-app + Google Apps Script backend (see
+// app/routes/proxy.astro-advice.jsx). Database is the source of truth;
+// each row is also best-effort mirrored into the same Google Sheet the
+// Apps Script version used to write to directly, via
+// app/utils/googleSheets.server.js, so the existing manual-review habit
+// (open the Sheet) keeps working without needing a new admin screen yet.
+model AstroLead {
+  id              String   @id @default(cuid())
+  trackingId      String   @unique
+  createdAt       DateTime @default(now())
+  name            String?
+  email           String?
+  phone           String?
+  gender          String?
+  purpose         String?
+  bodyWeightKg    Float?
+  dob             String?
+  tob             String?
+  placeOfBirth    String?
+  ascendant       String?
+  moonsign        String?
+  sunsign         String?
+  lifeStoneGem    String?
+  lifeStonePlanet String?
+  beneficStoneGem String?
+  luckyStoneGem   String?
+  // Full recommendation object (life/benefic/lucky, each with
+  // planet/gem/collection/substitute/weightCarat/wearMetal/wearFinger/
+  // wearDay) — same shape buildRecommendations() in the old Code.gs
+  // produced, stored as JSON so the results-page link and email body can
+  // both be rebuilt from this one row without re-deriving anything.
+  recommendation  Json?
+  calculationOk   Boolean  @default(true)
+  astroError      String?
+  shopifySyncStatus String?
+  emailSendStatus   String?
+}
+
+// One row per sent/opened/clicked event for a given lead's email — see
+// app/routes/track.$type.jsx (opened/clicked) and
+// app/utils/astroAdvice.server.js (sent). Kept as its own append-only
+// table (not columns on AstroLead) since one lead can have many events.
+// Deliberately NOT a foreign key to AstroLead.trackingId — tracking
+// pixels/links are hit directly by external mail clients (replays,
+// cached fetches, forwarded emails), so a stale or malformed id must log
+// harmlessly rather than have a FK constraint reject the insert.
+// Cross-reference by trackingId manually when looking at the data.
+model EmailEvent {
+  id         String   @id @default(cuid())
+  trackingId String
+  event      String // "sent" | "opened" | "clicked"
+  detail     String? // recipient email (sent) or destination URL (clicked)
+  createdAt  DateTime @default(now())
+
+  @@index([trackingId])
+}

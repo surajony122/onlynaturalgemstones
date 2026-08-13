@@ -18,7 +18,13 @@ embedded = true
 #   product to the Online Store channel — an unpublished product's
 #   variants get rejected by /cart/add.js, same reason as the gemstone
 #   customization product
-scopes = "write_products,read_products,read_themes,write_inventory,read_orders,write_metaobjects,write_metaobject_definitions,write_publications"
+# write_customers, read_customers: merged in from astro-lead-sync-app —
+#   lets proxy.astro-advice.jsx tag/note/metafield-sync gem-recommendation
+#   leads as Customer records (see app/utils/astroAdvice.server.js). This
+#   app now handles both jobs; astro-lead-sync-app's own client_id/secret
+#   can be retired once this is confirmed working — see
+#   MERGE_ASTRO_ADVICE.md.
+scopes = "write_products,read_products,read_themes,write_inventory,read_orders,write_metaobjects,write_metaobject_definitions,write_publications,write_customers,read_customers"
 
 # Lets the theme call https://<store-domain>/apps/customize , which Shopify
 # signs and proxies to this app's /proxy route — see app/routes/proxy.jsx.
