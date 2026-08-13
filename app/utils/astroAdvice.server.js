@@ -530,10 +530,19 @@ const collectionImageCache = new Map(); // handle -> { value, expiresAt }
 async function shopifyAdminGraphQLSimple(admin, query, variables) {
   try {
     const res = await admin.graphql(query, { variables: variables || {} });
+    // TEMPORARY: surface the raw response status/body on a non-OK
+    // response instead of silently continuing to res.json() (which can
+    // itself throw obscuring the real cause) — helps diagnose exactly
+    // why a query is failing (bad scope, bad query, etc).
+    if (!res.ok) {
+      const text = await res.text();
+      console.error(`[astroAdvice] GraphQL HTTP ${res.status}:`, text.slice(0, 500));
+      return { _debugHttpError: res.status, _debugBody: text.slice(0, 500) };
+    }
     return await res.json();
   } catch (err) {
     console.error("[astroAdvice] GraphQL call failed:", err);
-    return null;
+    return { _debugThrew: String((err && err.message) || err) };
   }
 }
 
