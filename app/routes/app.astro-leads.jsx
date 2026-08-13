@@ -135,6 +135,19 @@ export default function AstroLeadsPage() {
           can't confirm that, only that the send was accepted.
         </s-paragraph>
       </s-section>
+
+      <s-section slot="aside" heading="Shopify Flow">
+        <s-paragraph>
+          The "Send email to gem-lead customers" Flow (and any other
+          workflow) triggers off the <s-text>gem-lead</s-text> tag this
+          app sets via <s-text>shopifySyncStatus</s-text> above — but
+          Flow's own run history isn't readable through Shopify's API, so
+          it can't be shown inside this table. Check it directly:
+        </s-paragraph>
+        <s-link href="https://admin.shopify.com/store/0f9yd0-jr/apps/flow" target="_blank">
+          Open Shopify Flow →
+        </s-link>
+      </s-section>
     </s-page>
   );
 }
