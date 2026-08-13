@@ -235,6 +235,12 @@ export async function handleAstroAdviceSubmission(admin, shop, data) {
   if (data.debug === true) {
     successResponse.shopifySyncStatus = shopifySyncStatus;
     successResponse.emailSendStatus = emailSendStatus;
+    // TEMPORARY — see the matching comment in getShopFooterInfo.
+    try {
+      successResponse.shopFooterInfoDebug = await getShopFooterInfo(admin);
+    } catch (e) {
+      successResponse.shopFooterInfoDebugError = String(e);
+    }
   }
   return successResponse;
 }
@@ -538,6 +544,11 @@ async function shopifyAdminGraphQLSimple(admin, query, variables) {
  * throughout sections/*.liquid in this theme). Cached 6 hours since it's
  * identical for every email regardless of which lead triggered it.
  */
+// Fallback used whenever Settings -> Brand has no logo configured in
+// Shopify Admin (brand.logo comes back null) — the theme's own header
+// logo, so the email at least matches what customers already see on-site.
+const FALLBACK_LOGO_URL = "https://onlynaturalgemstones.com/cdn/shop/files/ONG_logo_home.png";
+
 async function getShopFooterInfo(admin) {
   if (shopFooterInfoCache && shopFooterInfoCache.expiresAt > Date.now()) {
     return shopFooterInfoCache.value;
@@ -546,7 +557,7 @@ async function getShopFooterInfo(admin) {
   const info = {
     name: "Only Natural Gemstones",
     url: "https://" + STORE_DOMAIN,
-    logoUrl: "",
+    logoUrl: FALLBACK_LOGO_URL,
     addressLine: "",
     phone: "",
     email: "info@onlynaturalgemstones.com", // deliberately always info@, not shop.email
@@ -565,11 +576,17 @@ async function getShopFooterInfo(admin) {
       }
     }`
   );
+  // TEMPORARY debug capture — helps diagnose whether billingAddress came
+  // back genuinely empty (not filled in under Admin -> Settings -> Store
+  // details) vs. a query/permission problem. Read via the {"debug":true}
+  // response, remove once address/phone are confirmed working.
+  info._debugRawShopResult = result;
+
   const s = result?.data?.shop;
   if (s) {
     info.name = s.name || info.name;
     info.url = s.primaryDomain?.url || info.url;
-    info.logoUrl = s.brand?.logo?.image?.url || "";
+    info.logoUrl = s.brand?.logo?.image?.url || FALLBACK_LOGO_URL;
     if (s.billingAddress) {
       const a = s.billingAddress;
       info.addressLine = [a.address1, a.address2, a.city, a.province, a.zip, a.country].filter(Boolean).join(", ");
