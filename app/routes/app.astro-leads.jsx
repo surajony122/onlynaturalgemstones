@@ -26,9 +26,18 @@ export const loader = async ({ request }) => {
 
   const eventsByTrackingId = {};
   for (const ev of events) {
-    if (!eventsByTrackingId[ev.trackingId]) eventsByTrackingId[ev.trackingId] = { sent: 0, opened: 0, clicked: 0 };
+    if (!eventsByTrackingId[ev.trackingId]) {
+      eventsByTrackingId[ev.trackingId] = { sent: 0, opened: 0, clicked: 0, clickedLinks: [] };
+    }
     if (eventsByTrackingId[ev.trackingId][ev.event] !== undefined) {
       eventsByTrackingId[ev.trackingId][ev.event]++;
+    }
+    // detail is "<label> -> <url>" for click events (see track.$type.jsx)
+    // — pull just the label out for a compact per-lead list of which
+    // specific links were clicked.
+    if (ev.event === "clicked" && ev.detail) {
+      const label = ev.detail.includes(" -> ") ? ev.detail.split(" -> ")[0] : ev.detail;
+      eventsByTrackingId[ev.trackingId].clickedLinks.push(label);
     }
   }
 
@@ -36,7 +45,7 @@ export const loader = async ({ request }) => {
     leads: leads.map((l) => ({
       ...l,
       createdAt: l.createdAt.toISOString(),
-      emailStatus: eventsByTrackingId[l.trackingId] || { sent: 0, opened: 0, clicked: 0 },
+      emailStatus: eventsByTrackingId[l.trackingId] || { sent: 0, opened: 0, clicked: 0, clickedLinks: [] },
     })),
   };
 };
@@ -113,11 +122,19 @@ export default function AstroLeadsPage() {
                         lead.emailStatus.opened > 0,
                         "#6b5ce0"
                       )}
-                      {statusPill(
-                        "Clicked" + (lead.emailStatus.clicked > 1 ? ` ×${lead.emailStatus.clicked}` : ""),
-                        lead.emailStatus.clicked > 0,
-                        "#2c6ecb"
-                      )}
+                      <span
+                        title={
+                          lead.emailStatus.clickedLinks?.length
+                            ? "Clicked: " + lead.emailStatus.clickedLinks.join(", ")
+                            : ""
+                        }
+                      >
+                        {statusPill(
+                          "Clicked" + (lead.emailStatus.clicked > 1 ? ` ×${lead.emailStatus.clicked}` : ""),
+                          lead.emailStatus.clicked > 0,
+                          "#2c6ecb"
+                        )}
+                      </span>
                     </td>
                   </tr>
                 ))}

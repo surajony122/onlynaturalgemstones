@@ -427,6 +427,22 @@ async function shopifyAdminGraphQL(admin, query, variables) {
  * app's own Settings page or set as GMAIL_USER/GMAIL_APP_PASSWORD env
  * vars — see MERGE_ASTRO_ADVICE.md and app/routes/app.settings.jsx.
  */
+/**
+ * Wraps a destination URL through /track/click, tagging it with a
+ * `label` identifying WHICH link this is (e.g. "life_buy_now",
+ * "view_full_recommendation") — so a click event records not just that
+ * something was clicked, but exactly which button. See track.$type.jsx.
+ */
+function trackedClickUrl(appUrl, trackingId, destination, label) {
+  if (!appUrl) return destination;
+  return (
+    appUrl +
+    "/track/click?id=" + encodeURIComponent(trackingId) +
+    "&url=" + encodeURIComponent(destination) +
+    "&label=" + encodeURIComponent(label)
+  );
+}
+
 async function sendGemRecommendationEmail(admin, settings, data, birthDetails, recommendation, trackingId) {
   if (!settings.gmailUser || !settings.gmailAppPassword) {
     return "skipped: Gmail user / app password not set (Settings page or GMAIL_USER / GMAIL_APP_PASSWORD env vars)";
@@ -434,9 +450,7 @@ async function sendGemRecommendationEmail(admin, settings, data, birthDetails, r
 
   const appUrl = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
   const resultsPageUrl = buildResultsPageUrl(data, birthDetails, recommendation);
-  const trackedResultsUrl = appUrl
-    ? appUrl + "/track/click?id=" + encodeURIComponent(trackingId) + "&url=" + encodeURIComponent(resultsPageUrl)
-    : resultsPageUrl;
+  const trackedResultsUrl = trackedClickUrl(appUrl, trackingId, resultsPageUrl, "view_full_recommendation");
   const pixelUrl = appUrl ? appUrl + "/track/open?id=" + encodeURIComponent(trackingId) : null;
 
   const firstName = (data.name || "").split(" ")[0] || "there";
@@ -456,6 +470,8 @@ async function sendGemRecommendationEmail(admin, settings, data, birthDetails, r
     pixelUrl,
     shopInfo,
     collectionImages,
+    appUrl,
+    trackingId,
   });
 
   const plainBody =
@@ -726,10 +742,11 @@ function detailChip(icon, value) {
  * metal, wear finger/day, substitute), then a Buy Now button linking to
  * the COLLECTION for that gem (a recommended category, not one product).
  */
-function stoneCard(label, stone, collectionImages) {
+function stoneCard(label, stone, collectionImages, trackingCtx) {
   if (!stone || !stone.gem) return "";
   const imgUrl = (stone.collection && collectionImages[stone.collection]) || "";
-  const buyUrl = stone.collection ? "https://" + STORE_DOMAIN + "/collections/" + stone.collection : "https://" + STORE_DOMAIN;
+  const rawBuyUrl = stone.collection ? "https://" + STORE_DOMAIN + "/collections/" + stone.collection : "https://" + STORE_DOMAIN;
+  const buyUrl = trackedClickUrl(trackingCtx.appUrl, trackingCtx.trackingId, rawBuyUrl, label.toLowerCase() + "_buy_now");
   const tagline = GEM_TAGLINE[stone.gem] || "";
   const accent = TYPE_ACCENT[label] || TYPE_ACCENT.Life;
 
@@ -765,11 +782,13 @@ function stoneCard(label, stone, collectionImages) {
  * address, website/email/phone row, a social-links row (only shown if
  * any are configured), and a small links row.
  */
-function footerHtml(shopInfo) {
+function footerHtml(shopInfo, trackingCtx) {
+  const t = (url, label) => trackedClickUrl(trackingCtx.appUrl, trackingCtx.trackingId, url, label);
+
   const socialRow = shopInfo.socialLinks?.length
     ? '<p style="margin:0 0 12px;font-size:12px;">' +
       shopInfo.socialLinks
-        .map((link) => `<a href="${esc(link.url)}" style="color:#8c7a4e;text-decoration:none;margin:0 6px;">${esc(link.label)}</a>`)
+        .map((link) => `<a href="${esc(t(link.url, "social_" + link.label.toLowerCase()))}" style="color:#8c7a4e;text-decoration:none;margin:0 6px;">${esc(link.label)}</a>`)
         .join("&middot;") +
       "</p>"
     : "";
@@ -781,16 +800,19 @@ function footerHtml(shopInfo) {
     (shopInfo.addressLine ? ", " + esc(shopInfo.addressLine) : "") +
     "</p>" +
     '<p style="margin:0 0 14px;font-size:12px;color:#8c7a4e;">' +
-    '<a href="' + esc(shopInfo.url) + '" style="color:#8c7a4e;text-decoration:none;">' + esc(shopInfo.url.replace(/^https?:\/\//, "")) + "</a>" +
+    // mailto:/tel: links can't be tracked this way — clicking one never
+    // makes an HTTP request to our server at all, it's handled entirely
+    // by the OS/mail client locally, so there's nothing to intercept.
+    '<a href="' + esc(t(shopInfo.url, "footer_website")) + '" style="color:#8c7a4e;text-decoration:none;">' + esc(shopInfo.url.replace(/^https?:\/\//, "")) + "</a>" +
     " &nbsp;&middot;&nbsp; " +
     '<a href="mailto:' + esc(shopInfo.email) + '" style="color:#8c7a4e;text-decoration:none;">' + esc(shopInfo.email) + "</a>" +
     (shopInfo.phone ? ' &nbsp;&middot;&nbsp; <a href="tel:' + esc(shopInfo.phone) + '" style="color:#8c7a4e;text-decoration:none;">' + esc(shopInfo.phone) + "</a>" : "") +
     "</p>" +
     socialRow +
     '<p style="margin:12px 0 0;padding-top:12px;border-top:1px solid #eadfd2;font-size:11px;">' +
-    '<a href="' + esc(shopInfo.url) + '/pages/contact" style="color:#8c7a4e;text-decoration:none;margin:0 6px;">Contact Us</a>' +
-    '<a href="' + esc(shopInfo.url) + '" style="color:#8c7a4e;text-decoration:none;margin:0 6px;">Online Store</a>' +
-    '<a href="' + esc(shopInfo.url) + '/policies/terms-of-service" style="color:#8c7a4e;text-decoration:none;margin:0 6px;">Terms &amp; Conditions</a>' +
+    '<a href="' + esc(t(shopInfo.url + "/pages/contact", "footer_contact_us")) + '" style="color:#8c7a4e;text-decoration:none;margin:0 6px;">Contact Us</a>' +
+    '<a href="' + esc(t(shopInfo.url, "footer_online_store")) + '" style="color:#8c7a4e;text-decoration:none;margin:0 6px;">Online Store</a>' +
+    '<a href="' + esc(t(shopInfo.url + "/policies/terms-of-service", "footer_terms")) + '" style="color:#8c7a4e;text-decoration:none;margin:0 6px;">Terms &amp; Conditions</a>' +
     "</p>" +
     "</td></tr>"
   );
@@ -798,6 +820,7 @@ function footerHtml(shopInfo) {
 
 function buildRecommendationEmailHtml(opts) {
   const shopInfo = opts.shopInfo;
+  const trackingCtx = { appUrl: opts.appUrl, trackingId: opts.trackingId };
   const headerContent = shopInfo.logoUrl
     ? `<img src="${esc(shopInfo.logoUrl)}" alt="${esc(shopInfo.name)}" style="max-height:44px;max-width:220px;">`
     : `<span style="color:#3a2408;font-size:20px;font-weight:bold;letter-spacing:0.5px;">${esc(shopInfo.name)}</span>`;
@@ -824,14 +847,14 @@ function buildRecommendationEmailHtml(opts) {
     '<p style="margin:0;text-align:center;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#c8944a;">&#10022;&nbsp;&nbsp;Your Gemstones&nbsp;&nbsp;&#10022;</p>' +
     "</td></tr>" +
     '<tr><td style="padding:8px 32px 8px;">' +
-    stoneCard("Life", opts.life, opts.collectionImages) +
-    stoneCard("Benefic", opts.benefic, opts.collectionImages) +
-    stoneCard("Lucky", opts.lucky, opts.collectionImages) +
+    stoneCard("Life", opts.life, opts.collectionImages, trackingCtx) +
+    stoneCard("Benefic", opts.benefic, opts.collectionImages, trackingCtx) +
+    stoneCard("Lucky", opts.lucky, opts.collectionImages, trackingCtx) +
     "</td></tr>" +
     '<tr><td style="padding:16px 32px 32px;text-align:center;">' +
     '<a href="' + esc(opts.resultsUrl) + '" style="display:inline-block;background:#3a2408;color:#ffffff;font-size:14px;font-weight:bold;text-decoration:none;padding:14px 32px;border-radius:4px;">View My Full Recommendation &rarr;</a>' +
     "</td></tr>" +
-    footerHtml(shopInfo) +
+    footerHtml(shopInfo, trackingCtx) +
     "</table></td></tr></table></body></html>"
   );
 }

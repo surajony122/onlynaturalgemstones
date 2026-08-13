@@ -70,7 +70,13 @@ export const loader = async ({ params, request }) => {
     if (!destination || destination.indexOf("https://" + STORE_DOMAIN) !== 0) {
       destination = "https://" + STORE_DOMAIN;
     }
-    await logEvent(trackingId, "clicked", destination);
+    // Which specific link this is (e.g. "life_buy_now",
+    // "view_full_recommendation") — every link built in
+    // astroAdvice.server.js now carries one, so a click event records
+    // exactly what was clicked, not just that something was.
+    const label = url.searchParams.get("label") || "";
+    const detail = label ? `${label} -> ${destination}` : destination;
+    await logEvent(trackingId, "clicked", detail);
     return new Response(null, { status: 302, headers: { Location: destination } });
   }
 
