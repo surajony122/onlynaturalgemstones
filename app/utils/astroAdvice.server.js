@@ -694,29 +694,66 @@ async function getCollectionImages(admin, handles) {
   return images;
 }
 
+// Small Unicode glyph shown next to the ruling planet — purely
+// decorative, all major email clients render these fine via system
+// fonts (no image/font-loading dependency).
+const PLANET_SYMBOL = {
+  Sun: "☉", Moon: "☾", Mars: "♂", Mercury: "☿", Jupiter: "♃",
+  Venus: "♀", Saturn: "♄", Rahu: "☊", Ketu: "☋",
+};
+
+// A distinct soft accent tint per recommendation type, so the three
+// cards read as visually distinct at a glance instead of three identical
+// gray boxes — Life warm/amber, Benefic sage green, Lucky soft blue.
+const TYPE_ACCENT = {
+  Life: { bg: "#fdf1e7", text: "#c8712f" },
+  Benefic: { bg: "#eef4ec", text: "#5c8c5c" },
+  Lucky: { bg: "#eaf1f8", text: "#4a6fa5" },
+};
+
+function detailChip(icon, value) {
+  if (!value) return "";
+  return (
+    '<span style="display:inline-block;background:#faf6f0;color:#3a2408;font-size:11px;padding:5px 11px;' +
+    'border-radius:12px;margin:0 5px 5px 0;white-space:nowrap;border:1px solid #eadfd2;">' +
+    icon + " " + esc(value) + "</span>"
+  );
+}
+
 /**
  * One recommendation row — collection image on the left, label/gem name/
- * tagline/Buy Now button on the right. Links to the COLLECTION for that
- * gem (this is a recommended category, not one specific product).
+ * tagline on the right, a row of detail "chips" (ruling planet, weight,
+ * metal, wear finger/day, substitute), then a Buy Now button linking to
+ * the COLLECTION for that gem (a recommended category, not one product).
  */
 function stoneCard(label, stone, collectionImages) {
   if (!stone || !stone.gem) return "";
   const imgUrl = (stone.collection && collectionImages[stone.collection]) || "";
   const buyUrl = stone.collection ? "https://" + STORE_DOMAIN + "/collections/" + stone.collection : "https://" + STORE_DOMAIN;
   const tagline = GEM_TAGLINE[stone.gem] || "";
+  const accent = TYPE_ACCENT[label] || TYPE_ACCENT.Life;
 
   const imageCell = imgUrl
-    ? `<img src="${esc(imgUrl)}" width="90" height="90" alt="${esc(stone.gem)}" style="display:block;width:90px;height:90px;object-fit:cover;border-radius:8px;">`
-    : `<div style="width:90px;height:90px;border-radius:8px;background:#f4f2ed;"></div>`;
+    ? `<img src="${esc(imgUrl)}" width="90" height="90" alt="${esc(stone.gem)}" style="display:block;width:90px;height:90px;object-fit:cover;border-radius:10px;">`
+    : `<div style="width:90px;height:90px;border-radius:10px;background:${accent.bg};"></div>`;
+
+  const chips =
+    detailChip(PLANET_SYMBOL[stone.planet] || "✦", stone.planet) +
+    detailChip("⚖", stone.weightCarat ? stone.weightCarat + " ct" : "") +
+    detailChip("◆", stone.wearMetal) +
+    detailChip("✋", stone.wearFinger) +
+    detailChip("📅", stone.wearDay) +
+    detailChip("↺", stone.substitute ? "Alt: " + stone.substitute : "");
 
   return (
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-bottom:1px solid #eadfd2;">' +
     "<tr>" +
     '<td width="90" style="padding:18px 16px 18px 0;vertical-align:top;">' + imageCell + "</td>" +
-    '<td style="padding:18px 0;text-align:center;vertical-align:middle;">' +
-    '<p style="margin:0 0 2px;font-size:12px;color:#5c4a3d;">' + esc(label) + " Stone</p>" +
-    '<p style="margin:0 0 4px;font-size:18px;font-weight:bold;color:#c8712f;">' + esc(stone.gem) + "</p>" +
-    (tagline ? '<p style="margin:0 0 12px;font-size:12px;color:#5c4a3d;">' + tagline + "</p>" : "") +
+    '<td style="padding:18px 0;vertical-align:top;">' +
+    '<span style="display:inline-block;background:' + accent.bg + ";color:" + accent.text + ';font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:0.5px;padding:3px 9px;border-radius:10px;margin-bottom:6px;">' + esc(label) + " Stone</span><br>" +
+    '<span style="font-size:19px;font-weight:bold;color:' + accent.text + ';">' + esc(stone.gem) + "</span>" +
+    (tagline ? '<p style="margin:2px 0 10px;font-size:12px;color:#5c4a3d;">' + tagline + "</p>" : '<div style="margin-bottom:8px;"></div>') +
+    (chips ? '<p style="margin:0 0 12px;">' + chips + "</p>" : "") +
     '<a href="' + esc(buyUrl) + '" style="display:inline-block;background:#8c7a4e;color:#ffffff;font-size:12px;font-weight:bold;letter-spacing:0.5px;text-decoration:none;padding:10px 28px;border-radius:4px;">BUY NOW</a>' +
     "</td>" +
     "</tr></table>"
@@ -762,8 +799,8 @@ function footerHtml(shopInfo) {
 function buildRecommendationEmailHtml(opts) {
   const shopInfo = opts.shopInfo;
   const headerContent = shopInfo.logoUrl
-    ? `<img src="${esc(shopInfo.logoUrl)}" alt="${esc(shopInfo.name)}" style="max-height:40px;max-width:220px;">`
-    : `<span style="color:#f4f2ed;font-size:20px;font-weight:bold;letter-spacing:0.5px;">${esc(shopInfo.name)}</span>`;
+    ? `<img src="${esc(shopInfo.logoUrl)}" alt="${esc(shopInfo.name)}" style="max-height:44px;max-width:220px;">`
+    : `<span style="color:#3a2408;font-size:20px;font-weight:bold;letter-spacing:0.5px;">${esc(shopInfo.name)}</span>`;
 
   return (
     "<!DOCTYPE html><html><head><meta charset=\"UTF-8\">" +
@@ -772,15 +809,21 @@ function buildRecommendationEmailHtml(opts) {
     (opts.pixelUrl ? '<img src="' + esc(opts.pixelUrl) + '" width="1" height="1" style="display:none;border:0;" alt="">' : "") +
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f2ed;padding:24px 0;">' +
     "<tr><td align=\"center\">" +
-    '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;max-width:600px;width:100%;border-radius:8px;overflow:hidden;">' +
-    '<tr><td style="background:#3a2408;padding:24px 32px;text-align:center;">' +
+    '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;max-width:600px;width:100%;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(58,36,8,0.08);">' +
+    // Thin gold accent stripe instead of a full dark band — a touch of
+    // richness without going back to a heavy dark-brown header.
+    '<tr><td style="background:linear-gradient(90deg,#c8944a,#8c7a4e);height:5px;line-height:5px;font-size:0;">&nbsp;</td></tr>' +
+    '<tr><td style="background:#faf6f0;padding:22px 32px;text-align:center;border-bottom:1px solid #eadfd2;">' +
     headerContent +
     "</td></tr>" +
     '<tr><td style="padding:32px 32px 8px;">' +
     '<h1 style="margin:0 0 8px;font-size:22px;color:#3a2408;">Hi ' + esc(opts.firstName) + ",</h1>" +
     '<p style="margin:0;font-size:15px;line-height:1.6;color:#5c4a3d;">Based on your birth chart, our Vedic astrology experts have put together your personalised gemstone recommendations below.</p>' +
     "</td></tr>" +
-    '<tr><td style="padding:16px 32px 8px;">' +
+    '<tr><td style="padding:8px 32px 4px;">' +
+    '<p style="margin:0;text-align:center;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#c8944a;">&#10022;&nbsp;&nbsp;Your Gemstones&nbsp;&nbsp;&#10022;</p>' +
+    "</td></tr>" +
+    '<tr><td style="padding:8px 32px 8px;">' +
     stoneCard("Life", opts.life, opts.collectionImages) +
     stoneCard("Benefic", opts.benefic, opts.collectionImages) +
     stoneCard("Lucky", opts.lucky, opts.collectionImages) +
