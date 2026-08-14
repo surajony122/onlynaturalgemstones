@@ -43,6 +43,10 @@ export const loader = async ({ request }) => {
       ...l,
       createdAt: l.createdAt.toISOString(),
       productHandles: Array.isArray(l.productHandles) ? l.productHandles : [],
+      // products (title/image/price) is only populated on rows created
+      // after this field was added — older rows fall back to bare
+      // handles in the UI below.
+      products: Array.isArray(l.products) ? l.products : [],
       emailStatus: eventsByTrackingId[l.trackingId] || { sent: 0, opened: 0, clicked: 0, clickedLinks: [] },
     })),
   };
@@ -92,7 +96,7 @@ export default function WishlistLeadsPage() {
                   <th style={th}>When</th>
                   <th style={th}>Email</th>
                   <th style={th}>Phone</th>
-                  <th style={th}>Items</th>
+                  <th style={th}>Wishlist Items</th>
                   <th style={th}>Email</th>
                   <th style={th}>Clicked Links</th>
                 </tr>
@@ -103,8 +107,53 @@ export default function WishlistLeadsPage() {
                     <td style={td}>{new Date(lead.createdAt).toLocaleString()}</td>
                     <td style={td}>{lead.email || "—"}</td>
                     <td style={td}>{lead.phone || "—"}</td>
-                    <td style={{ ...td, whiteSpace: "normal", minWidth: "160px" }} title={lead.productHandles.join(", ")}>
-                      {lead.productHandles.length} item{lead.productHandles.length === 1 ? "" : "s"}
+                    <td style={{ ...td, whiteSpace: "normal", minWidth: "260px" }}>
+                      {lead.products.length ? (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                          {lead.products.map((p) => (
+                            <div
+                              key={p.handle}
+                              title={p.title}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "6px",
+                                background: "#faf6f0",
+                                border: "1px solid #eadfd2",
+                                borderRadius: "8px",
+                                padding: "3px 8px 3px 3px",
+                              }}
+                            >
+                              {p.imageUrl ? (
+                                <img
+                                  src={p.imageUrl}
+                                  alt={p.title}
+                                  width={28}
+                                  height={28}
+                                  style={{ width: 28, height: 28, borderRadius: 5, objectFit: "cover", display: "block" }}
+                                />
+                              ) : (
+                                <div style={{ width: 28, height: 28, borderRadius: 5, background: "#eadfd2" }} />
+                              )}
+                              <span style={{ fontSize: "11px", color: "#3a2408", maxWidth: "140px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {p.title}
+                              </span>
+                              {p.price ? (
+                                <span style={{ fontSize: "11px", color: "#8c7a4e", fontWeight: 600 }}>
+                                  ₹{Number(p.price).toLocaleString("en-IN")}
+                                </span>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      ) : lead.productHandles.length ? (
+                        <span title={lead.productHandles.join(", ")}>
+                          {lead.productHandles.length} item{lead.productHandles.length === 1 ? "" : "s"} (handles only —
+                          synced before item details were saved)
+                        </span>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     <td style={td}>
                       {statusPill("Sent", lead.emailStatus.sent > 0, "#008060")}

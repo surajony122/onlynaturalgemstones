@@ -36,6 +36,12 @@ export async function handleWishlistSync(admin, shop, data) {
   const trackingId = crypto.randomUUID();
   const settings = await getAppSettings(shop);
 
+  // Resolved once, up front, so both the database row (for the Wishlist
+  // Leads dashboard's item details) and the email itself use the exact
+  // same fetch — no double API call, and the saved record matches
+  // exactly what was emailed.
+  const products = await getProductsByHandles(admin, handles);
+
   let lead;
   try {
     lead = await prisma.wishlistLead.create({
@@ -45,6 +51,7 @@ export async function handleWishlistSync(admin, shop, data) {
         email,
         phone: data.phone || null,
         productHandles: handles,
+        products,
       },
     });
   } catch (dbErr) {
@@ -53,7 +60,7 @@ export async function handleWishlistSync(admin, shop, data) {
 
   let emailSendStatus = "not run";
   try {
-    emailSendStatus = await sendWishlistEmail(admin, settings, email, handles, trackingId);
+    emailSendStatus = await sendWishlistEmail(admin, settings, email, handles, products, trackingId);
   } catch (err) {
     emailSendStatus = "threw: " + err;
     console.error("[wishlist] failed to send wishlist email:", err);
@@ -165,13 +172,12 @@ function buildWishlistEmailHtml({ firstName, products, shopInfo, pixelUrl, viewA
   );
 }
 
-async function sendWishlistEmail(admin, settings, email, handles, trackingId) {
+async function sendWishlistEmail(admin, settings, email, handles, products, trackingId) {
   if (!settings.gmailUser || !settings.gmailAppPassword) {
     return "skipped: Gmail user / app password not set (Settings page or GMAIL_USER / GMAIL_APP_PASSWORD env vars)";
   }
 
   const appUrl = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
-  const products = await getProductsByHandles(admin, handles);
   const shopInfo = await getShopFooterInfo(admin);
   // Stashed on shopInfo so wishlistItemRow/footerHtml (which only take
   // shopInfo) can still build tracked links without threading two more

@@ -146,5 +146,11 @@ model WishlistLead {
   // Product handles wishlisted at the moment this sync fired — the full
   // list, not a diff (matches how the client's own debounced sync works).
   productHandles  Json?
+  // Resolved product details (title/image/price) at the moment this sync
+  // fired — same data the email itself was built from, saved back here
+  // so the dashboard can show real item details, not just handles/count,
+  // without needing to re-fetch from Shopify (and stays accurate even if
+  // a product's title/price/image changes or it's deleted later).
+  products        Json?
   emailSendStatus String?
 }
