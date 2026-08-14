@@ -103,6 +103,35 @@ async function checkGoogleSheets(settings) {
   }
 }
 
+async function checkInterakt(settings) {
+  if (!settings.interaktApiKey) {
+    return { ok: null, detail: "Not configured — set the Secret Key on the Settings page (WhatsApp section)." };
+  }
+  try {
+    // Contacts Retrieval API, limit=1 — the lightest real call Interakt
+    // offers that both proves the key is valid and never sends/costs
+    // anything (unlike the Send Template API, which would actually
+    // message someone just to run a health check).
+    const res = await withTimeout(
+      fetch("https://api.interakt.ai/v1/public/apis/users/?offset=0&limit=1", {
+        headers: { Authorization: "Basic " + settings.interaktApiKey },
+      }),
+      8000,
+      "Interakt API"
+    );
+    if (res.status === 401 || res.status === 403) {
+      return { ok: false, detail: `HTTP ${res.status}: Secret Key rejected — check it's copied correctly from Interakt → Settings → Developer Setting.` };
+    }
+    if (!res.ok) {
+      const text = await res.text();
+      return { ok: false, detail: `HTTP ${res.status}: ${text.slice(0, 200)}` };
+    }
+    return { ok: true, detail: `Secret Key valid. Template in use: "${settings.interaktTemplateName || "gem_recommendation (default)"}" — this doesn't confirm the template itself is Meta-approved, only that the key works.` };
+  } catch (err) {
+    return { ok: false, detail: String(err?.message || err) };
+  }
+}
+
 async function checkRecentLeads() {
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const recent = await prisma.astroLead.findMany({
@@ -119,6 +148,8 @@ async function checkRecentLeads() {
     if (lead.shopifySyncStatus && lead.shopifySyncStatus.startsWith("threw")) problems.push("Shopify sync threw an error");
     if (lead.emailSendStatus && lead.emailSendStatus.startsWith("threw")) problems.push("email send threw an error");
     if (lead.emailSendStatus && lead.emailSendStatus.startsWith("FAILED")) problems.push("email send failed");
+    if (lead.whatsappSendStatus && lead.whatsappSendStatus.startsWith("threw")) problems.push("WhatsApp send threw an error");
+    if (lead.whatsappSendStatus && lead.whatsappSendStatus.startsWith("FAILED")) problems.push("WhatsApp send failed");
     if (problems.length) {
       issues.push({
         id: lead.id,
@@ -127,6 +158,7 @@ async function checkRecentLeads() {
         problems,
         shopifySyncStatus: lead.shopifySyncStatus,
         emailSendStatus: lead.emailSendStatus,
+        whatsappSendStatus: lead.whatsappSendStatus,
       });
     }
   }
@@ -141,7 +173,7 @@ export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const settings = await getAppSettings(session.shop);
 
-  const [database, shopifyAdmin, readThemes, readProducts, gmail, googleSheets, recentLeads] = await Promise.all([
+  const [database, shopifyAdmin, readThemes, readProducts, gmail, googleSheets, interakt, recentLeads] = await Promise.all([
     checkDatabase(),
     checkShopifyAdmin(admin),
     checkScope(
@@ -156,6 +188,7 @@ export const loader = async ({ request }) => {
     ),
     checkGmail(settings),
     checkGoogleSheets(settings),
+    checkInterakt(settings),
     checkRecentLeads(),
   ]);
 
@@ -168,6 +201,7 @@ export const loader = async ({ request }) => {
       { name: "Scope: read_products (for collection images)", ...readProducts },
       { name: "Gmail SMTP (email sending)", ...gmail },
       { name: "Google Sheets mirror (optional)", ...googleSheets },
+      { name: "Interakt (WhatsApp sending)", ...interakt },
     ],
     recentLeads,
   };
@@ -255,6 +289,11 @@ export default function ServerHealthPage() {
         <s-paragraph>
           <strong>Google Sheets</strong>: "Not configured" is expected and harmless if you're not using the Sheet
           mirror — leads/events still save to the database regardless.
+        </s-paragraph>
+        <s-paragraph>
+          <strong>Interakt</strong>: this only confirms the Secret Key itself is valid — it can't confirm the
+          WhatsApp template is Meta-approved (green dot in Interakt's Templates Library), since that's not something
+          the API exposes a check for. Use the Settings page's "Send Test" button to confirm the full send path.
         </s-paragraph>
       </s-section>
     </s-page>
