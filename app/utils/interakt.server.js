@@ -20,16 +20,11 @@ import { DEFAULT_INTERAKT_TEMPLATE_NAME } from "./appSettings.server";
 
 const INTERAKT_MESSAGE_URL = "https://api.interakt.ai/v1/public/message/";
 
-// Duplicated (not imported) from astroAdvice.server.js deliberately — that
-// module will import sendGemRecommendationWhatsApp from this one, so this
-// file stays a leaf with no import back to it, avoiding a circular
-// dependency. track.$type.jsx already duplicates this same constant for
-// the same reason.
-const STORE_DOMAIN = "onlynaturalgemstones.com";
-// Same reasoning as STORE_DOMAIN above — duplicated, not imported, to
-// keep this file leaf-only. Matches FALLBACK_LOGO_URL in
-// astroAdvice.server.js; used as the header image when the recommended
-// stone's own collection has no image set.
+// Duplicated (not imported) from astroAdvice.server.js's FALLBACK_LOGO_URL
+// deliberately — that module imports sendGemRecommendationWhatsApp from
+// this one, so this file stays a leaf with no import back to it, avoiding
+// a circular dependency. Used as the header image whenever a caller
+// doesn't pass its own headerImageUrl.
 const FALLBACK_HEADER_IMAGE_URL = "https://onlynaturalgemstones.com/cdn/shop/files/ONG_logo_home.png";
 
 /**
@@ -105,111 +100,73 @@ const GEM_FALLBACK_TEXT = "Ask our expert";
 
 /**
  * Builds the Send Template API payload for the gem-recommendation
- * WhatsApp message.
+ * WhatsApp message. Rewritten to match the leaner Utility-category
+ * template actually in use now — plain text, no links, no button, just
+ * the requested information (per-user request: less "marketing," more
+ * "here's what you asked for").
  *
- * ---- TEMPLATE TO CREATE IN INTERAKT (Catalog & Templates → Templates
- * Library → Create Template), category Marketing, before any send here
- * will work — Meta must approve it first, usually a few hours:
+ * ---- TEMPLATE (as configured in Interakt) ----
  *
- * Name: gem_recommendation   (must match AppSettings.interaktTemplateName,
- *                              or INTERAKT_GEM_TEMPLATE_NAME env var, or
- *                              this default if both are left blank)
+ * Name: must match AppSettings.interaktTemplateName / INTERAKT_GEM_TEMPLATE_NAME
+ *       env var / DEFAULT_INTERAKT_TEMPLATE_NAME, whichever is set.
  * Language: English
  *
- * Header: Image (no header variable text — Interakt/Meta send the actual
- *   image via headerValues[0] on every call, a real media URL, not a
- *   caption). This app always sends the store logo here (tried the
- *   recommended stone's own collection photo instead; reverted per
- *   explicit request — headerImageUrl is passed in by the caller but
- *   every current caller passes FALLBACK_LOGO_URL).
+ * Header: Image — headerValues[0] carries the actual media URL on every
+ *   send (always the store logo — see FALLBACK_HEADER_IMAGE_URL/callers).
  *
  * Body:
- *   Hi {{1}}! 💎
+ *   Hello {{1}},
  *
- *   Based on your birth chart, our Vedic astrology experts recommend:
+ *   Thank you for your request on {{2}} at Only Natural Gemstones for a
+ *   Gemstone Recommendation.
  *
- *   🔶 Life Stone: {{2}}
- *   {{3}}
+ *   Based on your Birth-Chart (Kundli), your results are as follows:
+ *   Life Stone: {{3}}
+ *   Benefic Stone: {{4}}
+ *   Lucky Stone: {{5}}
  *
- *   🍀 Benefic Stone: {{4}}
- *   {{5}}
+ *   For further support, reply to this message.
  *
- *   🔷 Lucky Stone: {{6}}
- *   {{7}}
+ *   Regards,
+ *   Only Natural Gemstones
+ *   from the House of Shubh Gems
  *
- *   Tap below to view your full personalised reading.
- *
- * Footer (static, no variable): Only Natural Gemstones
- *
- * Buttons: one dynamic "Visit Website" button —
- *   Button text: View Full Recommendation
- *   Base URL:    https://shubh-gems-customizer-app.onrender.com/track/click?id=
- *   (mark the URL as dynamic — Interakt/Meta append the value we send in
- *   buttonPayload["0"][0] directly after this base URL, no {{1}} needed
- *   inside the URL itself, just the trailing dynamic-value toggle)
+ * No footer, no buttons.
  *
  * ---- Variable mapping ----
  *  {{1}} first name
- *  {{2}} life stone gem name        {{3}} that stone's own collection link
- *  {{4}} benefic stone gem name     {{5}} that stone's own collection link
- *  {{6}} lucky stone gem name       {{7}} that stone's own collection link
- *
- * {{3}}/{{5}}/{{7}} are each stone's OWN specific collection (not a
- * generic "browse everything" link — tried that, reverted per explicit
- * request: specificity is more useful, kept). What actually matters for
- * Utility-category review is the FRAMING, not which collection it points
- * to — the body never uses purchase-directed copy like "Buy Now" or
- * "Shop Sale", just the stone's name plainly followed by its link, which
- * reads as reference information rather than a sales CTA. Since this only
- * changes what fills an already-approved template's variables (not the
- * template's structure), any tweak here takes effect on the very next
- * send — no Interakt/Meta resubmission needed.
+ *  {{2}} the date this lead's request was submitted (not "today" at send
+ *        time — computed once, at submission, from the lead's own
+ *        createdAt, so a later resend still shows the original date)
+ *  {{3}} life stone gem name
+ *  {{4}} benefic stone gem name
+ *  {{5}} lucky stone gem name
  */
-export function buildGemRecommendationTemplatePayload({ countryCode, phoneNumber, templateName, firstName, life, benefic, lucky, trackingId, resultsUrl, headerImageUrl }) {
-  const stoneLine = (stone) => {
-    if (!stone || !stone.gem) return { name: GEM_FALLBACK_TEXT, url: "https://" + STORE_DOMAIN };
-    const url = stone.collection ? "https://" + STORE_DOMAIN + "/collections/" + stone.collection : "https://" + STORE_DOMAIN;
-    return { name: stone.gem, url };
-  };
-
-  const lifeLine = stoneLine(life);
-  const beneficLine = stoneLine(benefic);
-  const luckyLine = stoneLine(lucky);
-
-  // The button's base URL (configured in Interakt, see doc comment above)
-  // is our own /track/click route up to "?id=" — everything after that
-  // is this dynamic suffix, so the click still logs a real "clicked"
-  // EmailEvent and 302s to the results page, same as the email's button.
-  // resultsUrl is passed in by the caller (astroAdvice.server.js), which
-  // already builds the exact same link for the email — kept as one
-  // source of truth rather than reconstructed here.
-  const buttonSuffix =
-    encodeURIComponent(trackingId) +
-    "&url=" + encodeURIComponent(resultsUrl) +
-    "&label=" + encodeURIComponent("whatsapp_view_full_recommendation");
+export function buildGemRecommendationTemplatePayload({ countryCode, phoneNumber, templateName, firstName, submittedOn, life, benefic, lucky, headerImageUrl, trackingId }) {
+  const gemName = (stone) => (stone && stone.gem) || GEM_FALLBACK_TEXT;
 
   return {
     countryCode,
     phoneNumber,
     type: "Template",
+    // Optional correlation metadata for Interakt's webhooks (delivery/read
+    // status) — not used for anything today (no webhook handler wired up
+    // yet), kept for when that gets built.
     callbackData: "astro-" + trackingId,
     template: {
       name: templateName || DEFAULT_INTERAKT_TEMPLATE_NAME,
       languageCode: "en",
-      // Required now that the approved template's header is Image type —
+      // Required since the approved template's header is Image type —
       // Interakt rejects the whole send with "Media Url is missing for
       // header's image" without this.
       headerValues: [headerImageUrl || FALLBACK_HEADER_IMAGE_URL],
       bodyValues: [
         firstName || "there",
-        lifeLine.name,
-        lifeLine.url,
-        beneficLine.name,
-        beneficLine.url,
-        luckyLine.name,
-        luckyLine.url,
+        submittedOn,
+        gemName(life),
+        gemName(benefic),
+        gemName(lucky),
       ],
-      buttonPayload: { "0": [buttonSuffix] },
     },
   };
 }
@@ -219,8 +176,14 @@ export function buildGemRecommendationTemplatePayload({ countryCode, phoneNumber
  * (same "OK: ..."/"skipped: ..."/"FAILED: ..." status string), called
  * right alongside it from handleAstroAdviceSubmission and
  * resendAstroLeadEmail. Never throws.
+ *
+ * submittedOn: a pre-formatted display string (e.g. "14 Aug 2026") for
+ * the template's {{2}} — computed by the caller (sendWhatsAppForLead in
+ * astroAdvice.server.js) from the lead's own createdAt, so a later resend
+ * still shows the ORIGINAL request date, not whatever day the resend
+ * happens to run.
  */
-export async function sendGemRecommendationWhatsApp(settings, data, recommendation, trackingId, resultsUrl, headerImageUrl) {
+export async function sendGemRecommendationWhatsApp(settings, data, recommendation, trackingId, submittedOn, headerImageUrl) {
   if (!settings.interaktApiKey) {
     return "skipped: Interakt API key not set (Settings page or INTERAKT_API_KEY env var)";
   }
@@ -238,11 +201,11 @@ export async function sendGemRecommendationWhatsApp(settings, data, recommendati
     phoneNumber: split.phoneNumber,
     templateName: settings.interaktTemplateName,
     firstName,
+    submittedOn,
     life,
     benefic,
     lucky,
     trackingId,
-    resultsUrl,
     headerImageUrl,
   });
 

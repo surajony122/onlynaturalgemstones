@@ -239,6 +239,7 @@ export async function handleAstroAdviceSubmission(admin, shop, data) {
           ascendant: (birthDetails && birthDetails.ascendant) || null,
           recommendation: recommendation || {},
           trackingId,
+          createdAt: whatsappFirstSentAt,
         });
       } catch (waErr) {
         whatsappSendStatus = "threw: " + waErr;
@@ -562,19 +563,29 @@ export function trackedClickUrl(appUrl, trackingId, destination, label) {
   );
 }
 
+// "14 Aug 2026" style — unambiguous (no DD/MM vs MM/DD confusion) for the
+// WhatsApp template's {{2}} ("Thank you for your request on {{2}}").
+function formatSubmittedOn(date) {
+  return new Date(date || Date.now()).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+}
+
 /**
  * Sends (or attempts to send) the WhatsApp recommendation for one
  * AstroLead-shaped row — accepts either a real Prisma AstroLead or the
  * equivalent plain object built at submission time (same field names:
- * name/phone/dob/tob/placeOfBirth/ascendant/recommendation/trackingId).
- * One shared implementation used everywhere a WhatsApp send can happen:
- * the original submission's instant "first" send, the automatic 24h(ish)
- * follow-up reminder (whatsappQueue.server.js), and the dashboard's
- * "Send Now" manual resend. Never throws — returns the same "OK: .../
- * skipped: .../FAILED: ..." status string shape used throughout this file.
+ * name/phone/dob/tob/placeOfBirth/ascendant/recommendation/trackingId/
+ * createdAt). One shared implementation used everywhere a WhatsApp send
+ * can happen: the original submission's instant "first" send, the
+ * automatic 24h(ish) follow-up reminder (whatsappQueue.server.js), and
+ * the dashboard's "Send Now" manual resend. Never throws — returns the
+ * same "OK: .../skipped: .../FAILED: ..." status string shape used
+ * throughout this file.
  *
  * Header image is always the store logo — not the recommended stone's
- * own collection photo (tried that; reverted per explicit request).
+ * own collection photo (tried that; reverted per explicit request). The
+ * template itself is plain text now (no links, no button) — see
+ * buildGemRecommendationTemplatePayload's doc comment in interakt.server.js
+ * for the exact current wording.
  */
 export async function sendWhatsAppForLead(admin, settings, lead) {
   if (!lead.phone) return "skipped: no phone on lead";
@@ -587,10 +598,12 @@ export async function sendWhatsAppForLead(admin, settings, lead) {
     tob: lead.tob,
     placeOfBirth: lead.placeOfBirth,
   };
-  const birthDetails = { ascendant: lead.ascendant };
-  const resultsPageUrl = buildResultsPageUrl(data, birthDetails, lead.recommendation);
+  // The ORIGINAL request date, not "today" — matters for a resend/
+  // follow-up sent well after the fact, which should still say when the
+  // customer actually asked, not when this particular message went out.
+  const submittedOn = formatSubmittedOn(lead.createdAt);
 
-  return sendGemRecommendationWhatsApp(settings, data, lead.recommendation, lead.trackingId, resultsPageUrl, FALLBACK_LOGO_URL);
+  return sendGemRecommendationWhatsApp(settings, data, lead.recommendation, lead.trackingId, submittedOn, FALLBACK_LOGO_URL);
 }
 
 async function sendGemRecommendationEmail(admin, settings, data, birthDetails, recommendation, trackingId) {

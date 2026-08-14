@@ -25,7 +25,7 @@ import {
   DEFAULT_WHATSAPP_INTERVAL_VALUE,
   DEFAULT_WHATSAPP_INTERVAL_UNIT,
 } from "../utils/appSettings.server";
-import { buildResultsPageUrl, FALLBACK_LOGO_URL } from "../utils/astroAdvice.server";
+import { FALLBACK_LOGO_URL } from "../utils/astroAdvice.server";
 import { sendGemRecommendationWhatsApp } from "../utils/interakt.server";
 
 export const loader = async ({ request }) => {
@@ -75,11 +75,11 @@ export const action = async ({ request }) => {
     };
     const trackingId = crypto.randomUUID();
     const testData = { name: "Test", phone };
-    const resultsUrl = buildResultsPageUrl(testData, {}, sampleRecommendation);
+    const submittedOn = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 
     let status;
     try {
-      status = await sendGemRecommendationWhatsApp(settings, testData, sampleRecommendation, trackingId, resultsUrl, FALLBACK_LOGO_URL);
+      status = await sendGemRecommendationWhatsApp(settings, testData, sampleRecommendation, trackingId, submittedOn, FALLBACK_LOGO_URL);
     } catch (err) {
       status = "threw: " + String((err && err.message) || err);
     }
