@@ -163,7 +163,18 @@ export async function handleAstroAdviceSubmission(admin, shop, data) {
         astroError: astroError || null,
       },
     });
-    await mirrorLeadToSheet(settings, lead);
+    // Best-effort Google Sheets mirror — an external network call to
+    // Google's API, no different in principle from the Shopify sync/
+    // email/WhatsApp calls below, and just as capable of running slow.
+    // This one was missed in that same fix (still awaited synchronously
+    // here) and was very likely the actual remaining cause of the 504:
+    // the database write above is fast (local Postgres), but this call
+    // isn't. Never awaited on the customer path — the lead is already
+    // safely saved to the database (the real source of truth) regardless
+    // of whether this succeeds.
+    mirrorLeadToSheet(settings, lead).catch((sheetErr) =>
+      console.error("[astroAdvice] failed to mirror lead to sheet:", sheetErr)
+    );
   } catch (dbErr) {
     console.error("[astroAdvice] failed to save lead to database:", dbErr);
   }
