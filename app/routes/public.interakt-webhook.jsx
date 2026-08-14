@@ -89,6 +89,7 @@ export const action = async ({ request }) => {
       data: {
         messageId: message.id || "",
         trackingId,
+        callbackData: callbackData || null,
         phone: customer.channel_phone_number || null,
         status: message.message_status || "Unknown",
         failureReason: message.channel_failure_reason || null,

@@ -309,13 +309,19 @@ export async function sendGemRecommendationWhatsApp(settings, data, recommendati
 /**
  * Sends the "order processing" WhatsApp notification — a second,
  * separate template from the gem-recommendation one (see
- * webhooks.orders.updated.jsx for when this fires). Text-only, no
- * header image, no button — matches exactly what was requested:
+ * webhooks.orders.updated.jsx for when this fires).
  *
  * ---- TEMPLATE (as configured in Interakt) ----
  * Name: must match AppSettings.interaktOrderTemplateName /
  *       INTERAKT_ORDER_TEMPLATE_NAME env var / DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME.
  * Language: English
+ *
+ * Header: Image — same requirement hit with the gem-recommendation
+ *   template (confirmed again here via a live "Media Url is missing for
+ *   header's image" HTTP 400 the first time this was tested): whatever
+ *   header type the template was actually created with in Interakt,
+ *   every send must supply headerValues[0] to match. Uses the store logo,
+ *   same as the gem-recommendation send.
  *
  * Body:
  *   Hello {{1}},
@@ -330,14 +336,14 @@ export async function sendGemRecommendationWhatsApp(settings, data, recommendati
  *   Only Natural Gemstones
  *   from the House of Shubh Gems
  *
- * No header, no footer, no buttons.
+ * No footer, no buttons.
  *
  * ---- Variable mapping ----
  *  {{1}} customer first name
  *  {{2}} order number (Shopify's own order.name, minus the leading "#" —
  *        the template text already supplies "#" before {{2}})
  */
-export async function sendOrderProcessingWhatsApp(settings, { phone, firstName, orderNumber, shop }) {
+export async function sendOrderProcessingWhatsApp(settings, { phone, firstName, orderNumber, shop, headerImageUrl }) {
   if (!settings.interaktApiKey) {
     return "skipped: Interakt API key not set (Settings page or INTERAKT_API_KEY env var)";
   }
@@ -355,6 +361,7 @@ export async function sendOrderProcessingWhatsApp(settings, { phone, firstName, 
     template: {
       name: templateName,
       languageCode: "en",
+      headerValues: [headerImageUrl || FALLBACK_HEADER_IMAGE_URL],
       bodyValues: [firstName || "there", String(orderNumber || "").replace(/^#/, "")],
     },
   };

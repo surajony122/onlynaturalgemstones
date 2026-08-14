@@ -36,6 +36,7 @@ export const loader = async ({ request }) => {
       byMessage.set(key, {
         messageId: key,
         trackingId: ev.trackingId || null,
+        callbackData: ev.callbackData || null,
         phone: ev.phone || null,
         sentAt: null,
         deliveredAt: null,
@@ -46,6 +47,7 @@ export const loader = async ({ request }) => {
     }
     const m = byMessage.get(key);
     if (!m.trackingId && ev.trackingId) m.trackingId = ev.trackingId;
+    if (!m.callbackData && ev.callbackData) m.callbackData = ev.callbackData;
     if (!m.phone && ev.phone) m.phone = ev.phone;
     if (ev.eventType === "message_api_sent") m.sentAt = ev.receivedAt;
     else if (ev.eventType === "message_api_delivered") m.deliveredAt = ev.receivedAt;
@@ -71,14 +73,23 @@ export const loader = async ({ request }) => {
     : [];
   const leadByTrackingId = Object.fromEntries(leads.map((l) => [l.trackingId, l]));
 
-  const enriched = messages.map((m) => ({
-    ...m,
-    sentAt: m.sentAt ? m.sentAt.toISOString() : null,
-    deliveredAt: m.deliveredAt ? m.deliveredAt.toISOString() : null,
-    readAt: m.readAt ? m.readAt.toISOString() : null,
-    failedAt: m.failedAt ? m.failedAt.toISOString() : null,
-    lead: leadByTrackingId[m.trackingId] || null,
-  }));
+  const enriched = messages.map((m) => {
+    // callbackData prefixes distinguish which send path this came from —
+    // "astro-<trackingId>" (gem recommendation, sendGemRecommendationWhatsApp)
+    // vs "order-<orderNumber>" (sendOrderProcessingWhatsApp). More send
+    // types can add their own prefix later without a schema change.
+    const orderNumber = m.callbackData?.startsWith("order-") ? m.callbackData.slice("order-".length) : null;
+    return {
+      ...m,
+      sentAt: m.sentAt ? m.sentAt.toISOString() : null,
+      deliveredAt: m.deliveredAt ? m.deliveredAt.toISOString() : null,
+      readAt: m.readAt ? m.readAt.toISOString() : null,
+      failedAt: m.failedAt ? m.failedAt.toISOString() : null,
+      lead: leadByTrackingId[m.trackingId] || null,
+      orderNumber,
+      kind: orderNumber ? "Order Processing" : m.trackingId ? "Gem Recommendation" : "—",
+    };
+  });
 
   return {
     messages: enriched,
@@ -167,7 +178,8 @@ export default function WhatsAppEventsPage() {
               <thead>
                 <tr>
                   <th style={th}>Sent</th>
-                  <th style={th}>Name</th>
+                  <th style={th}>Type</th>
+                  <th style={th}>Name / Order #</th>
                   <th style={th}>Email</th>
                   <th style={th}>Phone</th>
                   <th style={th}>Life / Benefic / Lucky</th>
@@ -180,7 +192,8 @@ export default function WhatsAppEventsPage() {
                 {messages.map((m) => (
                   <tr key={m.messageId}>
                     <td style={td}>{m.sentAt ? new Date(m.sentAt).toLocaleString() : "—"}</td>
-                    <td style={td}>{m.lead?.name || "—"}</td>
+                    <td style={td}>{m.kind}</td>
+                    <td style={td}>{m.orderNumber ? `#${m.orderNumber}` : m.lead?.name || "—"}</td>
                     <td style={td}>{m.lead?.email || "—"}</td>
                     <td style={td}>{m.phone || "—"}</td>
                     <td style={td}>

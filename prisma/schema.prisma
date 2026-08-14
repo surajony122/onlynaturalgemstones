@@ -145,8 +145,17 @@ model WhatsAppMessageEvent {
   // Parsed from data.message.meta_data.source_data.callback_data (we set
   // this to "astro-<trackingId>" on every send — see
   // interakt.server.js's buildGemRecommendationTemplatePayload) — our own
-  // correlation key back to the AstroLead this message belongs to.
+  // correlation key back to the AstroLead this message belongs to. Null
+  // for non-gem-recommendation sends (e.g. order-processing, whose
+  // callbackData is "order-<orderNumber>" instead — see callbackData
+  // below for those).
   trackingId    String?
+  // Raw data.message.meta_data.source_data.callback_data, unparsed —
+  // kept alongside the parsed trackingId so the dashboard can also
+  // recognize OTHER send types by their own callbackData prefix (e.g.
+  // "order-<orderNumber>" from sendOrderProcessingWhatsApp) without
+  // needing a new column per send type as more get added later.
+  callbackData  String?
   phone         String?
   // "Sent" | "Delivered" | "Read" | "Failed" — Interakt's own
   // data.message.message_status value, used as-is rather than remapped.
