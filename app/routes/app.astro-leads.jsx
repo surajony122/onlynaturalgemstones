@@ -7,7 +7,7 @@
  * "Delete" button.
  */
 import { useEffect, useState } from "react";
-import { useFetcher, useLoaderData } from "react-router";
+import { useFetcher, useLoaderData, useRevalidator } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -221,10 +221,20 @@ function LeadRow({ lead }) {
 
 export default function AstroLeadsPage() {
   const { leads } = useLoaderData();
+  const revalidator = useRevalidator();
+  const isRefreshing = revalidator.state === "loading";
 
   return (
     <s-page heading={`Astro Advice — Leads (${leads.length})`} width="full">
       <s-section>
+        <button
+          type="button"
+          onClick={() => revalidator.revalidate()}
+          disabled={isRefreshing}
+          style={{ ...smallBtn, fontSize: "12px", padding: "6px 14px", marginBottom: "10px" }}
+        >
+          {isRefreshing ? "Refreshing…" : "↻ Refresh"}
+        </button>
         <p style={{ margin: "0 0 14px", fontSize: "12px", color: "#6d7175" }}>
           Most recent {PAGE_SIZE} leads · "Opened" is best-effort (some mail clients pre-fetch/block tracking
           images) · "Clicked" is reliable and shows which link on hover · No real "delivered" signal exists · Flow's

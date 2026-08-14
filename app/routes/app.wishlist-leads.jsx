@@ -7,7 +7,7 @@
  * (bypasses the interval check), and a "Delete" button.
  */
 import { useEffect, useState } from "react";
-import { useFetcher, useLoaderData } from "react-router";
+import { useFetcher, useLoaderData, useRevalidator } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
@@ -268,7 +268,9 @@ export default function WishlistLeadsPage() {
   const { leads } = useLoaderData();
   const fetcher = useFetcher();
   const shopify = useAppBridge();
+  const revalidator = useRevalidator();
   const isSending = fetcher.state !== "idle" && fetcher.formData?.get("intent") === "sendDueNow";
+  const isRefreshing = revalidator.state === "loading";
 
   useEffect(() => {
     if (!fetcher.data || fetcher.data.intent !== "sendDueNow") return;
@@ -288,6 +290,14 @@ export default function WishlistLeadsPage() {
       </s-button>
 
       <s-section>
+        <button
+          type="button"
+          onClick={() => revalidator.revalidate()}
+          disabled={isRefreshing}
+          style={{ ...smallBtn, fontSize: "12px", padding: "6px 14px", marginBottom: "10px" }}
+        >
+          {isRefreshing ? "Refreshing…" : "↻ Refresh"}
+        </button>
         <p style={{ margin: "0 0 14px", fontSize: "12px", color: "#6d7175" }}>
           Most recent {PAGE_SIZE} wishlist syncs · emails don't send immediately — a customer gets one email once
           they've gone quiet for the interval set on the Settings page (default 2h), using their latest wishlist
