@@ -137,6 +137,7 @@ export async function handleAstroAdviceSubmission(admin, shop, data) {
   const benefic = (recommendation && recommendation.benefic) || {};
   const lucky = (recommendation && recommendation.lucky) || {};
   let lead;
+  let sheetMirrorStatus = "not run";
   try {
     lead = await prisma.astroLead.create({
       data: {
@@ -171,10 +172,18 @@ export async function handleAstroAdviceSubmission(admin, shop, data) {
     // the database write above is fast (local Postgres), but this call
     // isn't. Never awaited on the customer path — the lead is already
     // safely saved to the database (the real source of truth) regardless
-    // of whether this succeeds.
-    mirrorLeadToSheet(settings, lead).catch((sheetErr) =>
-      console.error("[astroAdvice] failed to mirror lead to sheet:", sheetErr)
-    );
+    // of whether this succeeds. In debug mode it IS awaited (latency is
+    // fine for manual testing) purely so sheetMirrorStatus below reports
+    // something real instead of "not run yet".
+    if (data.debug === true) {
+      sheetMirrorStatus = await mirrorLeadToSheet(settings, lead).catch(
+        (sheetErr) => "threw: " + String((sheetErr && sheetErr.message) || sheetErr)
+      );
+    } else {
+      mirrorLeadToSheet(settings, lead).catch((sheetErr) =>
+        console.error("[astroAdvice] failed to mirror lead to sheet:", sheetErr)
+      );
+    }
   } catch (dbErr) {
     console.error("[astroAdvice] failed to save lead to database:", dbErr);
   }
@@ -277,6 +286,7 @@ export async function handleAstroAdviceSubmission(admin, shop, data) {
       response.shopifySyncStatus = debugStatuses.shopifySyncStatus;
       response.emailSendStatus = debugStatuses.emailSendStatus;
       response.whatsappSendStatus = debugStatuses.whatsappSendStatus;
+      response.sheetMirrorStatus = sheetMirrorStatus;
     }
     return response;
   }
@@ -295,6 +305,7 @@ export async function handleAstroAdviceSubmission(admin, shop, data) {
     successResponse.shopifySyncStatus = debugStatuses.shopifySyncStatus;
     successResponse.emailSendStatus = debugStatuses.emailSendStatus;
     successResponse.whatsappSendStatus = debugStatuses.whatsappSendStatus;
+    successResponse.sheetMirrorStatus = sheetMirrorStatus;
   }
   return successResponse;
 }
