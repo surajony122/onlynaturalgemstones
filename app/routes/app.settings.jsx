@@ -22,6 +22,8 @@ import {
   getAppSettings,
   DEFAULT_WISHLIST_EMAIL_INTERVAL_HOURS,
   DEFAULT_INTERAKT_TEMPLATE_NAME,
+  DEFAULT_WHATSAPP_INTERVAL_VALUE,
+  DEFAULT_WHATSAPP_INTERVAL_UNIT,
 } from "../utils/appSettings.server";
 import { buildResultsPageUrl, FALLBACK_LOGO_URL } from "../utils/astroAdvice.server";
 import { sendGemRecommendationWhatsApp } from "../utils/interakt.server";
@@ -39,6 +41,8 @@ export const loader = async ({ request }) => {
     interaktApiKeySet: !!row?.interaktApiKey,
     interaktTemplateName: row?.interaktTemplateName || "",
     defaultInteraktTemplateName: DEFAULT_INTERAKT_TEMPLATE_NAME,
+    whatsappIntervalValue: row?.whatsappIntervalValue || DEFAULT_WHATSAPP_INTERVAL_VALUE,
+    whatsappIntervalUnit: row?.whatsappIntervalUnit || DEFAULT_WHATSAPP_INTERVAL_UNIT,
     // So the page can say which env vars are filling in for anything
     // not saved here yet.
     envFallback: {
@@ -100,6 +104,8 @@ export const action = async ({ request }) => {
     wishlistEmailIntervalHours: formData.get("wishlistEmailIntervalHours")?.trim() || "",
     interaktApiKey,
     interaktTemplateName: formData.get("interaktTemplateName")?.trim() || "",
+    whatsappIntervalValue: formData.get("whatsappIntervalValue")?.trim() || "",
+    whatsappIntervalUnit: formData.get("whatsappIntervalUnit")?.trim() || "",
   });
 
   return { intent: "save", ok: true };
@@ -137,6 +143,8 @@ export default function SettingsPage() {
   const [interaktApiKey, setInteraktApiKey] = useState("");
   const [interaktTemplateName, setInteraktTemplateName] = useState(data.interaktTemplateName);
   const [testPhone, setTestPhone] = useState("");
+  const [whatsappIntervalValue, setWhatsappIntervalValue] = useState(data.whatsappIntervalValue);
+  const [whatsappIntervalUnit, setWhatsappIntervalUnit] = useState(data.whatsappIntervalUnit);
 
   useEffect(() => {
     if (fetcher.data?.intent === "save" && fetcher.data.ok) {
@@ -171,6 +179,8 @@ export default function SettingsPage() {
         wishlistEmailIntervalHours: wishlistInterval,
         interaktApiKey,
         interaktTemplateName,
+        whatsappIntervalValue,
+        whatsappIntervalUnit,
       },
       { method: "POST" }
     );
@@ -335,6 +345,41 @@ export default function SettingsPage() {
                   {testFetcher.data.status || testFetcher.data.error}
                 </p>
               )}
+            </div>
+
+            <div style={{ marginTop: "12px" }}>
+              <label style={labelStyle}>WhatsApp send pacing</label>
+              <p style={{ ...hintStyle, marginTop: "4px" }}>
+                Space out outgoing WhatsApp messages by at least this long instead of sending the instant each lead
+                submits — leads queue up and go out one at a time. This is the main way to avoid WhatsApp's error
+                131049 ("didn't deliver due to their per-user limit on marketing notifications"), which a brand-new
+                sender number is prone to when bursting messages; pacing gradually is what actually builds up your
+                sender quality rating. Set to <s-text>0</s-text> to turn pacing off and send immediately (the
+                original behaviour). Requires an external scheduler pinging{" "}
+                <s-text>/cron/whatsapp-queue?secret=…</s-text> at least as often as the interval below to drain the
+                queue automatically (same setup as the wishlist email cron) — the{" "}
+                <s-link href="/app/astro-leads">Astro Leads</s-link> page also has a manual "Process Queue Now"
+                button that works regardless.
+              </p>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <input
+                  style={{ ...fieldStyle, marginBottom: 0, maxWidth: "100px" }}
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={whatsappIntervalValue}
+                  onChange={(e) => setWhatsappIntervalValue(e.target.value)}
+                />
+                <select
+                  style={{ ...fieldStyle, marginBottom: 0, width: "auto", padding: "8px 10px" }}
+                  value={whatsappIntervalUnit}
+                  onChange={(e) => setWhatsappIntervalUnit(e.target.value)}
+                >
+                  <option value="minutes">Minutes</option>
+                  <option value="hours">Hours</option>
+                  <option value="days">Days</option>
+                </select>
+              </div>
             </div>
           </s-section>
 

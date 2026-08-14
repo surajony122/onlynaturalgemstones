@@ -27,7 +27,7 @@ import crypto from "node:crypto";
 import nodemailer from "nodemailer";
 import prisma from "../db.server";
 import { mirrorLeadToSheet, mirrorEmailEventToSheet } from "./googleSheets.server";
-import { getAppSettings } from "./appSettings.server";
+import { getAppSettings, whatsappIntervalMs } from "./appSettings.server";
 import { sendGemRecommendationWhatsApp } from "./interakt.server";
 
 // The storefront's real customer-facing domain (not the *.myshopify.com
@@ -198,19 +198,32 @@ export async function handleAstroAdviceSubmission(admin, shop, data) {
   }
 
   // Best-effort: WhatsApp the same recommendation via Interakt, right
-  // alongside email. Only when the chart resolved and a phone number
-  // exists — never allowed to affect the response sent to the customer.
+  // alongside email — unless pacing (Settings → WhatsApp send pacing) is
+  // on, in which case this just gets QUEUED (whatsappQueue.server.js's
+  // processWhatsAppQueue actually sends it once its turn comes, respecting
+  // the configured gap between sends across all leads). Only when the
+  // chart resolved and a phone number exists — never allowed to affect
+  // the response sent to the customer.
   let whatsappSendStatus = "not run";
   if (!astroError && data.phone) {
-    try {
-      const resultsPageUrl = buildResultsPageUrl(data, birthDetails || {}, recommendation || {});
-      const waLife = (recommendation && recommendation.life) || {};
-      const waImages = await getCollectionImages(admin, [waLife.collection]);
-      const headerImageUrl = (waLife.collection && waImages[waLife.collection]) || FALLBACK_LOGO_URL;
-      whatsappSendStatus = await sendGemRecommendationWhatsApp(settings, data, recommendation || {}, trackingId, resultsPageUrl, headerImageUrl);
-    } catch (waErr) {
-      whatsappSendStatus = "threw: " + waErr;
-      console.error("[astroAdvice] failed to send recommendation WhatsApp message:", waErr);
+    if (whatsappIntervalMs(settings) > 0) {
+      whatsappSendStatus = "queued: waiting for pacing window";
+    } else {
+      try {
+        whatsappSendStatus = await sendWhatsAppForLead(admin, settings, {
+          name: data.name,
+          phone: data.phone,
+          dob: data.dob,
+          tob: data.tob,
+          placeOfBirth: data.placeOfBirth,
+          ascendant: (birthDetails && birthDetails.ascendant) || null,
+          recommendation: recommendation || {},
+          trackingId,
+        });
+      } catch (waErr) {
+        whatsappSendStatus = "threw: " + waErr;
+        console.error("[astroAdvice] failed to send recommendation WhatsApp message:", waErr);
+      }
     }
   } else if (!data.phone) {
     whatsappSendStatus = "skipped: no phone on lead";
@@ -290,19 +303,16 @@ export async function resendAstroLeadEmail(admin, leadId) {
 
   // Resend the WhatsApp message alongside the email — same "Send Now"
   // button covers both channels, matching how they're sent together on
-  // the original submission.
-  let whatsappStatus = "skipped: no phone on lead";
-  if (lead.phone) {
-    try {
-      const resultsPageUrl = buildResultsPageUrl(data, birthDetails, lead.recommendation);
-      const waLife = (lead.recommendation && lead.recommendation.life) || {};
-      const waImages = await getCollectionImages(admin, [waLife.collection]);
-      const headerImageUrl = (waLife.collection && waImages[waLife.collection]) || FALLBACK_LOGO_URL;
-      whatsappStatus = await sendGemRecommendationWhatsApp(settings, { ...data, phone: lead.phone }, lead.recommendation, lead.trackingId, resultsPageUrl, headerImageUrl);
-    } catch (err) {
-      whatsappStatus = "threw: " + err;
-      console.error("[astroAdvice] resendAstroLeadEmail WhatsApp resend failed:", err);
-    }
+  // the original submission. Always sends immediately, bypassing any
+  // configured pacing — an explicit manual click is exactly the "send it
+  // now regardless" override, same as the wishlist dashboard's own
+  // manual-send button bypasses its debounce.
+  let whatsappStatus;
+  try {
+    whatsappStatus = await sendWhatsAppForLead(admin, settings, lead);
+  } catch (err) {
+    whatsappStatus = "threw: " + err;
+    console.error("[astroAdvice] resendAstroLeadEmail WhatsApp resend failed:", err);
   }
 
   try {
@@ -516,6 +526,39 @@ export function trackedClickUrl(appUrl, trackingId, destination, label) {
     "&url=" + encodeURIComponent(destination) +
     "&label=" + encodeURIComponent(label)
   );
+}
+
+/**
+ * Sends (or attempts to send) the WhatsApp recommendation for one
+ * AstroLead-shaped row — accepts either a real Prisma AstroLead or the
+ * equivalent plain object built at submission time (same field names:
+ * name/phone/dob/tob/placeOfBirth/ascendant/recommendation/trackingId).
+ * One shared implementation used by all three places a WhatsApp send can
+ * happen: the original submission (when pacing is off), resendAstroLeadEmail
+ * ("Send Now", which always bypasses pacing), and the paced queue
+ * processor (whatsappQueue.server.js). Never throws — returns the same
+ * "OK: .../skipped: .../FAILED: ..." status string shape used throughout
+ * this file.
+ */
+export async function sendWhatsAppForLead(admin, settings, lead) {
+  if (!lead.phone) return "skipped: no phone on lead";
+  if (!lead.recommendation) return "skipped: no saved recommendation to send";
+
+  const data = {
+    name: lead.name,
+    phone: lead.phone,
+    dob: lead.dob,
+    tob: lead.tob,
+    placeOfBirth: lead.placeOfBirth,
+  };
+  const birthDetails = { ascendant: lead.ascendant };
+  const resultsPageUrl = buildResultsPageUrl(data, birthDetails, lead.recommendation);
+
+  const life = (lead.recommendation && lead.recommendation.life) || {};
+  const images = await getCollectionImages(admin, [life.collection]);
+  const headerImageUrl = (life.collection && images[life.collection]) || FALLBACK_LOGO_URL;
+
+  return sendGemRecommendationWhatsApp(settings, data, lead.recommendation, lead.trackingId, resultsPageUrl, headerImageUrl);
 }
 
 async function sendGemRecommendationEmail(admin, settings, data, birthDetails, recommendation, trackingId) {

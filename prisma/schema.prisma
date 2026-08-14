@@ -153,6 +153,24 @@ model AppSettings {
   // "gem_recommendation" if left blank, see DEFAULT_INTERAKT_TEMPLATE_NAME.
   interaktApiKey                 String?
   interaktTemplateName           String?
+  // WhatsApp send pacing — spaces out ALL outgoing gem-recommendation
+  // WhatsApp messages (across every lead, not per-customer) by at least
+  // this long, instead of firing one the instant each lead submits.
+  // Mitigates Meta's error 131049 ("didn't deliver due to their per-user
+  // limit on marketing notifications") that a brand-new WhatsApp Business
+  // sender number tends to trip when bursting messages — pacing sends
+  // gradually is a widely-recommended way to build up sender quality
+  // rating. "0" (or blank) means the feature is off: sends happen
+  // immediately, same as before this existed. See
+  // app/utils/whatsappQueue.server.js for the actual queue/pacing logic,
+  // and cron.whatsapp-queue.jsx for what advances the queue.
+  whatsappIntervalValue          String?
+  whatsappIntervalUnit           String? // "minutes" | "hours" | "days"
+  // When the last queued WhatsApp send actually went out (any shop-wide
+  // send, success or failure — a failed attempt still "used" its pacing
+  // slot so a permanently-broken lead can't block the queue forever).
+  // Null means none sent yet under pacing.
+  whatsappLastSentAt             DateTime?
   updatedAt                      DateTime @updatedAt
 }
 

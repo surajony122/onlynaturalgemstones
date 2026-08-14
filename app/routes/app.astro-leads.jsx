@@ -12,13 +12,24 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { resendAstroLeadEmail } from "../utils/astroAdvice.server";
+import { processWhatsAppQueue, getWhatsAppQueueSummary } from "../utils/whatsappQueue.server";
 
 const PAGE_SIZE = 100;
 
 export const action = async ({ request }) => {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const formData = await request.formData();
   const intent = formData.get("intent");
+
+  if (intent === "processQueue") {
+    try {
+      const result = await processWhatsAppQueue(admin, session.shop);
+      return { intent, ok: true, ...result };
+    } catch (err) {
+      return { intent, ok: false, error: String(err?.message || err) };
+    }
+  }
+
   const leadId = formData.get("leadId");
   if (!leadId) return { intent, ok: false, error: "Missing leadId" };
 
@@ -57,12 +68,14 @@ export const action = async ({ request }) => {
 };
 
 export const loader = async ({ request }) => {
-  await authenticate.admin(request);
+  const { session } = await authenticate.admin(request);
 
   const leads = await prisma.astroLead.findMany({
     orderBy: { createdAt: "desc" },
     take: PAGE_SIZE,
   });
+
+  const whatsappQueue = await getWhatsAppQueueSummary(session.shop);
 
   const trackingIds = leads.map((l) => l.trackingId);
   const events = trackingIds.length
@@ -92,6 +105,7 @@ export const loader = async ({ request }) => {
       createdAt: l.createdAt.toISOString(),
       emailStatus: eventsByTrackingId[l.trackingId] || { sent: 0, opened: 0, clicked: 0, clickedLinks: [] },
     })),
+    whatsappQueue,
   };
 };
 
@@ -181,11 +195,13 @@ function LeadRow({ lead }) {
       <td style={td} title={lead.whatsappSendStatus || ""}>
         {lead.whatsappSendStatus?.startsWith("OK")
           ? statusPill("Sent", true, "#25d366")
-          : lead.whatsappSendStatus?.startsWith("skipped")
-            ? statusPill("Skipped", true, "#8c9196")
-            : lead.whatsappSendStatus
-              ? statusPill("Failed", true, "#d82c0d")
-              : statusPill("—", false, "#8c9196")}
+          : lead.whatsappSendStatus?.startsWith("queued")
+            ? statusPill("Queued", true, "#b98900")
+            : lead.whatsappSendStatus?.startsWith("skipped")
+              ? statusPill("Skipped", true, "#8c9196")
+              : lead.whatsappSendStatus
+                ? statusPill("Failed", true, "#d82c0d")
+                : statusPill("—", false, "#8c9196")}
       </td>
       <td style={{ ...td, whiteSpace: "normal", minWidth: "180px" }}>
         {lead.emailStatus.clickedLinks?.length
@@ -228,13 +244,77 @@ function LeadRow({ lead }) {
   );
 }
 
+function WhatsAppQueueSection({ whatsappQueue }) {
+  const fetcher = useFetcher();
+  const busy = fetcher.state !== "idle";
+  const result = fetcher.data?.intent === "processQueue" ? fetcher.data : null;
+
+  const processQueue = () => fetcher.submit({ intent: "processQueue" }, { method: "POST" });
+
+  return (
+    <s-section heading="WhatsApp send queue">
+      <p style={{ margin: "0 0 8px", fontSize: "13px" }}>
+        {whatsappQueue.pacingEnabled ? (
+          <>
+            Pacing is <s-text>on</s-text> ({whatsappQueue.queued.length} lead{whatsappQueue.queued.length === 1 ? "" : "s"}{" "}
+            waiting)
+            {whatsappQueue.nextSendAt ? ` · next send ~${new Date(whatsappQueue.nextSendAt).toLocaleString()}` : ""}
+            {" · "}
+            <a href="/app/settings" style={{ color: "#2c6ecb" }}>change in Settings</a>
+          </>
+        ) : (
+          <>
+            Pacing is <s-text>off</s-text> — WhatsApp sends immediately on submission.{" "}
+            <a href="/app/settings" style={{ color: "#2c6ecb" }}>turn it on in Settings</a>
+          </>
+        )}
+      </p>
+      <button type="button" style={smallBtn} onClick={processQueue} disabled={busy}>
+        {busy ? "Checking…" : "Process Queue Now"}
+      </button>
+      {result && (
+        <p style={{ margin: "8px 0 0", fontSize: "12px", color: result.ok ? "#008060" : "#d82c0d" }}>
+          {result.ok
+            ? result.sent > 0
+              ? `Sent ${result.sent} message${result.sent === 1 ? "" : "s"}.`
+              : result.note || "Nothing to send right now."
+            : result.error}
+        </p>
+      )}
+      {whatsappQueue.queued.length > 0 && (
+        <div style={{ marginTop: "10px", overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={th}>Queued since</th>
+                <th style={th}>Name</th>
+                <th style={th}>Phone</th>
+              </tr>
+            </thead>
+            <tbody>
+              {whatsappQueue.queued.map((l) => (
+                <tr key={l.id}>
+                  <td style={td}>{new Date(l.createdAt).toLocaleString()}</td>
+                  <td style={td}>{l.name || "—"}</td>
+                  <td style={td}>{l.phone || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </s-section>
+  );
+}
+
 export default function AstroLeadsPage() {
-  const { leads } = useLoaderData();
+  const { leads, whatsappQueue } = useLoaderData();
   const revalidator = useRevalidator();
   const isRefreshing = revalidator.state === "loading";
 
   return (
     <s-page heading={`Astro Advice — Leads (${leads.length})`} width="full">
+      <WhatsAppQueueSection whatsappQueue={whatsappQueue} />
       <s-section>
         <button
           type="button"

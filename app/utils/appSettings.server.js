@@ -16,6 +16,8 @@ const FIELDS = [
   "wishlistEmailIntervalHours",
   "interaktApiKey",
   "interaktTemplateName",
+  "whatsappIntervalValue",
+  "whatsappIntervalUnit",
 ];
 
 const ENV_FALLBACK = {
@@ -27,7 +29,42 @@ const ENV_FALLBACK = {
   wishlistEmailIntervalHours: "WISHLIST_EMAIL_INTERVAL_HOURS",
   interaktApiKey: "INTERAKT_API_KEY",
   interaktTemplateName: "INTERAKT_GEM_TEMPLATE_NAME",
+  whatsappIntervalValue: "WHATSAPP_INTERVAL_VALUE",
+  whatsappIntervalUnit: "WHATSAPP_INTERVAL_UNIT",
 };
+
+// Off by default — "0" (or blank) means send immediately, matching
+// behaviour from before pacing existed. Days/hours/minutes all valid.
+export const DEFAULT_WHATSAPP_INTERVAL_VALUE = "0";
+export const DEFAULT_WHATSAPP_INTERVAL_UNIT = "minutes";
+const UNIT_TO_MS = { minutes: 60 * 1000, hours: 60 * 60 * 1000, days: 24 * 60 * 60 * 1000 };
+
+/** Milliseconds represented by a shop's whatsappIntervalValue/Unit
+ * settings — 0 means pacing is off (send immediately). Used by both the
+ * queue processor and anywhere that needs to decide "is pacing on". */
+export function whatsappIntervalMs(settings) {
+  const value = parseFloat(settings.whatsappIntervalValue || "0");
+  const unit = settings.whatsappIntervalUnit || DEFAULT_WHATSAPP_INTERVAL_UNIT;
+  if (!value || value <= 0) return 0;
+  return value * (UNIT_TO_MS[unit] || UNIT_TO_MS.minutes);
+}
+
+/** whatsappLastSentAt is a real DateTime column, not a string like the
+ * rest of this model — doesn't fit the generic FIELDS/getAppSettings
+ * pattern above, so it gets its own small read/write pair. */
+export async function getWhatsappLastSentAt(shop) {
+  if (!shop) return null;
+  const row = await prisma.appSettings.findUnique({ where: { shop }, select: { whatsappLastSentAt: true } });
+  return row?.whatsappLastSentAt || null;
+}
+
+export async function setWhatsappLastSentAt(shop, date) {
+  await prisma.appSettings.upsert({
+    where: { shop },
+    create: { shop, whatsappLastSentAt: date },
+    update: { whatsappLastSentAt: date },
+  });
+}
 
 // Used wherever wishlistEmailIntervalHours needs an actual number —
 // getAppSettings returns everything as strings (possibly empty), same
