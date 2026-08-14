@@ -247,6 +247,76 @@ export async function getCertVariantIds(admin) {
   return { variantIds: map, publishDiagnostic };
 }
 
+// Same "has the jewelry customizer set up" test the storefront snippet
+// itself uses (snippets/shubh-jewelry-flow.liquid: option name lowercased
+// contains "custom" for Type, "metal" for Metal — Design isn't required
+// there either, since that's the exact condition that decides whether the
+// snippet renders the flow at all). Kept in sync by hand with that Liquid
+// file if it ever changes.
+function hasJewelrySetup(options) {
+  const names = (options || []).map((o) => (o.name || "").toLowerCase());
+  const hasType = names.some((n) => n.includes("custom"));
+  const hasMetal = names.some((n) => n.includes("metal"));
+  return hasType && hasMetal;
+}
+
+// Safety cap on how many products a single scan will page through — a
+// runaway loop against a catalog with tens of thousands of products would
+// otherwise tie up the request indefinitely. High enough to cover this
+// store's realistic catalog size in one go; bump if it's ever hit.
+const SCAN_PAGE_SIZE = 250;
+const SCAN_MAX_PAGES = 40; // up to 10,000 products
+
+/**
+ * Pages through every product in the store (any status) and returns the
+ * ones that DON'T have the Type(Customised)/Metal option structure the
+ * jewelry customizer flow needs — i.e. products still needing setup
+ * before repriceDesignVariants (or the storefront flow at all) can work
+ * on them. Read-only, changes nothing.
+ */
+export async function findProductsMissingJewelrySetup(admin) {
+  const missing = [];
+  let scanned = 0;
+  let cursor = null;
+  let hasNextPage = true;
+  let pages = 0;
+
+  while (hasNextPage && pages < SCAN_MAX_PAGES) {
+    const res = await admin.graphql(
+      `#graphql
+      query ScanProductsForJewelrySetup($first: Int!, $after: String) {
+        products(first: $first, after: $after) {
+          pageInfo { hasNextPage endCursor }
+          nodes { id title handle status options { name } }
+        }
+      }`,
+      { variables: { first: SCAN_PAGE_SIZE, after: cursor } },
+    );
+    const json = await res.json();
+    if (json.errors) throw new Error(`Product scan failed: ${JSON.stringify(json.errors).slice(0, 300)}`);
+
+    const nodes = json.data?.products?.nodes || [];
+    for (const p of nodes) {
+      scanned++;
+      if (!hasJewelrySetup(p.options)) {
+        missing.push({
+          id: p.id,
+          numericId: p.id.split("/").pop(),
+          title: p.title,
+          handle: p.handle,
+          status: p.status,
+        });
+      }
+    }
+
+    hasNextPage = json.data?.products?.pageInfo?.hasNextPage || false;
+    cursor = json.data?.products?.pageInfo?.endCursor || null;
+    pages++;
+  }
+
+  return { scanned, missing, truncated: hasNextPage };
+}
+
 export async function repriceDesignVariants(admin) {
   const productGid = `gid://shopify/Product/${PRODUCT_ID_NUMERIC}`;
   const [stonePrice, { rates, makingChargePerGram }] = await Promise.all([
