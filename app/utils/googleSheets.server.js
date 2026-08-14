@@ -43,6 +43,23 @@ const EMAIL_EVENTS_HEADER = ["Timestamp", "Tracking ID", "Event", "Detail"];
 const clientCache = new Map();
 const warnedMissingConfig = new Set();
 
+// None of the googleapis calls below had any timeout configured — when
+// something's wrong (bad/expired service account key, no share
+// permission, network issue reaching Google from Render), the request
+// doesn't fail fast, it just hangs indefinitely. Confirmed directly: a
+// debug=true submission with a full payload hung 30+ seconds specifically
+// at this step, while everything else responded in well under a second.
+// Wrapping every Sheets call in this bounds it, so a broken config now
+// fails FAST with a real, visible error instead of hanging forever
+// (which, in production before this, meant the mirror silently never
+// completed at all — not "failed", just never finished).
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)),
+  ]);
+}
+
 function isConfigured(settings, cacheKey) {
   const configured =
     !!settings?.googleServiceAccountEmail &&
@@ -124,31 +141,37 @@ async function prependRow(settings, sheetName, header, row) {
     return "skipped: Google Sheets not configured (Settings page or GOOGLE_SERVICE_ACCOUNT_EMAIL / GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY / ASTRO_LEADS_SPREADSHEET_ID env vars)";
   }
   try {
-    const sheets = getSheetsClient(settings);
-    const spreadsheetId = settings.astroLeadsSpreadsheetId;
-    const sheetId = await ensureSheetWithHeader(sheets, spreadsheetId, sheetName, header);
+    await withTimeout(
+      (async () => {
+        const sheets = getSheetsClient(settings);
+        const spreadsheetId = settings.astroLeadsSpreadsheetId;
+        const sheetId = await ensureSheetWithHeader(sheets, spreadsheetId, sheetName, header);
 
-    await sheets.spreadsheets.batchUpdate({
-      spreadsheetId,
-      requestBody: {
-        requests: [
-          {
-            insertDimension: {
-              range: { sheetId, dimension: "ROWS", startIndex: 1, endIndex: 2 },
-              inheritFromBefore: false,
-            },
+        await sheets.spreadsheets.batchUpdate({
+          spreadsheetId,
+          requestBody: {
+            requests: [
+              {
+                insertDimension: {
+                  range: { sheetId, dimension: "ROWS", startIndex: 1, endIndex: 2 },
+                  inheritFromBefore: false,
+                },
+              },
+            ],
           },
-        ],
-      },
-    });
+        });
 
-    const lastCol = columnLetter(header.length);
-    await sheets.spreadsheets.values.update({
-      spreadsheetId,
-      range: `${sheetName}!A2:${lastCol}2`,
-      valueInputOption: "RAW",
-      requestBody: { values: [row] },
-    });
+        const lastCol = columnLetter(header.length);
+        await sheets.spreadsheets.values.update({
+          spreadsheetId,
+          range: `${sheetName}!A2:${lastCol}2`,
+          valueInputOption: "RAW",
+          requestBody: { values: [row] },
+        });
+      })(),
+      15000,
+      `Sheets mirror to "${sheetName}"`
+    );
     return "OK";
   } catch (err) {
     // Best-effort only — the database row is already safely written by
