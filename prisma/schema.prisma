@@ -83,6 +83,12 @@ model AstroLead {
   astroError      String?
   shopifySyncStatus String?
   emailSendStatus   String?
+  // Result of the WhatsApp send via Interakt (see
+  // app/utils/interakt.server.js) — same "OK: ..." / "skipped: ..." /
+  // "FAILED: ..." shape as emailSendStatus, shown as its own status pill
+  // on the Astro Leads dashboard. Null/empty means it was never
+  // attempted (e.g. no phone on the lead, or Interakt not configured yet).
+  whatsappSendStatus String?
   // Free-text internal note, editable by staff on the Astro Leads
   // dashboard — never shown to the customer, purely for team use
   // (e.g. "called, not interested" / "followed up via WhatsApp").
@@ -138,6 +144,15 @@ model AppSettings {
   // a string (like the rest of this model's settings-page-editable
   // fields) and parsed with a default fallback where it's used.
   wishlistEmailIntervalHours     String?
+  // WhatsApp sending via Interakt's Send Template API — see
+  // app/utils/interakt.server.js. interaktApiKey is the Basic-Auth
+  // secret from Interakt → Settings → Developer Setting → Secret Key.
+  // interaktTemplateName is the pre-approved WhatsApp template's exact
+  // code name (Interakt/Meta require the template to exist and be
+  // approved before any send will succeed) — defaults to
+  // "gem_recommendation" if left blank, see DEFAULT_INTERAKT_TEMPLATE_NAME.
+  interaktApiKey                 String?
+  interaktTemplateName           String?
   updatedAt                      DateTime @updatedAt
 }
 

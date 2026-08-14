@@ -178,6 +178,15 @@ function LeadRow({ lead }) {
           "#2c6ecb"
         )}
       </td>
+      <td style={td} title={lead.whatsappSendStatus || ""}>
+        {lead.whatsappSendStatus?.startsWith("OK")
+          ? statusPill("Sent", true, "#25d366")
+          : lead.whatsappSendStatus?.startsWith("skipped")
+            ? statusPill("Skipped", true, "#8c9196")
+            : lead.whatsappSendStatus
+              ? statusPill("Failed", true, "#d82c0d")
+              : statusPill("—", false, "#8c9196")}
+      </td>
       <td style={{ ...td, whiteSpace: "normal", minWidth: "180px" }}>
         {lead.emailStatus.clickedLinks?.length
           ? lead.emailStatus.clickedLinks.map((link, i) => (
@@ -265,6 +274,7 @@ export default function AstroLeadsPage() {
                   <th style={th}>Calculation</th>
                   <th style={th}>Shopify Sync</th>
                   <th style={th}>Email</th>
+                  <th style={th}>WhatsApp</th>
                   <th style={th}>Clicked Links</th>
                   <th style={th}>Notes</th>
                   <th style={th}>Actions</th>

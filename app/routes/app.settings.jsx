@@ -15,7 +15,12 @@ import { useFetcher, useLoaderData } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
-import { getRawAppSettingsRow, saveAppSettings, DEFAULT_WISHLIST_EMAIL_INTERVAL_HOURS } from "../utils/appSettings.server";
+import {
+  getRawAppSettingsRow,
+  saveAppSettings,
+  DEFAULT_WISHLIST_EMAIL_INTERVAL_HOURS,
+  DEFAULT_INTERAKT_TEMPLATE_NAME,
+} from "../utils/appSettings.server";
 
 export const loader = async ({ request }) => {
   const { session } = await authenticate.admin(request);
@@ -27,6 +32,9 @@ export const loader = async ({ request }) => {
     googleServiceAccountPrivateKeySet: !!row?.googleServiceAccountPrivateKey,
     astroLeadsSpreadsheetId: row?.astroLeadsSpreadsheetId || "",
     wishlistEmailIntervalHours: row?.wishlistEmailIntervalHours || String(DEFAULT_WISHLIST_EMAIL_INTERVAL_HOURS),
+    interaktApiKeySet: !!row?.interaktApiKey,
+    interaktTemplateName: row?.interaktTemplateName || "",
+    defaultInteraktTemplateName: DEFAULT_INTERAKT_TEMPLATE_NAME,
     // So the page can say which env vars are filling in for anything
     // not saved here yet.
     envFallback: {
@@ -35,6 +43,7 @@ export const loader = async ({ request }) => {
       googleServiceAccountEmail: !!process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
       googleServiceAccountPrivateKey: !!process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY,
       astroLeadsSpreadsheetId: !!process.env.ASTRO_LEADS_SPREADSHEET_ID,
+      interaktApiKey: !!process.env.INTERAKT_API_KEY,
     },
   };
 };
@@ -50,6 +59,7 @@ export const action = async ({ request }) => {
   const gmailAppPassword = formData.get("gmailAppPassword")?.trim() || existing?.gmailAppPassword || "";
   const googleServiceAccountPrivateKey =
     formData.get("googleServiceAccountPrivateKey")?.trim() || existing?.googleServiceAccountPrivateKey || "";
+  const interaktApiKey = formData.get("interaktApiKey")?.trim() || existing?.interaktApiKey || "";
 
   await saveAppSettings(session.shop, {
     gmailUser: formData.get("gmailUser")?.trim() || "",
@@ -58,6 +68,8 @@ export const action = async ({ request }) => {
     googleServiceAccountPrivateKey,
     astroLeadsSpreadsheetId: formData.get("astroLeadsSpreadsheetId")?.trim() || "",
     wishlistEmailIntervalHours: formData.get("wishlistEmailIntervalHours")?.trim() || "",
+    interaktApiKey,
+    interaktTemplateName: formData.get("interaktTemplateName")?.trim() || "",
   });
 
   return { ok: true };
@@ -90,12 +102,15 @@ export default function SettingsPage() {
   const [gsaKey, setGsaKey] = useState("");
   const [sheetId, setSheetId] = useState(data.astroLeadsSpreadsheetId);
   const [wishlistInterval, setWishlistInterval] = useState(data.wishlistEmailIntervalHours);
+  const [interaktApiKey, setInteraktApiKey] = useState("");
+  const [interaktTemplateName, setInteraktTemplateName] = useState(data.interaktTemplateName);
 
   useEffect(() => {
     if (fetcher.data?.ok) {
       shopify.toast.show("Settings saved");
       setGmailAppPassword("");
       setGsaKey("");
+      setInteraktApiKey("");
     }
   }, [fetcher.data, shopify]);
 
@@ -109,6 +124,8 @@ export default function SettingsPage() {
         googleServiceAccountPrivateKey: gsaKey,
         astroLeadsSpreadsheetId: sheetId,
         wishlistEmailIntervalHours: wishlistInterval,
+        interaktApiKey,
+        interaktTemplateName,
       },
       { method: "POST" }
     );
@@ -210,6 +227,42 @@ export default function SettingsPage() {
               step="0.5"
               value={wishlistInterval}
               onChange={(e) => setWishlistInterval(e.target.value)}
+            />
+          </s-section>
+
+          <s-section heading="WhatsApp (Interakt)">
+            <s-paragraph>
+              Sends the gem-recommendation message directly via Interakt's Send Template API — our own backend
+              decides who/when, same as the email. Requires a WhatsApp template named{" "}
+              <s-text>{interaktTemplateName || data.defaultInteraktTemplateName}</s-text> to exist and be Meta-approved in
+              Interakt first (Catalog &amp; Templates → Templates Library). Only sent when a lead has a phone number.
+            </s-paragraph>
+
+            <label style={labelStyle} htmlFor="interaktApiKey">
+              Secret Key{" "}
+              {data.interaktApiKeySet ? "(●●●● already set — leave blank to keep it)" : "(not set yet)"}
+            </label>
+            <input
+              id="interaktApiKey"
+              style={fieldStyle}
+              type="password"
+              autoComplete="new-password"
+              value={interaktApiKey}
+              onChange={(e) => setInteraktApiKey(e.target.value)}
+              placeholder={data.interaktApiKeySet ? "•••• •••• •••• ••••" : "from Interakt → Settings → Developer Setting"}
+            />
+            {!data.interaktApiKeySet && data.envFallback.interaktApiKey && (
+              <p style={hintStyle}>Currently falling back to the INTERAKT_API_KEY env var on Render.</p>
+            )}
+
+            <label style={labelStyle} htmlFor="interaktTemplateName">Template name</label>
+            <input
+              id="interaktTemplateName"
+              style={fieldStyle}
+              type="text"
+              value={interaktTemplateName}
+              onChange={(e) => setInteraktTemplateName(e.target.value)}
+              placeholder={`${data.defaultInteraktTemplateName} (default if left blank)`}
             />
           </s-section>
 

@@ -28,6 +28,7 @@ import nodemailer from "nodemailer";
 import prisma from "../db.server";
 import { mirrorLeadToSheet, mirrorEmailEventToSheet } from "./googleSheets.server";
 import { getAppSettings } from "./appSettings.server";
+import { sendGemRecommendationWhatsApp } from "./interakt.server";
 
 // The storefront's real customer-facing domain (not the *.myshopify.com
 // admin domain) — used to build the results-page link embedded in the
@@ -196,11 +197,30 @@ export async function handleAstroAdviceSubmission(admin, shop, data) {
     emailSendStatus = "skipped: astro calculation failed for this submission";
   }
 
+  // Best-effort: WhatsApp the same recommendation via Interakt, right
+  // alongside email. Only when the chart resolved and a phone number
+  // exists — never allowed to affect the response sent to the customer.
+  let whatsappSendStatus = "not run";
+  if (!astroError && data.phone) {
+    try {
+      const settingsForWa = settings;
+      const resultsPageUrl = buildResultsPageUrl(data, birthDetails || {}, recommendation || {});
+      whatsappSendStatus = await sendGemRecommendationWhatsApp(settingsForWa, data, recommendation || {}, trackingId, resultsPageUrl);
+    } catch (waErr) {
+      whatsappSendStatus = "threw: " + waErr;
+      console.error("[astroAdvice] failed to send recommendation WhatsApp message:", waErr);
+    }
+  } else if (!data.phone) {
+    whatsappSendStatus = "skipped: no phone on lead";
+  } else {
+    whatsappSendStatus = "skipped: astro calculation failed for this submission";
+  }
+
   if (lead) {
     try {
       await prisma.astroLead.update({
         where: { id: lead.id },
-        data: { shopifySyncStatus, emailSendStatus },
+        data: { shopifySyncStatus, emailSendStatus, whatsappSendStatus },
       });
     } catch (updateErr) {
       console.error("[astroAdvice] failed to backfill sync/email status on lead row:", updateErr);
@@ -218,6 +238,7 @@ export async function handleAstroAdviceSubmission(admin, shop, data) {
       response.debugError = astroError;
       response.shopifySyncStatus = shopifySyncStatus;
       response.emailSendStatus = emailSendStatus;
+      response.whatsappSendStatus = whatsappSendStatus;
     }
     return response;
   }
@@ -235,6 +256,7 @@ export async function handleAstroAdviceSubmission(admin, shop, data) {
   if (data.debug === true) {
     successResponse.shopifySyncStatus = shopifySyncStatus;
     successResponse.emailSendStatus = emailSendStatus;
+    successResponse.whatsappSendStatus = whatsappSendStatus;
   }
   return successResponse;
 }
@@ -264,13 +286,27 @@ export async function resendAstroLeadEmail(admin, leadId) {
     console.error("[astroAdvice] resendAstroLeadEmail failed:", err);
   }
 
+  // Resend the WhatsApp message alongside the email — same "Send Now"
+  // button covers both channels, matching how they're sent together on
+  // the original submission.
+  let whatsappStatus = "skipped: no phone on lead";
+  if (lead.phone) {
+    try {
+      const resultsPageUrl = buildResultsPageUrl(data, birthDetails, lead.recommendation);
+      whatsappStatus = await sendGemRecommendationWhatsApp(settings, { ...data, phone: lead.phone }, lead.recommendation, lead.trackingId, resultsPageUrl);
+    } catch (err) {
+      whatsappStatus = "threw: " + err;
+      console.error("[astroAdvice] resendAstroLeadEmail WhatsApp resend failed:", err);
+    }
+  }
+
   try {
-    await prisma.astroLead.update({ where: { id: leadId }, data: { emailSendStatus: status } });
+    await prisma.astroLead.update({ where: { id: leadId }, data: { emailSendStatus: status, whatsappSendStatus: whatsappStatus } });
   } catch (updateErr) {
     console.error("[astroAdvice] failed to record resend result:", updateErr);
   }
 
-  return status;
+  return status + " | WhatsApp: " + whatsappStatus;
 }
 
 /**
@@ -544,7 +580,7 @@ async function sendGemRecommendationEmail(admin, settings, data, birthDetails, r
  * person's own data. base64url matches what that page's decode script
  * expects (it also tolerates standard base64 either way).
  */
-function buildResultsPageUrl(data, birthDetails, recommendation) {
+export function buildResultsPageUrl(data, birthDetails, recommendation) {
   const payload = {
     name: data.name || "",
     dob: data.dob || "",

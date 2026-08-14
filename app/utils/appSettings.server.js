@@ -14,6 +14,8 @@ const FIELDS = [
   "googleServiceAccountPrivateKey",
   "astroLeadsSpreadsheetId",
   "wishlistEmailIntervalHours",
+  "interaktApiKey",
+  "interaktTemplateName",
 ];
 
 const ENV_FALLBACK = {
@@ -23,12 +25,20 @@ const ENV_FALLBACK = {
   googleServiceAccountPrivateKey: "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY",
   astroLeadsSpreadsheetId: "ASTRO_LEADS_SPREADSHEET_ID",
   wishlistEmailIntervalHours: "WISHLIST_EMAIL_INTERVAL_HOURS",
+  interaktApiKey: "INTERAKT_API_KEY",
+  interaktTemplateName: "INTERAKT_GEM_TEMPLATE_NAME",
 };
 
 // Used wherever wishlistEmailIntervalHours needs an actual number —
 // getAppSettings returns everything as strings (possibly empty), same
 // as the rest of this model.
 export const DEFAULT_WISHLIST_EMAIL_INTERVAL_HOURS = 2;
+
+// The WhatsApp template's code name, used when the Settings page field is
+// left blank — must match exactly what's created/approved in Interakt.
+// See app/utils/interakt.server.js for the template's expected variable
+// layout (this is documented there, not re-derived from anything live).
+export const DEFAULT_INTERAKT_TEMPLATE_NAME = "gem_recommendation";
 
 /** Resolved settings for a shop — DB row values win, env vars fill in
  * anything left blank. Always returns a full object, every field a
