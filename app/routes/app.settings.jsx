@@ -22,11 +22,12 @@ import {
   getAppSettings,
   DEFAULT_WISHLIST_EMAIL_INTERVAL_HOURS,
   DEFAULT_INTERAKT_TEMPLATE_NAME,
+  DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME,
   DEFAULT_WHATSAPP_INTERVAL_VALUE,
   DEFAULT_WHATSAPP_INTERVAL_UNIT,
 } from "../utils/appSettings.server";
 import { FALLBACK_LOGO_URL } from "../utils/astroAdvice.server";
-import { sendGemRecommendationWhatsApp, getOrCreateInteraktCampaignId } from "../utils/interakt.server";
+import { sendGemRecommendationWhatsApp, getOrCreateInteraktCampaignId, sendOrderProcessingWhatsApp } from "../utils/interakt.server";
 
 export const loader = async ({ request }) => {
   const { session } = await authenticate.admin(request);
@@ -41,6 +42,8 @@ export const loader = async ({ request }) => {
     interaktApiKeySet: !!row?.interaktApiKey,
     interaktTemplateName: row?.interaktTemplateName || "",
     defaultInteraktTemplateName: DEFAULT_INTERAKT_TEMPLATE_NAME,
+    interaktOrderTemplateName: row?.interaktOrderTemplateName || "",
+    defaultInteraktOrderTemplateName: DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME,
     whatsappIntervalValue: row?.whatsappIntervalValue || DEFAULT_WHATSAPP_INTERVAL_VALUE,
     whatsappIntervalUnit: row?.whatsappIntervalUnit || DEFAULT_WHATSAPP_INTERVAL_UNIT,
     interaktWebhookSecretSet: !!row?.interaktWebhookSecret,
@@ -99,6 +102,20 @@ export const action = async ({ request }) => {
     return { intent, ok: status.startsWith("OK"), status, campaignStatus };
   }
 
+  if (intent === "sendTestOrderWhatsapp") {
+    const phone = formData.get("testOrderPhone")?.trim();
+    if (!phone) return { intent, ok: false, error: "Enter a phone number first" };
+
+    const settings = await getAppSettings(session.shop);
+    let status;
+    try {
+      status = await sendOrderProcessingWhatsApp(settings, { phone, firstName: "Test", orderNumber: "1001", shop: session.shop });
+    } catch (err) {
+      status = "threw: " + String((err && err.message) || err);
+    }
+    return { intent, ok: status.startsWith("OK"), status };
+  }
+
   // Blank secret fields mean "leave unchanged", not "clear" — merge with
   // whatever's already saved so re-saving the non-secret fields doesn't
   // accidentally wipe a previously-set password/key.
@@ -118,6 +135,7 @@ export const action = async ({ request }) => {
     wishlistEmailIntervalHours: formData.get("wishlistEmailIntervalHours")?.trim() || "",
     interaktApiKey,
     interaktTemplateName: formData.get("interaktTemplateName")?.trim() || "",
+    interaktOrderTemplateName: formData.get("interaktOrderTemplateName")?.trim() || "",
     whatsappIntervalValue: formData.get("whatsappIntervalValue")?.trim() || "",
     whatsappIntervalUnit: formData.get("whatsappIntervalUnit")?.trim() || "",
     interaktWebhookSecret,
@@ -145,9 +163,11 @@ export default function SettingsPage() {
   const data = useLoaderData();
   const fetcher = useFetcher();
   const testFetcher = useFetcher();
+  const testOrderFetcher = useFetcher();
   const shopify = useAppBridge();
   const isSaving = fetcher.state === "submitting";
   const isSendingTest = testFetcher.state !== "idle";
+  const isSendingOrderTest = testOrderFetcher.state !== "idle";
 
   const [gmailUser, setGmailUser] = useState(data.gmailUser);
   const [gmailAppPassword, setGmailAppPassword] = useState("");
@@ -157,7 +177,9 @@ export default function SettingsPage() {
   const [wishlistInterval, setWishlistInterval] = useState(data.wishlistEmailIntervalHours);
   const [interaktApiKey, setInteraktApiKey] = useState("");
   const [interaktTemplateName, setInteraktTemplateName] = useState(data.interaktTemplateName);
+  const [interaktOrderTemplateName, setInteraktOrderTemplateName] = useState(data.interaktOrderTemplateName);
   const [testPhone, setTestPhone] = useState("");
+  const [testOrderPhone, setTestOrderPhone] = useState("");
   const [whatsappIntervalValue, setWhatsappIntervalValue] = useState(data.whatsappIntervalValue);
   const [whatsappIntervalUnit, setWhatsappIntervalUnit] = useState(data.whatsappIntervalUnit);
   const [interaktWebhookSecret, setInteraktWebhookSecret] = useState("");
@@ -180,6 +202,18 @@ export default function SettingsPage() {
     }
   }, [testFetcher.data, shopify]);
 
+  useEffect(() => {
+    if (testOrderFetcher.data?.intent === "sendTestOrderWhatsapp") {
+      shopify.toast.show(testOrderFetcher.data.status || (testOrderFetcher.data.ok ? "Sent" : "Failed"), {
+        isError: !testOrderFetcher.data.ok,
+      });
+    }
+  }, [testOrderFetcher.data, shopify]);
+
+  const sendTestOrderWhatsapp = () => {
+    testOrderFetcher.submit({ intent: "sendTestOrderWhatsapp", testOrderPhone }, { method: "POST" });
+  };
+
   const sendTestWhatsapp = () => {
     testFetcher.submit({ intent: "sendTestWhatsapp", testPhone }, { method: "POST" });
   };
@@ -196,6 +230,7 @@ export default function SettingsPage() {
         wishlistEmailIntervalHours: wishlistInterval,
         interaktApiKey,
         interaktTemplateName,
+        interaktOrderTemplateName,
         whatsappIntervalValue,
         whatsappIntervalUnit,
         interaktWebhookSecret,
@@ -434,6 +469,54 @@ export default function SettingsPage() {
                 onChange={(e) => setInteraktWebhookSecret(e.target.value)}
                 placeholder={data.interaktWebhookSecretSet ? "•••• •••• •••• ••••" : "any secret string — pick one, match it in Interakt"}
               />
+            </div>
+          </s-section>
+
+          <s-section heading="Order Processing (Interakt)">
+            <s-paragraph>
+              Sends automatically — the first time an order's fulfillment shows as "In Progress" (Shopify Admin's
+              own status, staff mark this manually on the order's fulfillment card, a distinct step before actually
+              fulfilling it). Requires a WhatsApp template named{" "}
+              <s-text>{interaktOrderTemplateName || data.defaultInteraktOrderTemplateName}</s-text> to exist and be
+              Meta-approved in Interakt. Sends at most once per order — later updates to the same order (e.g.
+              shipping) don't repeat it.
+            </s-paragraph>
+
+            <label style={labelStyle} htmlFor="interaktOrderTemplateName">Template name</label>
+            <input
+              id="interaktOrderTemplateName"
+              style={fieldStyle}
+              type="text"
+              value={interaktOrderTemplateName}
+              onChange={(e) => setInteraktOrderTemplateName(e.target.value)}
+              placeholder={`${data.defaultInteraktOrderTemplateName} (default if left blank)`}
+            />
+
+            <div style={{ marginTop: "8px", padding: "12px", background: "#f6f6f7", borderRadius: "8px" }}>
+              <label style={labelStyle} htmlFor="testOrderPhone">Send test WhatsApp message</label>
+              <p style={{ ...hintStyle, marginTop: "4px" }}>
+                Fires the real template (sample name "Test", order number "1001") — save your settings above first
+                if you just entered the API key. Only works once the template shows a green "Approved" dot in
+                Interakt.
+              </p>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <input
+                  id="testOrderPhone"
+                  style={{ ...fieldStyle, marginBottom: 0, maxWidth: "220px" }}
+                  type="tel"
+                  value={testOrderPhone}
+                  onChange={(e) => setTestOrderPhone(e.target.value)}
+                  placeholder="9876543210 or +919876543210"
+                />
+                <s-button {...(isSendingOrderTest ? { loading: true } : {})} onClick={sendTestOrderWhatsapp}>
+                  Send Test
+                </s-button>
+              </div>
+              {testOrderFetcher.data?.intent === "sendTestOrderWhatsapp" && (
+                <p style={{ ...hintStyle, marginTop: "8px", color: testOrderFetcher.data.ok ? "#008060" : "#d82c0d" }}>
+                  {testOrderFetcher.data.status || testOrderFetcher.data.error}
+                </p>
+              )}
             </div>
           </s-section>
 

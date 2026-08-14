@@ -72,6 +72,15 @@ api_version = "2026-10"
   uri = "/webhooks/orders/create"
   topics = [ "orders/create" ]
 
+  # Drives the "order processing" WhatsApp notification (see
+  # app/routes/webhooks.orders.updated.jsx) — fires broadly on any order
+  # change; the handler itself re-checks the order's real fulfillment
+  # order status via GraphQL and only acts the first time it sees
+  # IN_PROGRESS for that order.
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/orders/updated"
+  topics = [ "orders/updated" ]
+
 [auth]
 redirect_urls = [ "https://shubh-gems-customizer-app.onrender.com/api/auth" ]
 

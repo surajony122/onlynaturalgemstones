@@ -25,7 +25,7 @@
  *  https://www.interakt.shop/resource-center/how-to-send-whatsapp-templates-using-apis-webhooks/
  *  https://www.interakt.shop/resource-center/api-campaign-on-whatsapp/
  */
-import { DEFAULT_INTERAKT_TEMPLATE_NAME, setInteraktCampaign } from "./appSettings.server";
+import { DEFAULT_INTERAKT_TEMPLATE_NAME, DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME, setInteraktCampaign } from "./appSettings.server";
 
 const INTERAKT_MESSAGE_URL = "https://api.interakt.ai/v1/public/message/";
 const INTERAKT_CREATE_CAMPAIGN_URL = "https://api.interakt.ai/v1/public/create-campaign/";
@@ -301,6 +301,63 @@ export async function sendGemRecommendationWhatsApp(settings, data, recommendati
     headerImageUrl,
     campaignId,
   });
+
+  const result = await sendInteraktTemplateMessage(settings.interaktApiKey, payload);
+  return result.status;
+}
+
+/**
+ * Sends the "order processing" WhatsApp notification — a second,
+ * separate template from the gem-recommendation one (see
+ * webhooks.orders.updated.jsx for when this fires). Text-only, no
+ * header image, no button — matches exactly what was requested:
+ *
+ * ---- TEMPLATE (as configured in Interakt) ----
+ * Name: must match AppSettings.interaktOrderTemplateName /
+ *       INTERAKT_ORDER_TEMPLATE_NAME env var / DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME.
+ * Language: English
+ *
+ * Body:
+ *   Hello {{1}},
+ *
+ *   Your Order No. #{{2}} has been confirmed and is now being prepared
+ *   with care by our team.
+ *
+ *   Your order is in safe hands and being prepared with the utmost care.
+ *   We'll notify you as soon as your order is shipped.
+ *
+ *   Regards,
+ *   Only Natural Gemstones
+ *   from the House of Shubh Gems
+ *
+ * No header, no footer, no buttons.
+ *
+ * ---- Variable mapping ----
+ *  {{1}} customer first name
+ *  {{2}} order number (Shopify's own order.name, minus the leading "#" —
+ *        the template text already supplies "#" before {{2}})
+ */
+export async function sendOrderProcessingWhatsApp(settings, { phone, firstName, orderNumber, shop }) {
+  if (!settings.interaktApiKey) {
+    return "skipped: Interakt API key not set (Settings page or INTERAKT_API_KEY env var)";
+  }
+  const split = splitPhoneForInterakt(phone);
+  if (!split) {
+    return "skipped: no usable phone number on this order";
+  }
+
+  const templateName = settings.interaktOrderTemplateName || DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME;
+  const payload = {
+    countryCode: split.countryCode,
+    phoneNumber: split.phoneNumber,
+    type: "Template",
+    callbackData: "order-" + orderNumber,
+    template: {
+      name: templateName,
+      languageCode: "en",
+      bodyValues: [firstName || "there", String(orderNumber || "").replace(/^#/, "")],
+    },
+  };
 
   const result = await sendInteraktTemplateMessage(settings.interaktApiKey, payload);
   return result.status;

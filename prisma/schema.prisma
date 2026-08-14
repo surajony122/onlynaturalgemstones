@@ -163,6 +163,23 @@ model WhatsAppMessageEvent {
   @@index([messageId])
 }
 
+// One row per order that's had its "order processing" WhatsApp
+// notification sent — see app/routes/webhooks.orders.updated.jsx.
+// orderId is unique specifically so a second orders/updated event for
+// the same order (which WILL keep firing on every later change too,
+// e.g. eventually being marked fulfilled) can check "have we already
+// notified for this order" and skip re-sending, rather than messaging
+// the customer again on every subsequent update.
+model OrderProcessingNotification {
+  id         String   @id @default(cuid())
+  shop       String?
+  orderId    String   @unique // Shopify numeric order id
+  orderName  String? // e.g. "#1001", customer-facing
+  phone      String?
+  status     String? // same "OK: .../FAILED: ..." shape as elsewhere
+  notifiedAt DateTime @default(now())
+}
+
 // Per-shop configuration editable from the app's own Settings page
 // (app/routes/app.settings.jsx) — Gmail sending credentials and the
 // Google Sheets mirror target, previously only settable as Render
@@ -202,6 +219,13 @@ model AppSettings {
   // "gem_recommendation" if left blank, see DEFAULT_INTERAKT_TEMPLATE_NAME.
   interaktApiKey                 String?
   interaktTemplateName           String?
+  // Second, separate WhatsApp template — sent when an order's
+  // fulfillment order status is first seen as IN_PROGRESS (staff manually
+  // marks an item "as in progress" in the order's fulfillment card, a
+  // distinct step before actual fulfillment) — see
+  // app/routes/webhooks.orders.updated.jsx. Defaults to "order_inprocess"
+  // if left blank — see DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME.
+  interaktOrderTemplateName      String?
   // Interakt "API Campaign" — groups every WhatsApp send under one
   // campaign so sent/delivered/read stats show up in Interakt's own
   // dashboard (Notifications -> API Campaigns) instead of only being
