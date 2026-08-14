@@ -16,15 +16,17 @@
 import crypto from "node:crypto";
 import nodemailer from "nodemailer";
 import prisma from "../db.server";
-import { getAppSettings } from "./appSettings.server";
+import { getAppSettings, DEFAULT_WISHLIST_EMAIL_INTERVAL_HOURS } from "./appSettings.server";
 import { mirrorEmailEventToSheet } from "./googleSheets.server";
 import { STORE_DOMAIN, trackedClickUrl, esc, getShopFooterInfo, footerHtml } from "./astroAdvice.server";
 
 /**
- * Main entry point, called from proxy.wishlist-sync.jsx. Saves the sync
- * to the database (source of truth for the Wishlist Leads dashboard),
- * then best-effort sends the email — same "never let email problems
- * affect the response" pattern as astroAdvice.server.js.
+ * Main entry point, called from proxy.wishlist-sync.jsx. ONLY saves the
+ * sync to the database (source of truth for the Wishlist Leads
+ * dashboard) — no email sent here anymore. Sending is entirely handled
+ * by processDueWishlistEmails below, run on a timer (see
+ * app/routes/cron.wishlist-email.jsx) or on-demand from the dashboard's
+ * "Send Due Emails Now" button — see app.wishlist-leads.jsx.
  */
 export async function handleWishlistSync(admin, shop, data) {
   const email = (data.email || "").trim();
@@ -34,17 +36,14 @@ export async function handleWishlistSync(admin, shop, data) {
   }
 
   const trackingId = crypto.randomUUID();
-  const settings = await getAppSettings(shop);
 
-  // Resolved once, up front, so both the database row (for the Wishlist
-  // Leads dashboard's item details) and the email itself use the exact
-  // same fetch — no double API call, and the saved record matches
-  // exactly what was emailed.
+  // Resolved once, up front, so the database row (for the Wishlist Leads
+  // dashboard's item details, and later reused as-is when the email
+  // actually sends) has real product data from the start.
   const products = await getProductsByHandles(admin, handles);
 
-  let lead;
   try {
-    lead = await prisma.wishlistLead.create({
+    await prisma.wishlistLead.create({
       data: {
         trackingId,
         shop: shop || null,
@@ -52,29 +51,89 @@ export async function handleWishlistSync(admin, shop, data) {
         phone: data.phone || null,
         productHandles: handles,
         products,
+        // emailSendStatus stays null (pending) — processDueWishlistEmails
+        // picks this up once the configured interval has passed since
+        // the customer's LATEST sync (this row, unless a newer one
+        // arrives before then, which pushes the debounce point out).
       },
     });
   } catch (dbErr) {
     console.error("[wishlist] failed to save lead to database:", dbErr);
+    return { error: "Failed to save" };
   }
 
-  let emailSendStatus = "not run";
-  try {
-    emailSendStatus = await sendWishlistEmail(admin, settings, email, handles, products, trackingId);
-  } catch (err) {
-    emailSendStatus = "threw: " + err;
-    console.error("[wishlist] failed to send wishlist email:", err);
-  }
+  return { ok: true, emailSendStatus: "pending: scheduled for the next interval check" };
+}
 
-  if (lead) {
-    try {
-      await prisma.wishlistLead.update({ where: { id: lead.id }, data: { emailSendStatus } });
-    } catch (updateErr) {
-      console.error("[wishlist] failed to backfill emailSendStatus:", updateErr);
+/**
+ * Finds every (shop, email) with a pending (emailSendStatus === null)
+ * WishlistLead row whose customer has gone quiet for at least the
+ * configured interval, sends ONE email per customer using their latest
+ * wishlist snapshot, and marks any older pending rows for that customer
+ * as superseded (so a customer who added items 5 times only ever gets
+ * one email, not five). Called both by the cron route (on a timer) and
+ * the dashboard's manual "Send Due Emails Now" button — same function
+ * either way, the button just runs it outside the schedule.
+ */
+export async function processDueWishlistEmails(admin, shop) {
+  const settings = await getAppSettings(shop);
+  const intervalHours = parseFloat(settings.wishlistEmailIntervalHours) || DEFAULT_WISHLIST_EMAIL_INTERVAL_HOURS;
+
+  const pendingRows = await prisma.wishlistLead.findMany({
+    where: { shop, emailSendStatus: null },
+    orderBy: { createdAt: "desc" },
+  });
+  const emails = [...new Set(pendingRows.map((r) => r.email).filter(Boolean))];
+
+  const results = [];
+  for (const email of emails) {
+    const latest = await prisma.wishlistLead.findFirst({
+      where: { shop, email },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!latest) continue;
+
+    if (latest.emailSendStatus) {
+      // The truly latest sync for this customer was already resolved
+      // (sent, or explicitly skipped) by an earlier run — any older
+      // still-pending rows are stale leftovers, close them out.
+      await prisma.wishlistLead.updateMany({
+        where: { shop, email, emailSendStatus: null, createdAt: { lt: latest.createdAt } },
+        data: { emailSendStatus: "skipped: superseded by an already-processed newer sync" },
+      });
+      continue;
     }
+
+    const ageHours = (Date.now() - new Date(latest.createdAt).getTime()) / (60 * 60 * 1000);
+    if (ageHours < intervalHours) {
+      results.push({ email, status: `not due yet (${ageHours.toFixed(1)}h of ${intervalHours}h)` });
+      continue;
+    }
+
+    const handles = Array.isArray(latest.productHandles) ? latest.productHandles : [];
+    const products = Array.isArray(latest.products) ? latest.products : [];
+    let status;
+    try {
+      status = await sendWishlistEmail(admin, settings, email, handles, products, latest.trackingId);
+    } catch (err) {
+      status = "threw: " + err;
+      console.error("[wishlist] processDueWishlistEmails send failed for", email, err);
+    }
+
+    try {
+      await prisma.wishlistLead.update({ where: { id: latest.id }, data: { emailSendStatus: status } });
+      await prisma.wishlistLead.updateMany({
+        where: { shop, email, emailSendStatus: null, id: { not: latest.id }, createdAt: { lt: latest.createdAt } },
+        data: { emailSendStatus: "skipped: superseded by " + latest.id },
+      });
+    } catch (updateErr) {
+      console.error("[wishlist] failed to record send result:", updateErr);
+    }
+
+    results.push({ email, status });
   }
 
-  return { ok: true, emailSendStatus };
+  return { checked: emails.length, sent: results.filter((r) => r.status?.startsWith("OK")).length, results };
 }
 
 /** Fetches title/image/price for each handle in one aliased GraphQL call

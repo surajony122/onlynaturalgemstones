@@ -13,6 +13,7 @@ const FIELDS = [
   "googleServiceAccountEmail",
   "googleServiceAccountPrivateKey",
   "astroLeadsSpreadsheetId",
+  "wishlistEmailIntervalHours",
 ];
 
 const ENV_FALLBACK = {
@@ -21,7 +22,13 @@ const ENV_FALLBACK = {
   googleServiceAccountEmail: "GOOGLE_SERVICE_ACCOUNT_EMAIL",
   googleServiceAccountPrivateKey: "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY",
   astroLeadsSpreadsheetId: "ASTRO_LEADS_SPREADSHEET_ID",
+  wishlistEmailIntervalHours: "WISHLIST_EMAIL_INTERVAL_HOURS",
 };
+
+// Used wherever wishlistEmailIntervalHours needs an actual number —
+// getAppSettings returns everything as strings (possibly empty), same
+// as the rest of this model.
+export const DEFAULT_WISHLIST_EMAIL_INTERVAL_HOURS = 2;
 
 /** Resolved settings for a shop — DB row values win, env vars fill in
  * anything left blank. Always returns a full object, every field a

@@ -126,6 +126,14 @@ model AppSettings {
   googleServiceAccountEmail      String?
   googleServiceAccountPrivateKey String?
   astroLeadsSpreadsheetId        String?
+  // Hours to wait after a customer's LATEST wishlist change before
+  // emailing them — each new change pushes this out again (classic
+  // abandoned-wishlist debounce), so someone actively adding items all
+  // day gets one email once they've gone quiet, not one per add. See
+  // app/utils/wishlist.server.js's processDueWishlistEmails. Stored as
+  // a string (like the rest of this model's settings-page-editable
+  // fields) and parsed with a default fallback where it's used.
+  wishlistEmailIntervalHours     String?
   updatedAt                      DateTime @updatedAt
 }
 

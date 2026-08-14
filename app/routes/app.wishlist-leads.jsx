@@ -4,12 +4,25 @@
  * (sent / opened / clicked, and which specific links were clicked)
  * sourced from the same EmailEvent table, matched by trackingId.
  */
-import { useLoaderData } from "react-router";
+import { useEffect } from "react";
+import { useFetcher, useLoaderData } from "react-router";
+import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
+import { processDueWishlistEmails } from "../utils/wishlist.server";
 
 const PAGE_SIZE = 100;
+
+export const action = async ({ request }) => {
+  const { admin, session } = await authenticate.admin(request);
+  try {
+    const result = await processDueWishlistEmails(admin, session.shop);
+    return { ok: true, ...result };
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err) };
+  }
+};
 
 export const loader = async ({ request }) => {
   await authenticate.admin(request);
@@ -76,14 +89,33 @@ function statusPill(label, active, color) {
 
 export default function WishlistLeadsPage() {
   const { leads } = useLoaderData();
+  const fetcher = useFetcher();
+  const shopify = useAppBridge();
+  const isSending = ["loading", "submitting"].includes(fetcher.state) && fetcher.formMethod === "POST";
+
+  useEffect(() => {
+    if (!fetcher.data) return;
+    if (fetcher.data.ok) {
+      shopify.toast.show(`Checked ${fetcher.data.checked} customer(s), sent ${fetcher.data.sent} email(s)`);
+    } else {
+      shopify.toast.show(fetcher.data.error || "Failed to send", { isError: true });
+    }
+  }, [fetcher.data, shopify]);
+
+  const sendDueNow = () => fetcher.submit({}, { method: "POST" });
 
   return (
     <s-page heading={`Wishlist — Leads (${leads.length})`} width="full">
+      <s-button slot="primary-action" onClick={sendDueNow} {...(isSending ? { loading: true } : {})}>
+        Send Due Emails Now
+      </s-button>
+
       <s-section>
         <p style={{ margin: "0 0 14px", fontSize: "12px", color: "#6d7175" }}>
-          Most recent {PAGE_SIZE} wishlist syncs · one row per debounced sync (matches the client's own 900ms
-          batching) · the wishlist's Shopify tag/note sync is separate and untouched by this — this table is only
-          the email + tracking layer on top.
+          Most recent {PAGE_SIZE} wishlist syncs · emails don't send immediately — a customer gets one email once
+          they've gone quiet for the interval set on the Settings page (default 2h), using their latest wishlist
+          snapshot · "Send Due Emails Now" runs that check immediately instead of waiting for the next scheduled run
+          · the wishlist's Shopify tag/note sync is separate and untouched by this.
         </p>
 
         {leads.length === 0 ? (
@@ -155,7 +187,7 @@ export default function WishlistLeadsPage() {
                         "—"
                       )}
                     </td>
-                    <td style={td}>
+                    <td style={td} title={lead.emailSendStatus || "pending — not due yet"}>
                       {statusPill("Sent", lead.emailStatus.sent > 0, "#008060")}
                       {statusPill(
                         "Opened" + (lead.emailStatus.opened > 1 ? ` ×${lead.emailStatus.opened}` : ""),

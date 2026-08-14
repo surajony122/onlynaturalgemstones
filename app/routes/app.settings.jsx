@@ -15,7 +15,7 @@ import { useFetcher, useLoaderData } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
-import { getRawAppSettingsRow, saveAppSettings } from "../utils/appSettings.server";
+import { getRawAppSettingsRow, saveAppSettings, DEFAULT_WISHLIST_EMAIL_INTERVAL_HOURS } from "../utils/appSettings.server";
 
 export const loader = async ({ request }) => {
   const { session } = await authenticate.admin(request);
@@ -26,6 +26,7 @@ export const loader = async ({ request }) => {
     googleServiceAccountEmail: row?.googleServiceAccountEmail || "",
     googleServiceAccountPrivateKeySet: !!row?.googleServiceAccountPrivateKey,
     astroLeadsSpreadsheetId: row?.astroLeadsSpreadsheetId || "",
+    wishlistEmailIntervalHours: row?.wishlistEmailIntervalHours || String(DEFAULT_WISHLIST_EMAIL_INTERVAL_HOURS),
     // So the page can say which env vars are filling in for anything
     // not saved here yet.
     envFallback: {
@@ -56,6 +57,7 @@ export const action = async ({ request }) => {
     googleServiceAccountEmail: formData.get("googleServiceAccountEmail")?.trim() || "",
     googleServiceAccountPrivateKey,
     astroLeadsSpreadsheetId: formData.get("astroLeadsSpreadsheetId")?.trim() || "",
+    wishlistEmailIntervalHours: formData.get("wishlistEmailIntervalHours")?.trim() || "",
   });
 
   return { ok: true };
@@ -87,6 +89,7 @@ export default function SettingsPage() {
   const [gsaEmail, setGsaEmail] = useState(data.googleServiceAccountEmail);
   const [gsaKey, setGsaKey] = useState("");
   const [sheetId, setSheetId] = useState(data.astroLeadsSpreadsheetId);
+  const [wishlistInterval, setWishlistInterval] = useState(data.wishlistEmailIntervalHours);
 
   useEffect(() => {
     if (fetcher.data?.ok) {
@@ -99,7 +102,14 @@ export default function SettingsPage() {
   const submit = (e) => {
     e.preventDefault();
     fetcher.submit(
-      { gmailUser, gmailAppPassword, googleServiceAccountEmail: gsaEmail, googleServiceAccountPrivateKey: gsaKey, astroLeadsSpreadsheetId: sheetId },
+      {
+        gmailUser,
+        gmailAppPassword,
+        googleServiceAccountEmail: gsaEmail,
+        googleServiceAccountPrivateKey: gsaKey,
+        astroLeadsSpreadsheetId: sheetId,
+        wishlistEmailIntervalHours: wishlistInterval,
+      },
       { method: "POST" }
     );
   };
@@ -181,6 +191,25 @@ export default function SettingsPage() {
               value={sheetId}
               onChange={(e) => setSheetId(e.target.value)}
               placeholder="the long ID in the Sheet's URL"
+            />
+          </s-section>
+
+          <s-section heading="Wishlist email timing">
+            <s-paragraph>
+              Hours to wait after a customer's <s-text>last</s-text> wishlist change before emailing them — each new
+              change pushes this out again, so someone actively adding items all day gets one email once they've
+              gone quiet, not one per add. See the <s-link href="/app/wishlist-leads">Wishlist Leads</s-link> page's
+              "Send Due Emails Now" button to run a check immediately instead of waiting.
+            </s-paragraph>
+            <label style={labelStyle} htmlFor="wishlistInterval">Wait time (hours)</label>
+            <input
+              id="wishlistInterval"
+              style={{ ...fieldStyle, maxWidth: "120px" }}
+              type="number"
+              min="0"
+              step="0.5"
+              value={wishlistInterval}
+              onChange={(e) => setWishlistInterval(e.target.value)}
             />
           </s-section>
 
