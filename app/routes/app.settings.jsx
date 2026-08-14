@@ -26,7 +26,7 @@ import {
   DEFAULT_WHATSAPP_INTERVAL_UNIT,
 } from "../utils/appSettings.server";
 import { FALLBACK_LOGO_URL } from "../utils/astroAdvice.server";
-import { sendGemRecommendationWhatsApp } from "../utils/interakt.server";
+import { sendGemRecommendationWhatsApp, getOrCreateInteraktCampaignId } from "../utils/interakt.server";
 
 export const loader = async ({ request }) => {
   const { session } = await authenticate.admin(request);
@@ -77,13 +77,25 @@ export const action = async ({ request }) => {
     const testData = { name: "Test", phone };
     const submittedOn = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 
+    // Checked separately from the send itself (which also triggers this
+    // internally) purely for diagnostic visibility — a silently-failing
+    // best-effort step here is exactly what made "no leads showing in the
+    // Google Sheet" so hard to pin down earlier; this avoids repeating
+    // that with the Interakt API Campaign grouping.
+    let campaignStatus;
+    try {
+      campaignStatus = (await getOrCreateInteraktCampaignId(session.shop, settings)).status;
+    } catch (err) {
+      campaignStatus = "threw: " + String((err && err.message) || err);
+    }
+
     let status;
     try {
       status = await sendGemRecommendationWhatsApp(settings, testData, sampleRecommendation, trackingId, submittedOn, FALLBACK_LOGO_URL, session.shop);
     } catch (err) {
       status = "threw: " + String((err && err.message) || err);
     }
-    return { intent, ok: status.startsWith("OK"), status };
+    return { intent, ok: status.startsWith("OK"), status, campaignStatus };
   }
 
   // Blank secret fields mean "leave unchanged", not "clear" — merge with
@@ -341,9 +353,22 @@ export default function SettingsPage() {
                 </s-button>
               </div>
               {testFetcher.data?.intent === "sendTestWhatsapp" && (
-                <p style={{ ...hintStyle, marginTop: "8px", color: testFetcher.data.ok ? "#008060" : "#d82c0d" }}>
-                  {testFetcher.data.status || testFetcher.data.error}
-                </p>
+                <>
+                  <p style={{ ...hintStyle, marginTop: "8px", color: testFetcher.data.ok ? "#008060" : "#d82c0d" }}>
+                    Message: {testFetcher.data.status || testFetcher.data.error}
+                  </p>
+                  {testFetcher.data.campaignStatus && (
+                    <p
+                      style={{
+                        ...hintStyle,
+                        marginTop: "2px",
+                        color: testFetcher.data.campaignStatus.startsWith("OK") ? "#008060" : "#d82c0d",
+                      }}
+                    >
+                      API Campaign: {testFetcher.data.campaignStatus}
+                    </p>
+                  )}
+                </>
               )}
             </div>
 

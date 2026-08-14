@@ -161,19 +161,20 @@ async function createInteraktCampaign(apiKey, templateName) {
 export async function getOrCreateInteraktCampaignId(shop, settings) {
   const templateName = settings.interaktTemplateName || DEFAULT_INTERAKT_TEMPLATE_NAME;
   if (settings.interaktCampaignId && settings.interaktCampaignTemplateName === templateName) {
-    return settings.interaktCampaignId;
+    return { campaignId: settings.interaktCampaignId, status: "OK: reused existing campaign" };
   }
   const result = await createInteraktCampaign(settings.interaktApiKey, templateName);
   if (!result.ok) {
     console.error("[interakt] failed to create API campaign:", result.error);
-    return null;
+    return { campaignId: null, status: "FAILED: " + result.error };
   }
   try {
     await setInteraktCampaign(shop, result.campaignId, templateName);
   } catch (err) {
     console.error("[interakt] failed to persist campaign id:", err);
+    return { campaignId: result.campaignId, status: "OK: created (id: " + result.campaignId + ") but FAILED to save it — will recreate a new one next send: " + String((err && err.message) || err) };
   }
-  return result.campaignId;
+  return { campaignId: result.campaignId, status: "OK: created new campaign (id: " + result.campaignId + ")" };
 }
 
 const GEM_FALLBACK_TEXT = "Ask our expert";
@@ -285,7 +286,7 @@ export async function sendGemRecommendationWhatsApp(settings, data, recommendati
   const benefic = (recommendation && recommendation.benefic) || {};
   const lucky = (recommendation && recommendation.lucky) || {};
   const firstName = (data.name || "").split(" ")[0] || "there";
-  const campaignId = shop ? await getOrCreateInteraktCampaignId(shop, settings) : null;
+  const campaignId = shop ? (await getOrCreateInteraktCampaignId(shop, settings)).campaignId : null;
 
   const payload = buildGemRecommendationTemplatePayload({
     countryCode: split.countryCode,
