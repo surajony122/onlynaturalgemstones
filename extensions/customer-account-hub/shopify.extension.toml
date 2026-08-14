@@ -1,0 +1,26 @@
+# Learn more about configuring your Customer account UI extension:
+# https://shopify.dev/api/customer-account-ui-extensions/unstable/configuration
+
+# The version of APIs your extension will receive. Learn more:
+# https://shopify.dev/docs/api/usage/versioning
+api_version = "2026-07"
+
+[[extensions]]
+name = "customer-account-hub"
+handle = "customer-account-hub"
+type = "ui_extension"
+uid = "efab4e5c-9fea-9a30-70be-236e623d70e8f2c1c6c8"
+
+# Controls where in Shopify your extension will be injected,
+# and the file that contains your extension’s source code. Learn more:
+# https://shopify.dev/docs/api/customer-account-ui-extensions/unstable/extension-targets-overview
+
+[[extensions.targeting]]
+module = "./src/FullPageExtension.jsx"
+target = "customer-account.page.render"
+
+[extensions.capabilities]
+# network_access (not api_access) is what's needed here — this extension
+# calls OUR OWN app's backend (Render), not Shopify's Storefront API, to
+# read WishlistLead/AstroLead data. See app/routes/public.customer-account-data.jsx.
+network_access = true
