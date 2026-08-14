@@ -223,11 +223,26 @@ async function checkOrderProcessingNotifications() {
   }));
 }
 
+/** The definitive answer to "does Shopify actually call our webhook
+ * endpoint" — written unconditionally, before anything else runs, at the
+ * top of webhooks.orders.updated.jsx. Unlike checkRegisteredWebhooks
+ * (which queries an API that may not reflect TOML-declared "managed"
+ * webhooks at all) or checkOrderProcessingNotifications (silent for
+ * "fired but found nothing to do"), an empty list here can only mean one
+ * thing: the webhook never reached this server. */
+async function checkWebhookReceipts() {
+  const recent = await prisma.webhookReceiptLog.findMany({
+    orderBy: { receivedAt: "desc" },
+    take: 20,
+  });
+  return recent.map((r) => ({ ...r, receivedAt: r.receivedAt.toISOString() }));
+}
+
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const settings = await getAppSettings(session.shop);
 
-  const [database, shopifyAdmin, readThemes, readProducts, gmail, googleSheets, interakt, recentLeads, orderProcessingNotifications, registeredWebhooks] = await Promise.all([
+  const [database, shopifyAdmin, readThemes, readProducts, gmail, googleSheets, interakt, recentLeads, orderProcessingNotifications, registeredWebhooks, webhookReceipts] = await Promise.all([
     checkDatabase(),
     checkShopifyAdmin(admin),
     checkScope(
@@ -246,6 +261,7 @@ export const loader = async ({ request }) => {
     checkRecentLeads(),
     checkOrderProcessingNotifications(),
     checkRegisteredWebhooks(admin),
+    checkWebhookReceipts(),
   ]);
 
   return {
@@ -262,6 +278,7 @@ export const loader = async ({ request }) => {
     recentLeads,
     orderProcessingNotifications,
     registeredWebhooks,
+    webhookReceipts,
   };
 };
 
@@ -272,7 +289,7 @@ const th = { textAlign: "left", padding: "8px 10px", fontSize: "12px", color: "#
 const td = { padding: "8px 10px", fontSize: "13px", borderBottom: "1px solid #f1f2f3", verticalAlign: "top" };
 
 export default function ServerHealthPage() {
-  const { checkedAt, checks, recentLeads, orderProcessingNotifications, registeredWebhooks } = useLoaderData();
+  const { checkedAt, checks, recentLeads, orderProcessingNotifications, registeredWebhooks, webhookReceipts } = useLoaderData();
   const failingCount = checks.filter((c) => c.ok === false).length;
 
   return (
@@ -338,12 +355,44 @@ export default function ServerHealthPage() {
         )}
       </s-section>
 
-      <s-section heading="Registered webhooks">
+      <s-section heading="Webhook receipts (definitive)">
         <s-paragraph>
-          What Shopify actually has registered for this app right now — read live from Shopify, not from
-          shopify.app.toml (a TOML declaration only takes effect once <s-text>shopify app deploy</s-text> releases
-          it). If <s-text>orders/updated</s-text> isn't in this list, that's the real reason the order-processing
-          WhatsApp notification never fires, regardless of anything else being correctly configured.
+          Every real hit this server has received on <s-text>/webhooks/orders/updated</s-text> — logged
+          unconditionally, before anything else runs. Unlike the other checks below, an empty list here can only
+          mean one thing: Shopify never actually called this endpoint. If it's empty even after a real order was
+          marked "as in progress," the subscription itself isn't taking effect — worth a fresh{" "}
+          <s-text>shopify app deploy</s-text> or checking the Partner Dashboard directly.
+        </s-paragraph>
+        {webhookReceipts.length === 0 ? (
+          <s-paragraph>No webhook calls received yet.</s-paragraph>
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={th}>When</th>
+                <th style={th}>Topic</th>
+                <th style={th}>Order ID</th>
+              </tr>
+            </thead>
+            <tbody>
+              {webhookReceipts.map((r) => (
+                <tr key={r.id}>
+                  <td style={td}>{new Date(r.receivedAt).toLocaleString()}</td>
+                  <td style={td}>{r.topic}</td>
+                  <td style={td}>{r.orderId || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </s-section>
+
+      <s-section heading="Registered webhooks (unreliable for managed/TOML webhooks — see receipts above instead)">
+        <s-paragraph>
+          Queries Shopify's classic <s-text>webhookSubscriptions</s-text> API — turns out this does NOT reflect
+          TOML-declared "managed" webhooks (confirmed: it showed zero even for{" "}
+          <s-text>orders/create</s-text>, which demonstrably works today). Kept for reference, but the "Webhook
+          receipts" section above is the actual reliable answer.
         </s-paragraph>
         {!registeredWebhooks.ok ? (
           <s-paragraph>

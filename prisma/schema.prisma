@@ -189,6 +189,21 @@ model OrderProcessingNotification {
   notifiedAt DateTime @default(now())
 }
 
+// Append-only, unconditional log of every orders/updated webhook receipt
+// — written as the VERY FIRST thing in webhooks.orders.updated.jsx,
+// before the "already notified" check or any GraphQL call. Exists
+// purely to answer one question definitively: is Shopify even calling
+// our endpoint for real order events? (An empty OrderProcessingNotification
+// list is ambiguous — "webhook never fired" and "webhook fired but found
+// nothing to do" look identical there. This table isn't ambiguous.)
+model WebhookReceiptLog {
+  id         String   @id @default(cuid())
+  topic      String
+  shop       String?
+  orderId    String?
+  receivedAt DateTime @default(now())
+}
+
 // Per-shop configuration editable from the app's own Settings page
 // (app/routes/app.settings.jsx) — Gmail sending credentials and the
 // Google Sheets mirror target, previously only settable as Render

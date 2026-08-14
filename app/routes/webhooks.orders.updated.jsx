@@ -30,6 +30,20 @@ export const action = async ({ request }) => {
   const { shop, admin, payload, topic } = await authenticate.webhook(request);
   console.log(`Received ${topic} webhook for ${shop}, order ${payload?.id}`);
 
+  // Unconditional, before anything else can short-circuit or throw —
+  // answers "did Shopify even call this endpoint" definitively, since
+  // every other outcome (already-notified skip, GraphQL failure, no
+  // IN_PROGRESS found) looks identical to "never fired" from the
+  // OrderProcessingNotification table alone. See app.server-health.jsx's
+  // "Webhook receipts" section.
+  try {
+    await prisma.webhookReceiptLog.create({
+      data: { topic: topic || "unknown", shop: shop || null, orderId: payload?.id ? String(payload.id) : null },
+    });
+  } catch (err) {
+    console.error("[webhooks.orders.updated] failed to log receipt:", err);
+  }
+
   if (!admin) {
     // Session revoked/app uninstalled — nothing we can do.
     return new Response();
