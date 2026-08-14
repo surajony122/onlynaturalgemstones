@@ -10,6 +10,7 @@
  * shows a "•••• already set" placeholder instead, and leaving that field
  * blank on save keeps the existing value rather than clearing it.
  */
+import crypto from "node:crypto";
 import { useEffect, useState } from "react";
 import { useFetcher, useLoaderData } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
@@ -18,9 +19,12 @@ import { authenticate } from "../shopify.server";
 import {
   getRawAppSettingsRow,
   saveAppSettings,
+  getAppSettings,
   DEFAULT_WISHLIST_EMAIL_INTERVAL_HOURS,
   DEFAULT_INTERAKT_TEMPLATE_NAME,
 } from "../utils/appSettings.server";
+import { buildResultsPageUrl } from "../utils/astroAdvice.server";
+import { sendGemRecommendationWhatsApp } from "../utils/interakt.server";
 
 export const loader = async ({ request }) => {
   const { session } = await authenticate.admin(request);
@@ -51,6 +55,32 @@ export const loader = async ({ request }) => {
 export const action = async ({ request }) => {
   const { session } = await authenticate.admin(request);
   const formData = await request.formData();
+  const intent = formData.get("intent");
+
+  if (intent === "sendTestWhatsapp") {
+    const phone = formData.get("testPhone")?.trim();
+    if (!phone) return { intent, ok: false, error: "Enter a phone number first" };
+
+    const settings = await getAppSettings(session.shop);
+    // Sample data — not a real lead, just enough to exercise the exact
+    // same code path (and template) a real submission would use.
+    const sampleRecommendation = {
+      life: { gem: "Blue Sapphire", collection: "blue-sapphire" },
+      benefic: { gem: "Emerald", collection: "emerald" },
+      lucky: { gem: "Pearl", collection: "pearls" },
+    };
+    const trackingId = crypto.randomUUID();
+    const testData = { name: "Test", phone };
+    const resultsUrl = buildResultsPageUrl(testData, {}, sampleRecommendation);
+
+    let status;
+    try {
+      status = await sendGemRecommendationWhatsApp(settings, testData, sampleRecommendation, trackingId, resultsUrl);
+    } catch (err) {
+      status = "threw: " + String((err && err.message) || err);
+    }
+    return { intent, ok: status.startsWith("OK"), status };
+  }
 
   // Blank secret fields mean "leave unchanged", not "clear" — merge with
   // whatever's already saved so re-saving the non-secret fields doesn't
@@ -72,7 +102,7 @@ export const action = async ({ request }) => {
     interaktTemplateName: formData.get("interaktTemplateName")?.trim() || "",
   });
 
-  return { ok: true };
+  return { intent: "save", ok: true };
 };
 
 const fieldStyle = {
@@ -93,8 +123,10 @@ const hintStyle = { fontSize: "12px", color: "#6d7175", marginTop: "-12px", marg
 export default function SettingsPage() {
   const data = useLoaderData();
   const fetcher = useFetcher();
+  const testFetcher = useFetcher();
   const shopify = useAppBridge();
   const isSaving = fetcher.state === "submitting";
+  const isSendingTest = testFetcher.state !== "idle";
 
   const [gmailUser, setGmailUser] = useState(data.gmailUser);
   const [gmailAppPassword, setGmailAppPassword] = useState("");
@@ -104,15 +136,28 @@ export default function SettingsPage() {
   const [wishlistInterval, setWishlistInterval] = useState(data.wishlistEmailIntervalHours);
   const [interaktApiKey, setInteraktApiKey] = useState("");
   const [interaktTemplateName, setInteraktTemplateName] = useState(data.interaktTemplateName);
+  const [testPhone, setTestPhone] = useState("");
 
   useEffect(() => {
-    if (fetcher.data?.ok) {
+    if (fetcher.data?.intent === "save" && fetcher.data.ok) {
       shopify.toast.show("Settings saved");
       setGmailAppPassword("");
       setGsaKey("");
       setInteraktApiKey("");
     }
   }, [fetcher.data, shopify]);
+
+  useEffect(() => {
+    if (testFetcher.data?.intent === "sendTestWhatsapp") {
+      shopify.toast.show(testFetcher.data.status || (testFetcher.data.ok ? "Sent" : "Failed"), {
+        isError: !testFetcher.data.ok,
+      });
+    }
+  }, [testFetcher.data, shopify]);
+
+  const sendTestWhatsapp = () => {
+    testFetcher.submit({ intent: "sendTestWhatsapp", testPhone }, { method: "POST" });
+  };
 
   const submit = (e) => {
     e.preventDefault();
@@ -264,6 +309,33 @@ export default function SettingsPage() {
               onChange={(e) => setInteraktTemplateName(e.target.value)}
               placeholder={`${data.defaultInteraktTemplateName} (default if left blank)`}
             />
+
+            <div style={{ marginTop: "8px", padding: "12px", background: "#f6f6f7", borderRadius: "8px" }}>
+              <label style={labelStyle} htmlFor="testPhone">Send test WhatsApp message</label>
+              <p style={{ ...hintStyle, marginTop: "4px" }}>
+                Fires the real template (sample gem data) to this number via your saved Secret Key — save your
+                settings above first if you just entered the key. Only works once the template shows a green
+                "Approved" dot in Interakt.
+              </p>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <input
+                  id="testPhone"
+                  style={{ ...fieldStyle, marginBottom: 0, maxWidth: "220px" }}
+                  type="tel"
+                  value={testPhone}
+                  onChange={(e) => setTestPhone(e.target.value)}
+                  placeholder="9876543210 or +919876543210"
+                />
+                <s-button {...(isSendingTest ? { loading: true } : {})} onClick={sendTestWhatsapp}>
+                  Send Test
+                </s-button>
+              </div>
+              {testFetcher.data?.intent === "sendTestWhatsapp" && (
+                <p style={{ ...hintStyle, marginTop: "8px", color: testFetcher.data.ok ? "#008060" : "#d82c0d" }}>
+                  {testFetcher.data.status || testFetcher.data.error}
+                </p>
+              )}
+            </div>
           </s-section>
 
           <s-button {...(isSaving ? { loading: true } : {})} onClick={submit}>
