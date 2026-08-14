@@ -86,14 +86,21 @@ export const action = async ({ request }) => {
       return new Response();
     }
 
+    // fulfillmentOrders was tried here too (belt-and-suspenders with
+    // displayFulfillmentStatus) but turned out to need a scope this app
+    // doesn't have (read_merchant_managed_fulfillment_orders) — confirmed
+    // live via a real "Access denied for fulfillmentOrders field" error,
+    // which throws and kills the WHOLE query (same GraphQL behavior
+    // that's bitten this app before). Dropped entirely: adding that scope
+    // would require the merchant to re-approve permissions, and it's not
+    // needed anyway — displayFulfillmentStatus alone is the exact field
+    // driving the "In progress" badge in Shopify Admin, a plain Order
+    // field that needs nothing beyond the read_orders scope already held.
     const res = await admin.graphql(
       `#graphql
       query OrderFulfillmentStatus($id: ID!) {
         order(id: $id) {
           displayFulfillmentStatus
-          fulfillmentOrders(first: 10) {
-            nodes { status }
-          }
         }
       }`,
       { variables: { id: payload.admin_graphql_api_id } }
@@ -109,16 +116,11 @@ export const action = async ({ request }) => {
       return new Response();
     }
 
-    const fulfillmentOrderStatuses = (order.fulfillmentOrders?.nodes || []).map((fo) => fo.status);
     const displayStatus = order.displayFulfillmentStatus;
-    const isInProgress =
-      String(displayStatus).toUpperCase() === "IN_PROGRESS" ||
-      fulfillmentOrderStatuses.some((s) => String(s).toUpperCase() === "IN_PROGRESS");
+    const isInProgress = String(displayStatus).toUpperCase() === "IN_PROGRESS";
 
     if (!isInProgress) {
-      await setDetail(
-        `not in progress — displayFulfillmentStatus: ${displayStatus}, fulfillmentOrders: ${JSON.stringify(fulfillmentOrderStatuses)}`
-      );
+      await setDetail(`not in progress — displayFulfillmentStatus: ${displayStatus}`);
       return new Response();
     }
 
