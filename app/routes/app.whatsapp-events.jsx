@@ -208,14 +208,6 @@ export default function WhatsAppEventsPage() {
           </div>
         )}
       </s-section>
-
-      <s-section slot="aside" heading="Setup">
-        <s-paragraph>
-          Register <s-text>https://shubh-gems-customizer-app.onrender.com/public/interakt-webhook</s-text> in
-          Interakt → Settings → Developer Setting → Webhooks, and paste the same secret into our{" "}
-          <s-link href="/app/settings">Settings</s-link> page.
-        </s-paragraph>
-      </s-section>
     </s-page>
   );
 }
