@@ -176,6 +176,42 @@ async function checkRecentLeads() {
 // means the webhook never even reached the point of finding an
 // IN_PROGRESS fulfillment order for that order — check Render's logs for
 // "[webhooks.orders.updated]" lines to see exactly where it stopped.
+/** Lists what Shopify actually has registered for this app right now —
+ * settles "is the webhook really subscribed" definitively instead of
+ * guessing from shopify.app.toml (a TOML declaration only takes effect
+ * once `shopify app deploy` releases it, and even then it's worth
+ * confirming directly rather than assuming). */
+async function checkRegisteredWebhooks(admin) {
+  try {
+    const res = await withTimeout(
+      admin.graphql(`#graphql
+        query RegisteredWebhooks {
+          webhookSubscriptions(first: 50) {
+            nodes {
+              id
+              topic
+              endpoint {
+                __typename
+                ... on WebhookHttpEndpoint { callbackUrl }
+              }
+            }
+          }
+        }`),
+      8000,
+      "Webhook subscriptions"
+    );
+    const json = await res.json();
+    if (json.errors) return { ok: false, subscriptions: [], error: JSON.stringify(json.errors).slice(0, 300) };
+    const nodes = json?.data?.webhookSubscriptions?.nodes || [];
+    return {
+      ok: true,
+      subscriptions: nodes.map((n) => ({ topic: n.topic, url: n.endpoint?.callbackUrl || "(non-HTTP endpoint)" })),
+    };
+  } catch (err) {
+    return { ok: false, subscriptions: [], error: String(err?.message || err) };
+  }
+}
+
 async function checkOrderProcessingNotifications() {
   const recent = await prisma.orderProcessingNotification.findMany({
     orderBy: { notifiedAt: "desc" },
@@ -191,7 +227,7 @@ export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const settings = await getAppSettings(session.shop);
 
-  const [database, shopifyAdmin, readThemes, readProducts, gmail, googleSheets, interakt, recentLeads, orderProcessingNotifications] = await Promise.all([
+  const [database, shopifyAdmin, readThemes, readProducts, gmail, googleSheets, interakt, recentLeads, orderProcessingNotifications, registeredWebhooks] = await Promise.all([
     checkDatabase(),
     checkShopifyAdmin(admin),
     checkScope(
@@ -209,6 +245,7 @@ export const loader = async ({ request }) => {
     checkInterakt(settings),
     checkRecentLeads(),
     checkOrderProcessingNotifications(),
+    checkRegisteredWebhooks(admin),
   ]);
 
   return {
@@ -224,6 +261,7 @@ export const loader = async ({ request }) => {
     ],
     recentLeads,
     orderProcessingNotifications,
+    registeredWebhooks,
   };
 };
 
@@ -234,7 +272,7 @@ const th = { textAlign: "left", padding: "8px 10px", fontSize: "12px", color: "#
 const td = { padding: "8px 10px", fontSize: "13px", borderBottom: "1px solid #f1f2f3", verticalAlign: "top" };
 
 export default function ServerHealthPage() {
-  const { checkedAt, checks, recentLeads, orderProcessingNotifications } = useLoaderData();
+  const { checkedAt, checks, recentLeads, orderProcessingNotifications, registeredWebhooks } = useLoaderData();
   const failingCount = checks.filter((c) => c.ok === false).length;
 
   return (
@@ -293,6 +331,39 @@ export default function ServerHealthPage() {
                       </div>
                     ))}
                   </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </s-section>
+
+      <s-section heading="Registered webhooks">
+        <s-paragraph>
+          What Shopify actually has registered for this app right now — read live from Shopify, not from
+          shopify.app.toml (a TOML declaration only takes effect once <s-text>shopify app deploy</s-text> releases
+          it). If <s-text>orders/updated</s-text> isn't in this list, that's the real reason the order-processing
+          WhatsApp notification never fires, regardless of anything else being correctly configured.
+        </s-paragraph>
+        {!registeredWebhooks.ok ? (
+          <s-paragraph>
+            <s-text>Failed to check: {registeredWebhooks.error}</s-text>
+          </s-paragraph>
+        ) : registeredWebhooks.subscriptions.length === 0 ? (
+          <s-paragraph>No webhooks registered at all — unexpected, worth investigating.</s-paragraph>
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={th}>Topic</th>
+                <th style={th}>Callback URL</th>
+              </tr>
+            </thead>
+            <tbody>
+              {registeredWebhooks.subscriptions.map((s, i) => (
+                <tr key={i}>
+                  <td style={td}>{s.topic}</td>
+                  <td style={{ ...td, fontFamily: "monospace", fontSize: "11px" }}>{s.url}</td>
                 </tr>
               ))}
             </tbody>
