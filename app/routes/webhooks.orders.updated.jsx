@@ -40,15 +40,22 @@ export const action = async ({ request }) => {
 
   try {
     const already = await prisma.orderProcessingNotification.findUnique({ where: { orderId } });
-    if (already) return new Response(); // Already notified for this order — nothing to do.
+    if (already) {
+      console.log(`[webhooks.orders.updated] order ${orderId} already notified, skipping`);
+      return new Response();
+    }
 
+    // Only fulfillmentOrders.status is fetched via GraphQL — everything
+    // else (name/phone/customer) comes straight from the webhook's own
+    // REST payload, which definitely has them. Kept deliberately minimal:
+    // an invalid/unsupported field ANYWHERE in a GraphQL query fails the
+    // WHOLE query (confirmed the hard way earlier this session with
+    // Shop.brand), which would have silently killed this entire feature
+    // rather than just one field.
     const res = await admin.graphql(
       `#graphql
       query OrderFulfillmentStatus($id: ID!) {
         order(id: $id) {
-          name
-          phone
-          customer { firstName phone }
           fulfillmentOrders(first: 10) {
             nodes { status }
           }
@@ -57,18 +64,26 @@ export const action = async ({ request }) => {
       { variables: { id: payload.admin_graphql_api_id } }
     );
     const json = await res.json();
+    if (json.errors) {
+      console.error(`[webhooks.orders.updated] GraphQL errors for order ${orderId}:`, JSON.stringify(json.errors).slice(0, 500));
+      return new Response();
+    }
     const order = json?.data?.order;
-    if (!order) return new Response();
+    if (!order) {
+      console.error(`[webhooks.orders.updated] no order data returned for ${payload.admin_graphql_api_id}`);
+      return new Response();
+    }
 
-    const hasInProgress = (order.fulfillmentOrders?.nodes || []).some(
-      (fo) => String(fo.status).toUpperCase() === "IN_PROGRESS"
-    );
+    const statuses = (order.fulfillmentOrders?.nodes || []).map((fo) => fo.status);
+    const hasInProgress = statuses.some((s) => String(s).toUpperCase() === "IN_PROGRESS");
+    console.log(`[webhooks.orders.updated] order ${orderId} fulfillment order statuses: ${JSON.stringify(statuses)}`);
     if (!hasInProgress) return new Response();
 
     const settings = await getAppSettings(shop);
-    const phone = order.phone || order.customer?.phone || payload?.customer?.phone || payload?.phone || null;
-    const firstName = order.customer?.firstName || payload?.customer?.first_name || "";
-    const orderNumber = order.name || payload?.name || String(payload.order_number || payload.id);
+    const phone = payload?.phone || payload?.customer?.phone || payload?.shipping_address?.phone || payload?.billing_address?.phone || null;
+    const firstName = payload?.customer?.first_name || "";
+    const orderNumber = payload?.name || String(payload.order_number || payload.id);
+    console.log(`[webhooks.orders.updated] order ${orderId} IN_PROGRESS — sending to phone: ${phone || "(none found)"}`);
 
     let status;
     try {
@@ -77,6 +92,7 @@ export const action = async ({ request }) => {
       status = "threw: " + String((err && err.message) || err);
       console.error("[webhooks.orders.updated] send failed:", err);
     }
+    console.log(`[webhooks.orders.updated] order ${orderId} send result: ${status}`);
 
     // Recorded regardless of success/failure — a failed send (bad phone,
     // template not approved yet, etc.) shouldn't retry-spam the customer

@@ -169,11 +169,29 @@ async function checkRecentLeads() {
   };
 }
 
+// One row per order the "order processing" WhatsApp notification either
+// sent for, or attempted and failed for — see
+// webhooks.orders.updated.jsx. An EMPTY list here (after you've actually
+// marked a real order "as in progress") is itself the diagnostic: it
+// means the webhook never even reached the point of finding an
+// IN_PROGRESS fulfillment order for that order — check Render's logs for
+// "[webhooks.orders.updated]" lines to see exactly where it stopped.
+async function checkOrderProcessingNotifications() {
+  const recent = await prisma.orderProcessingNotification.findMany({
+    orderBy: { notifiedAt: "desc" },
+    take: 20,
+  });
+  return recent.map((n) => ({
+    ...n,
+    notifiedAt: n.notifiedAt.toISOString(),
+  }));
+}
+
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const settings = await getAppSettings(session.shop);
 
-  const [database, shopifyAdmin, readThemes, readProducts, gmail, googleSheets, interakt, recentLeads] = await Promise.all([
+  const [database, shopifyAdmin, readThemes, readProducts, gmail, googleSheets, interakt, recentLeads, orderProcessingNotifications] = await Promise.all([
     checkDatabase(),
     checkShopifyAdmin(admin),
     checkScope(
@@ -190,6 +208,7 @@ export const loader = async ({ request }) => {
     checkGoogleSheets(settings),
     checkInterakt(settings),
     checkRecentLeads(),
+    checkOrderProcessingNotifications(),
   ]);
 
   return {
@@ -204,6 +223,7 @@ export const loader = async ({ request }) => {
       { name: "Interakt (WhatsApp sending)", ...interakt },
     ],
     recentLeads,
+    orderProcessingNotifications,
   };
 };
 
@@ -214,7 +234,7 @@ const th = { textAlign: "left", padding: "8px 10px", fontSize: "12px", color: "#
 const td = { padding: "8px 10px", fontSize: "13px", borderBottom: "1px solid #f1f2f3", verticalAlign: "top" };
 
 export default function ServerHealthPage() {
-  const { checkedAt, checks, recentLeads } = useLoaderData();
+  const { checkedAt, checks, recentLeads, orderProcessingNotifications } = useLoaderData();
   const failingCount = checks.filter((c) => c.ok === false).length;
 
   return (
@@ -273,6 +293,39 @@ export default function ServerHealthPage() {
                       </div>
                     ))}
                   </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </s-section>
+
+      <s-section heading="Order Processing WhatsApp notifications">
+        <s-paragraph>
+          One row per order the webhook found IN_PROGRESS and attempted to notify — see{" "}
+          <s-text>webhooks.orders.updated.jsx</s-text>. An EMPTY list here, after you've actually marked a real
+          order "as in progress," is itself the diagnostic: it means the webhook either never fired from Shopify at
+          all, or fired but never found an IN_PROGRESS fulfillment order for that order.
+        </s-paragraph>
+        {orderProcessingNotifications.length === 0 ? (
+          <s-paragraph>No order-processing notifications recorded yet.</s-paragraph>
+        ) : (
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={th}>When</th>
+                <th style={th}>Order</th>
+                <th style={th}>Phone</th>
+                <th style={th}>Result</th>
+              </tr>
+            </thead>
+            <tbody>
+              {orderProcessingNotifications.map((n) => (
+                <tr key={n.id}>
+                  <td style={td}>{new Date(n.notifiedAt).toLocaleString()}</td>
+                  <td style={td}>{n.orderName || n.orderId}</td>
+                  <td style={td}>{n.phone || "—"}</td>
+                  <td style={{ ...td, color: n.status?.startsWith("OK") ? "#008060" : "#d82c0d" }}>{n.status || "—"}</td>
                 </tr>
               ))}
             </tbody>
