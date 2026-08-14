@@ -640,9 +640,15 @@ async function sendGemRecommendationEmail(admin, settings, data, birthDetails, r
     // debug=true awaits this whole chain sequentially, so an unbounded
     // hang here was still capable of stalling a debug test even after
     // that fix.
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 10000,
+    // 10s was too tight — real Gmail SMTP connections from Render were
+    // hitting it under normal conditions (confirmed via repeated debug
+    // tests all failing with "Connection timeout" the moment this was
+    // added). Loosened to 30s: still bounded (was previously unbounded/
+    // infinite), just not so tight it fails healthy-but-slightly-slow
+    // connections.
+    connectionTimeout: 30000,
+    greetingTimeout: 30000,
+    socketTimeout: 30000,
   });
 
   await transporter.sendMail({
