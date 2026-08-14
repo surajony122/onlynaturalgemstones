@@ -633,6 +633,16 @@ async function sendGemRecommendationEmail(admin, settings, data, birthDetails, r
   const transporter = nodemailer.createTransport({
     service: "gmail",
     auth: { user: settings.gmailUser, pass: settings.gmailAppPassword },
+    // None of these were set before — a stuck SMTP connection (network
+    // hiccup, Gmail rate-limiting, auth handshake issue) had no ceiling
+    // and could hang indefinitely, same class of bug just fixed for the
+    // Google Sheets calls (see googleSheets.server.js's withTimeout).
+    // debug=true awaits this whole chain sequentially, so an unbounded
+    // hang here was still capable of stalling a debug test even after
+    // that fix.
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 10000,
   });
 
   await transporter.sendMail({
