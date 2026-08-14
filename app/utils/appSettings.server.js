@@ -74,7 +74,24 @@ export async function getAppSettings(shop) {
   for (const field of FIELDS) {
     resolved[field] = (row && row[field]) || process.env[ENV_FALLBACK[field]] || "";
   }
+  // System-managed, not a Settings-page form field (no env fallback,
+  // never user-editable) — see getOrCreateInteraktCampaignId.
+  resolved.interaktCampaignId = (row && row.interaktCampaignId) || "";
+  resolved.interaktCampaignTemplateName = (row && row.interaktCampaignTemplateName) || "";
   return resolved;
+}
+
+/** Persists the auto-created Interakt API Campaign id + which template it
+ * was created for — system-managed (see getOrCreateInteraktCampaignId in
+ * interakt.server.js), not part of the generic Settings-page FIELDS/
+ * saveAppSettings flow, so it gets its own small setter, same pattern
+ * used elsewhere in this file for non-form fields. */
+export async function setInteraktCampaign(shop, campaignId, templateName) {
+  await prisma.appSettings.upsert({
+    where: { shop },
+    create: { shop, interaktCampaignId: campaignId, interaktCampaignTemplateName: templateName },
+    update: { interaktCampaignId: campaignId, interaktCampaignTemplateName: templateName },
+  });
 }
 
 /** Raw DB row only (no env fallback) — used by the Settings page itself

@@ -165,6 +165,19 @@ model AppSettings {
   // "gem_recommendation" if left blank, see DEFAULT_INTERAKT_TEMPLATE_NAME.
   interaktApiKey                 String?
   interaktTemplateName           String?
+  // Interakt "API Campaign" — groups every WhatsApp send under one
+  // campaign so sent/delivered/read stats show up in Interakt's own
+  // dashboard (Notifications -> API Campaigns) instead of only being
+  // visible one contact/conversation at a time. Created automatically
+  // (see app/utils/interakt.server.js's getOrCreateInteraktCampaignId)
+  // the first time a send happens after this is blank — interaktCampaignId
+  // is the UUID Interakt returns, interaktCampaignTemplateName records
+  // which template it was created for, so a later template-name change
+  // (e.g. switching to the Utility-category version) triggers creating a
+  // fresh campaign rather than silently tagging sends under a campaign
+  // that no longer matches the template actually being sent.
+  interaktCampaignId             String?
+  interaktCampaignTemplateName   String?
   // WhatsApp send pacing — spaces out ALL outgoing gem-recommendation
   // WhatsApp messages (across every lead, not per-customer) by at least
   // this long, instead of firing one the instant each lead submits.

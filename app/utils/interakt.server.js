@@ -13,12 +13,22 @@
  * not raw arbitrary text. See buildGemRecommendationTemplatePayload's
  * doc comment for the exact template to create in Interakt's UI.
  *
+ * Every send is tagged with an Interakt "API Campaign" id (see
+ * getOrCreateInteraktCampaignId) so sent/delivered/read stats show up
+ * grouped in Interakt's own dashboard under Notifications -> API
+ * Campaigns, instead of only being visible one contact/conversation at a
+ * time — that's the one piece of real analytics Interakt exposes for
+ * API-sent messages that we can't replicate ourselves (no delivered/read
+ * webhook wired up yet).
+ *
  * Docs referenced:
  *  https://www.interakt.shop/resource-center/how-to-send-whatsapp-templates-using-apis-webhooks/
+ *  https://www.interakt.shop/resource-center/api-campaign-on-whatsapp/
  */
-import { DEFAULT_INTERAKT_TEMPLATE_NAME } from "./appSettings.server";
+import { DEFAULT_INTERAKT_TEMPLATE_NAME, setInteraktCampaign } from "./appSettings.server";
 
 const INTERAKT_MESSAGE_URL = "https://api.interakt.ai/v1/public/message/";
+const INTERAKT_CREATE_CAMPAIGN_URL = "https://api.interakt.ai/v1/public/create-campaign/";
 
 // Duplicated (not imported) from astroAdvice.server.js's FALLBACK_LOGO_URL
 // deliberately — that module imports sendGemRecommendationWhatsApp from
@@ -96,6 +106,76 @@ async function sendInteraktTemplateMessage(apiKey, payload) {
   }
 }
 
+/**
+ * Creates a new Interakt "API Campaign" — required (per Interakt's docs)
+ * to be created via this API call, not from their dashboard UI. Requires
+ * a Growth or Advanced Interakt plan; on a lower plan this call fails and
+ * getOrCreateInteraktCampaignId below just proceeds without a campaignID
+ * (sends still work, they just won't group under Notifications -> API
+ * Campaigns in Interakt's dashboard).
+ */
+async function createInteraktCampaign(apiKey, templateName) {
+  try {
+    const res = await fetch(INTERAKT_CREATE_CAMPAIGN_URL, {
+      method: "POST",
+      headers: {
+        Authorization: "Basic " + apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        campaign_name: "gem-recommendation-" + templateName,
+        campaign_type: "PublicAPI",
+        template_name: templateName,
+        language_code: "en",
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const text = await res.text();
+    let body;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = { raw: text.slice(0, 300) };
+    }
+    if (!res.ok || !body?.result || !body?.data?.campaign_id) {
+      return { ok: false, error: `HTTP ${res.status} — ${JSON.stringify(body).slice(0, 300)}` };
+    }
+    return { ok: true, campaignId: body.data.campaign_id };
+  } catch (err) {
+    return { ok: false, error: String((err && err.message) || err) };
+  }
+}
+
+/**
+ * Returns a usable Interakt API Campaign id for the currently-configured
+ * template, creating one (and persisting it to AppSettings) the first
+ * time this ever runs, or again whenever the template name has changed
+ * since the stored campaign was created (e.g. switching from the
+ * Marketing template to a Utility one — a campaign is tied to one
+ * template, so a renamed/replaced template needs its own fresh campaign
+ * rather than silently tagging sends under a stale one). Best-effort: a
+ * creation failure (wrong plan tier, API hiccup) just means this send
+ * goes out without a campaignID — it still sends fine, it just won't be
+ * grouped in Interakt's dashboard.
+ */
+export async function getOrCreateInteraktCampaignId(shop, settings) {
+  const templateName = settings.interaktTemplateName || DEFAULT_INTERAKT_TEMPLATE_NAME;
+  if (settings.interaktCampaignId && settings.interaktCampaignTemplateName === templateName) {
+    return settings.interaktCampaignId;
+  }
+  const result = await createInteraktCampaign(settings.interaktApiKey, templateName);
+  if (!result.ok) {
+    console.error("[interakt] failed to create API campaign:", result.error);
+    return null;
+  }
+  try {
+    await setInteraktCampaign(shop, result.campaignId, templateName);
+  } catch (err) {
+    console.error("[interakt] failed to persist campaign id:", err);
+  }
+  return result.campaignId;
+}
+
 const GEM_FALLBACK_TEXT = "Ask our expert";
 
 /**
@@ -142,7 +222,7 @@ const GEM_FALLBACK_TEXT = "Ask our expert";
  *  {{4}} benefic stone gem name
  *  {{5}} lucky stone gem name
  */
-export function buildGemRecommendationTemplatePayload({ countryCode, phoneNumber, templateName, firstName, submittedOn, life, benefic, lucky, headerImageUrl, trackingId }) {
+export function buildGemRecommendationTemplatePayload({ countryCode, phoneNumber, templateName, firstName, submittedOn, life, benefic, lucky, headerImageUrl, trackingId, campaignId }) {
   const gemName = (stone) => (stone && stone.gem) || GEM_FALLBACK_TEXT;
 
   return {
@@ -153,6 +233,12 @@ export function buildGemRecommendationTemplatePayload({ countryCode, phoneNumber
     // status) — not used for anything today (no webhook handler wired up
     // yet), kept for when that gets built.
     callbackData: "astro-" + trackingId,
+    // Groups this send under an API Campaign in Interakt's own dashboard
+    // (Notifications -> API Campaigns) — real sent/delivered/read stats,
+    // not something we could otherwise show. Omitted (not sent as null)
+    // when campaign creation failed/isn't available on this Interakt
+    // plan — the send still works fine without it either way.
+    ...(campaignId ? { campaignID: campaignId } : {}),
     template: {
       name: templateName || DEFAULT_INTERAKT_TEMPLATE_NAME,
       languageCode: "en",
@@ -182,8 +268,12 @@ export function buildGemRecommendationTemplatePayload({ countryCode, phoneNumber
  * astroAdvice.server.js) from the lead's own createdAt, so a later resend
  * still shows the ORIGINAL request date, not whatever day the resend
  * happens to run.
+ *
+ * shop: needed only to persist a newly-created Interakt API Campaign id
+ * (see getOrCreateInteraktCampaignId) — every other lookup here already
+ * works off the resolved `settings` object.
  */
-export async function sendGemRecommendationWhatsApp(settings, data, recommendation, trackingId, submittedOn, headerImageUrl) {
+export async function sendGemRecommendationWhatsApp(settings, data, recommendation, trackingId, submittedOn, headerImageUrl, shop) {
   if (!settings.interaktApiKey) {
     return "skipped: Interakt API key not set (Settings page or INTERAKT_API_KEY env var)";
   }
@@ -195,6 +285,7 @@ export async function sendGemRecommendationWhatsApp(settings, data, recommendati
   const benefic = (recommendation && recommendation.benefic) || {};
   const lucky = (recommendation && recommendation.lucky) || {};
   const firstName = (data.name || "").split(" ")[0] || "there";
+  const campaignId = shop ? await getOrCreateInteraktCampaignId(shop, settings) : null;
 
   const payload = buildGemRecommendationTemplatePayload({
     countryCode: split.countryCode,
@@ -207,6 +298,7 @@ export async function sendGemRecommendationWhatsApp(settings, data, recommendati
     lucky,
     trackingId,
     headerImageUrl,
+    campaignId,
   });
 
   const result = await sendInteraktTemplateMessage(settings.interaktApiKey, payload);

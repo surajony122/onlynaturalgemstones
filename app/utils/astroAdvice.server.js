@@ -240,6 +240,7 @@ export async function handleAstroAdviceSubmission(admin, shop, data) {
           recommendation: recommendation || {},
           trackingId,
           createdAt: whatsappFirstSentAt,
+          shop,
         });
       } catch (waErr) {
         whatsappSendStatus = "threw: " + waErr;
@@ -603,7 +604,7 @@ export async function sendWhatsAppForLead(admin, settings, lead) {
   // customer actually asked, not when this particular message went out.
   const submittedOn = formatSubmittedOn(lead.createdAt);
 
-  return sendGemRecommendationWhatsApp(settings, data, lead.recommendation, lead.trackingId, submittedOn, FALLBACK_LOGO_URL);
+  return sendGemRecommendationWhatsApp(settings, data, lead.recommendation, lead.trackingId, submittedOn, FALLBACK_LOGO_URL, lead.shop);
 }
 
 async function sendGemRecommendationEmail(admin, settings, data, birthDetails, recommendation, trackingId) {

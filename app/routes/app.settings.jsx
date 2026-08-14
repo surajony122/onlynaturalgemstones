@@ -79,7 +79,7 @@ export const action = async ({ request }) => {
 
     let status;
     try {
-      status = await sendGemRecommendationWhatsApp(settings, testData, sampleRecommendation, trackingId, submittedOn, FALLBACK_LOGO_URL);
+      status = await sendGemRecommendationWhatsApp(settings, testData, sampleRecommendation, trackingId, submittedOn, FALLBACK_LOGO_URL, session.shop);
     } catch (err) {
       status = "threw: " + String((err && err.message) || err);
     }
