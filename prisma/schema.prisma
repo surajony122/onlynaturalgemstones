@@ -201,6 +201,12 @@ model WebhookReceiptLog {
   topic      String
   shop       String?
   orderId    String?
+  // Filled in AFTER the unconditional create (via a follow-up update) as
+  // processing proceeds — what fulfillment status was found, whether the
+  // "already notified" skip applied, GraphQL errors, etc. Null means
+  // processing never got past the initial receipt (crashed before the
+  // first update) — itself a useful signal.
+  detail     String?
   receivedAt DateTime @default(now())
 }
 

@@ -372,6 +372,7 @@ export default function ServerHealthPage() {
                 <th style={th}>When</th>
                 <th style={th}>Topic</th>
                 <th style={th}>Order ID</th>
+                <th style={th}>What happened</th>
               </tr>
             </thead>
             <tbody>
@@ -380,6 +381,9 @@ export default function ServerHealthPage() {
                   <td style={td}>{new Date(r.receivedAt).toLocaleString()}</td>
                   <td style={td}>{r.topic}</td>
                   <td style={td}>{r.orderId || "—"}</td>
+                  <td style={{ ...td, whiteSpace: "normal", fontSize: "11px", fontFamily: "monospace" }}>
+                    {r.detail || "(processing never completed — check Render logs)"}
+                  </td>
                 </tr>
               ))}
             </tbody>
