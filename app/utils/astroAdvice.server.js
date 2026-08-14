@@ -168,77 +168,90 @@ export async function handleAstroAdviceSubmission(admin, shop, data) {
     console.error("[astroAdvice] failed to save lead to database:", dbErr);
   }
 
-  // Best-effort mirror into Shopify — never allowed to affect the
-  // response sent back to the customer or the fact that the lead is
-  // already saved.
-  let shopifySyncStatus = "not run";
-  try {
-    shopifySyncStatus = await syncLeadToShopify(admin, data, birthDetails || {}, recommendation || {}, astroError);
-  } catch (syncErr) {
-    shopifySyncStatus = "threw: " + syncErr;
-    console.error("[astroAdvice] failed to sync lead to Shopify:", syncErr);
+  // Shopify sync, email, and WhatsApp are all "never allowed to affect
+  // the response sent to the customer" — but simply awaiting them one
+  // after another WAS still affecting it: three sequential network calls
+  // (Admin API writes, Gmail SMTP, Interakt's API) routinely pushed the
+  // whole request past Shopify App Proxy's response-time limit, which
+  // kills the connection with a 504 "Request timed out" — the customer
+  // never even got their (already fully computed, client-side) chart
+  // back. Fixed by actually decoupling them: this async function does
+  // all three, and the caller either awaits it (debug mode only, so
+  // manual testing can see real statuses) or fires it without awaiting
+  // (the real customer path) so the HTTP response goes out immediately
+  // after the lead is saved. Render's Node process stays alive between
+  // requests (unlike a serverless/Lambda platform), so this genuinely
+  // keeps running in the background rather than getting killed.
+  async function runBackgroundTasks() {
+    let shopifySyncStatus = "not run";
+    try {
+      shopifySyncStatus = await syncLeadToShopify(admin, data, birthDetails || {}, recommendation || {}, astroError);
+    } catch (syncErr) {
+      shopifySyncStatus = "threw: " + syncErr;
+      console.error("[astroAdvice] failed to sync lead to Shopify:", syncErr);
+    }
+
+    let emailSendStatus = "not run";
+    if (!astroError && data.email) {
+      try {
+        emailSendStatus = await sendGemRecommendationEmail(admin, settings, data, birthDetails || {}, recommendation || {}, trackingId);
+      } catch (emailErr) {
+        emailSendStatus = "threw: " + emailErr;
+        console.error("[astroAdvice] failed to send recommendation email:", emailErr);
+      }
+    } else if (!data.email) {
+      emailSendStatus = "skipped: no email on lead";
+    } else {
+      emailSendStatus = "skipped: astro calculation failed for this submission";
+    }
+
+    let whatsappSendStatus = "not run";
+    let whatsappFirstSentAt = null;
+    if (!astroError && data.phone) {
+      whatsappFirstSentAt = new Date();
+      try {
+        whatsappSendStatus = await sendWhatsAppForLead(admin, settings, {
+          name: data.name,
+          phone: data.phone,
+          dob: data.dob,
+          tob: data.tob,
+          placeOfBirth: data.placeOfBirth,
+          ascendant: (birthDetails && birthDetails.ascendant) || null,
+          recommendation: recommendation || {},
+          trackingId,
+        });
+      } catch (waErr) {
+        whatsappSendStatus = "threw: " + waErr;
+        console.error("[astroAdvice] failed to send recommendation WhatsApp message:", waErr);
+      }
+    } else if (!data.phone) {
+      whatsappSendStatus = "skipped: no phone on lead";
+    } else {
+      whatsappSendStatus = "skipped: astro calculation failed for this submission";
+    }
+
+    if (lead) {
+      try {
+        await prisma.astroLead.update({
+          where: { id: lead.id },
+          data: { shopifySyncStatus, emailSendStatus, whatsappSendStatus, whatsappFirstSentAt },
+        });
+      } catch (updateErr) {
+        console.error("[astroAdvice] failed to backfill sync/email status on lead row:", updateErr);
+      }
+    }
+
+    return { shopifySyncStatus, emailSendStatus, whatsappSendStatus };
   }
 
-  // Best-effort: email the personalised recommendation directly —
-  // bypassing Shopify Email entirely. Only when the chart actually
-  // resolved; astroError leads have already been saved above for manual
-  // follow-up.
-  let emailSendStatus = "not run";
-  if (!astroError && data.email) {
-    try {
-      emailSendStatus = await sendGemRecommendationEmail(admin, settings, data, birthDetails || {}, recommendation || {}, trackingId);
-    } catch (emailErr) {
-      emailSendStatus = "threw: " + emailErr;
-      console.error("[astroAdvice] failed to send recommendation email:", emailErr);
-    }
-  } else if (!data.email) {
-    emailSendStatus = "skipped: no email on lead";
+  let debugStatuses = null;
+  if (data.debug === true) {
+    debugStatuses = await runBackgroundTasks();
   } else {
-    emailSendStatus = "skipped: astro calculation failed for this submission";
-  }
-
-  // Best-effort: WhatsApp the same recommendation via Interakt, right
-  // alongside email — ALWAYS instant, no pacing/delay on this first
-  // message. If Settings → WhatsApp follow-up has a delay configured,
-  // whatsappFirstSentAt (recorded below) is what
-  // whatsappQueue.server.js's processWhatsAppQueue uses to know when a
-  // one-time reminder (same template, resent) becomes due for this lead.
-  // Only when the chart resolved and a phone number exists — never
-  // allowed to affect the response sent to the customer.
-  let whatsappSendStatus = "not run";
-  let whatsappFirstSentAt = null;
-  if (!astroError && data.phone) {
-    whatsappFirstSentAt = new Date();
-    try {
-      whatsappSendStatus = await sendWhatsAppForLead(admin, settings, {
-        name: data.name,
-        phone: data.phone,
-        dob: data.dob,
-        tob: data.tob,
-        placeOfBirth: data.placeOfBirth,
-        ascendant: (birthDetails && birthDetails.ascendant) || null,
-        recommendation: recommendation || {},
-        trackingId,
-      });
-    } catch (waErr) {
-      whatsappSendStatus = "threw: " + waErr;
-      console.error("[astroAdvice] failed to send recommendation WhatsApp message:", waErr);
-    }
-  } else if (!data.phone) {
-    whatsappSendStatus = "skipped: no phone on lead";
-  } else {
-    whatsappSendStatus = "skipped: astro calculation failed for this submission";
-  }
-
-  if (lead) {
-    try {
-      await prisma.astroLead.update({
-        where: { id: lead.id },
-        data: { shopifySyncStatus, emailSendStatus, whatsappSendStatus, whatsappFirstSentAt },
-      });
-    } catch (updateErr) {
-      console.error("[astroAdvice] failed to backfill sync/email status on lead row:", updateErr);
-    }
+    // Fire-and-forget — deliberately not awaited. Any error inside
+    // already logs to console; nothing here should ever reach an
+    // unhandled-rejection warning, but .catch is cheap insurance.
+    runBackgroundTasks().catch((err) => console.error("[astroAdvice] background tasks failed:", err));
   }
 
   if (astroError) {
@@ -250,9 +263,9 @@ export async function handleAstroAdviceSubmission(admin, shop, data) {
     };
     if (data.debug === true) {
       response.debugError = astroError;
-      response.shopifySyncStatus = shopifySyncStatus;
-      response.emailSendStatus = emailSendStatus;
-      response.whatsappSendStatus = whatsappSendStatus;
+      response.shopifySyncStatus = debugStatuses.shopifySyncStatus;
+      response.emailSendStatus = debugStatuses.emailSendStatus;
+      response.whatsappSendStatus = debugStatuses.whatsappSendStatus;
     }
     return response;
   }
@@ -268,9 +281,9 @@ export async function handleAstroAdviceSubmission(admin, shop, data) {
     chartSvg,
   };
   if (data.debug === true) {
-    successResponse.shopifySyncStatus = shopifySyncStatus;
-    successResponse.emailSendStatus = emailSendStatus;
-    successResponse.whatsappSendStatus = whatsappSendStatus;
+    successResponse.shopifySyncStatus = debugStatuses.shopifySyncStatus;
+    successResponse.emailSendStatus = debugStatuses.emailSendStatus;
+    successResponse.whatsappSendStatus = debugStatuses.whatsappSendStatus;
   }
   return successResponse;
 }

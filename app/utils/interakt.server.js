@@ -79,6 +79,11 @@ async function sendInteraktTemplateMessage(apiKey, payload) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(payload),
+      // Without this, a hung/slow third-party response has no ceiling —
+      // this call now runs in a fire-and-forget background task (see
+      // astroAdvice.server.js), not blocking the customer's own request,
+      // but an unbounded hang would still leave it running forever.
+      signal: AbortSignal.timeout(15000),
     });
     const text = await res.text();
     let body;
