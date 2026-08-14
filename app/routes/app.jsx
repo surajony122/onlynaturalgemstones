@@ -19,6 +19,7 @@ export default function App() {
         <s-link href="/app">Home</s-link>
         <s-link href="/app/astro-leads">Astro Leads</s-link>
         <s-link href="/app/wishlist-leads">Wishlist Leads</s-link>
+        <s-link href="/app/whatsapp-events">WhatsApp Events</s-link>
         <s-link href="/app/server-health">Server</s-link>
         <s-link href="/app/settings">Settings</s-link>
         <s-link href="/app/additional">Additional page</s-link>

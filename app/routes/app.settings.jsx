@@ -43,6 +43,7 @@ export const loader = async ({ request }) => {
     defaultInteraktTemplateName: DEFAULT_INTERAKT_TEMPLATE_NAME,
     whatsappIntervalValue: row?.whatsappIntervalValue || DEFAULT_WHATSAPP_INTERVAL_VALUE,
     whatsappIntervalUnit: row?.whatsappIntervalUnit || DEFAULT_WHATSAPP_INTERVAL_UNIT,
+    interaktWebhookSecretSet: !!row?.interaktWebhookSecret,
     // So the page can say which env vars are filling in for anything
     // not saved here yet.
     envFallback: {
@@ -106,6 +107,7 @@ export const action = async ({ request }) => {
   const googleServiceAccountPrivateKey =
     formData.get("googleServiceAccountPrivateKey")?.trim() || existing?.googleServiceAccountPrivateKey || "";
   const interaktApiKey = formData.get("interaktApiKey")?.trim() || existing?.interaktApiKey || "";
+  const interaktWebhookSecret = formData.get("interaktWebhookSecret")?.trim() || existing?.interaktWebhookSecret || "";
 
   await saveAppSettings(session.shop, {
     gmailUser: formData.get("gmailUser")?.trim() || "",
@@ -118,6 +120,7 @@ export const action = async ({ request }) => {
     interaktTemplateName: formData.get("interaktTemplateName")?.trim() || "",
     whatsappIntervalValue: formData.get("whatsappIntervalValue")?.trim() || "",
     whatsappIntervalUnit: formData.get("whatsappIntervalUnit")?.trim() || "",
+    interaktWebhookSecret,
   });
 
   return { intent: "save", ok: true };
@@ -157,6 +160,7 @@ export default function SettingsPage() {
   const [testPhone, setTestPhone] = useState("");
   const [whatsappIntervalValue, setWhatsappIntervalValue] = useState(data.whatsappIntervalValue);
   const [whatsappIntervalUnit, setWhatsappIntervalUnit] = useState(data.whatsappIntervalUnit);
+  const [interaktWebhookSecret, setInteraktWebhookSecret] = useState("");
 
   useEffect(() => {
     if (fetcher.data?.intent === "save" && fetcher.data.ok) {
@@ -164,6 +168,7 @@ export default function SettingsPage() {
       setGmailAppPassword("");
       setGsaKey("");
       setInteraktApiKey("");
+      setInteraktWebhookSecret("");
     }
   }, [fetcher.data, shopify]);
 
@@ -193,6 +198,7 @@ export default function SettingsPage() {
         interaktTemplateName,
         whatsappIntervalValue,
         whatsappIntervalUnit,
+        interaktWebhookSecret,
       },
       { method: "POST" }
     );
@@ -403,6 +409,31 @@ export default function SettingsPage() {
                   <option value="days">Days</option>
                 </select>
               </div>
+            </div>
+
+            <div style={{ marginTop: "12px" }}>
+              <label style={labelStyle}>Delivery/read tracking (webhook)</label>
+              <p style={{ ...hintStyle, marginTop: "4px" }}>
+                Interakt has no API to fetch campaign stats — the only way to see real sent/delivered/read status in
+                our own <s-link href="/app/whatsapp-events">WhatsApp Events</s-link> page is to receive their
+                webhook. In Interakt → Settings → Developer Setting → Webhooks, register this URL and pick any
+                secret (paste the same secret below — both sides must match):
+                <br />
+                <s-text>https://shubh-gems-customizer-app.onrender.com/public/interakt-webhook</s-text>
+              </p>
+              <label style={labelStyle} htmlFor="interaktWebhookSecret">
+                Webhook Secret{" "}
+                {data.interaktWebhookSecretSet ? "(●●●● already set — leave blank to keep it)" : "(not set yet)"}
+              </label>
+              <input
+                id="interaktWebhookSecret"
+                style={fieldStyle}
+                type="password"
+                autoComplete="new-password"
+                value={interaktWebhookSecret}
+                onChange={(e) => setInteraktWebhookSecret(e.target.value)}
+                placeholder={data.interaktWebhookSecretSet ? "•••• •••• •••• ••••" : "any secret string — pick one, match it in Interakt"}
+              />
             </div>
           </s-section>
 

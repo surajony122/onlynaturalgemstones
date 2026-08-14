@@ -18,6 +18,7 @@ const FIELDS = [
   "interaktTemplateName",
   "whatsappIntervalValue",
   "whatsappIntervalUnit",
+  "interaktWebhookSecret",
 ];
 
 const ENV_FALLBACK = {
@@ -31,6 +32,7 @@ const ENV_FALLBACK = {
   interaktTemplateName: "INTERAKT_GEM_TEMPLATE_NAME",
   whatsappIntervalValue: "WHATSAPP_INTERVAL_VALUE",
   whatsappIntervalUnit: "WHATSAPP_INTERVAL_UNIT",
+  interaktWebhookSecret: "INTERAKT_WEBHOOK_SECRET",
 };
 
 // How long AFTER a lead's first (automatic, instant-on-submit) WhatsApp

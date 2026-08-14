@@ -126,6 +126,43 @@ model EmailEvent {
   @@index([trackingId])
 }
 
+// One row per Interakt webhook delivery/read status event for a WhatsApp
+// template message — see app/routes/public.interakt-webhook.jsx and
+// app/routes/app.whatsapp-events.jsx. Interakt has no "fetch campaign
+// stats" API (confirmed via their docs) — the ONLY way to get real
+// delivered/read status into our own app is to receive their webhook and
+// log it ourselves, same reasoning EmailEvent already established for
+// email open/click tracking. Deliberately NOT a foreign key to
+// AstroLead.trackingId, same reasoning as EmailEvent — a malformed/stale
+// trackingId (parsed from Interakt's callback_data) must log harmlessly
+// rather than reject the insert.
+model WhatsAppMessageEvent {
+  id            String   @id @default(cuid())
+  // Interakt's own message id (data.message.id in the webhook payload) —
+  // unique per actual API send, so multiple events (Sent, then
+  // Delivered, then Read) for the SAME message share this.
+  messageId     String
+  // Parsed from data.message.meta_data.source_data.callback_data (we set
+  // this to "astro-<trackingId>" on every send — see
+  // interakt.server.js's buildGemRecommendationTemplatePayload) — our own
+  // correlation key back to the AstroLead this message belongs to.
+  trackingId    String?
+  phone         String?
+  // "Sent" | "Delivered" | "Read" | "Failed" — Interakt's own
+  // data.message.message_status value, used as-is rather than remapped.
+  status        String
+  failureReason String?
+  // The webhook "type" field verbatim (message_api_sent/_delivered/
+  // _read/_failed) — kept alongside `status` since it's what actually
+  // distinguishes the event type when message_status string casing/
+  // wording ever varies.
+  eventType     String
+  receivedAt    DateTime @default(now())
+
+  @@index([trackingId])
+  @@index([messageId])
+}
+
 // Per-shop configuration editable from the app's own Settings page
 // (app/routes/app.settings.jsx) — Gmail sending credentials and the
 // Google Sheets mirror target, previously only settable as Render
@@ -178,6 +215,13 @@ model AppSettings {
   // that no longer matches the template actually being sent.
   interaktCampaignId             String?
   interaktCampaignTemplateName   String?
+  // Secret entered when registering our webhook URL in Interakt ->
+  // Developer Settings -> Webhooks (their side generates/you choose it,
+  // both sides must have the same value) — used to verify the
+  // Interakt-Signature header (HMAC-SHA256 of the raw request body) on
+  // every incoming webhook, so a request claiming to be Interakt can't be
+  // spoofed. See app/routes/public.interakt-webhook.jsx.
+  interaktWebhookSecret          String?
   // WhatsApp send pacing — spaces out ALL outgoing gem-recommendation
   // WhatsApp messages (across every lead, not per-customer) by at least
   // this long, instead of firing one the instant each lead submits.
