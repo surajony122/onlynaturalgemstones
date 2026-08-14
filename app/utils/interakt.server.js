@@ -113,9 +113,10 @@ const GEM_FALLBACK_TEXT = "Ask our expert";
  *
  * Header: Image (no header variable text — Interakt/Meta send the actual
  *   image via headerValues[0] on every call, a real media URL, not a
- *   caption). This app sends the recommended Life Stone's own collection
- *   photo here — real per-customer personalisation — falling back to the
- *   store logo if that collection has no image set.
+ *   caption). This app always sends the store logo here (tried the
+ *   recommended stone's own collection photo instead; reverted per
+ *   explicit request — headerImageUrl is passed in by the caller but
+ *   every current caller passes FALLBACK_LOGO_URL).
  *
  * Body:
  *   Hi {{1}}! 💎
@@ -144,25 +145,26 @@ const GEM_FALLBACK_TEXT = "Ask our expert";
  *
  * ---- Variable mapping ----
  *  {{1}} first name
- *  {{2}} life stone gem name        {{3}} link to browse all collections
- *  {{4}} benefic stone gem name     {{5}} link to browse all collections
- *  {{6}} lucky stone gem name       {{7}} link to browse all collections
+ *  {{2}} life stone gem name        {{3}} that stone's own collection link
+ *  {{4}} benefic stone gem name     {{5}} that stone's own collection link
+ *  {{6}} lucky stone gem name       {{7}} that stone's own collection link
  *
- * {{3}}/{{5}}/{{7}} deliberately all point at the general /collections
- * page rather than each stone's own specific collection — reads as
- * "here's where you can browse," not "buy THIS exact product," which
- * matters for Utility-category template review (Marketing-leaning
- * per-product purchase links are a common reason Meta pushes a template
- * back to Marketing). Since this only changes what fills an already-
- * approved template's variables (not the template's structure), it
- * takes effect on the very next send — no Interakt/Meta resubmission
- * needed.
+ * {{3}}/{{5}}/{{7}} are each stone's OWN specific collection (not a
+ * generic "browse everything" link — tried that, reverted per explicit
+ * request: specificity is more useful, kept). What actually matters for
+ * Utility-category review is the FRAMING, not which collection it points
+ * to — the body never uses purchase-directed copy like "Buy Now" or
+ * "Shop Sale", just the stone's name plainly followed by its link, which
+ * reads as reference information rather than a sales CTA. Since this only
+ * changes what fills an already-approved template's variables (not the
+ * template's structure), any tweak here takes effect on the very next
+ * send — no Interakt/Meta resubmission needed.
  */
 export function buildGemRecommendationTemplatePayload({ countryCode, phoneNumber, templateName, firstName, life, benefic, lucky, trackingId, resultsUrl, headerImageUrl }) {
-  const ALL_COLLECTIONS_URL = "https://" + STORE_DOMAIN + "/collections";
   const stoneLine = (stone) => {
-    if (!stone || !stone.gem) return { name: GEM_FALLBACK_TEXT, url: ALL_COLLECTIONS_URL };
-    return { name: stone.gem, url: ALL_COLLECTIONS_URL };
+    if (!stone || !stone.gem) return { name: GEM_FALLBACK_TEXT, url: "https://" + STORE_DOMAIN };
+    const url = stone.collection ? "https://" + STORE_DOMAIN + "/collections/" + stone.collection : "https://" + STORE_DOMAIN;
+    return { name: stone.gem, url };
   };
 
   const lifeLine = stoneLine(life);
