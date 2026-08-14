@@ -32,7 +32,7 @@ import { getAppSettings } from "./appSettings.server";
 // The storefront's real customer-facing domain (not the *.myshopify.com
 // admin domain) — used to build the results-page link embedded in the
 // recommendation email. Matches STORE_DOMAIN in the old Code.gs.
-const STORE_DOMAIN = "onlynaturalgemstones.com";
+export const STORE_DOMAIN = "onlynaturalgemstones.com";
 
 // Maps AstrologyAPI's basic_gem_suggestion "gem_key" values to this
 // store's actual Shopify collection handles — identical to Code.gs's
@@ -433,7 +433,7 @@ async function shopifyAdminGraphQL(admin, query, variables) {
  * "view_full_recommendation") — so a click event records not just that
  * something was clicked, but exactly which button. See track.$type.jsx.
  */
-function trackedClickUrl(appUrl, trackingId, destination, label) {
+export function trackedClickUrl(appUrl, trackingId, destination, label) {
   if (!appUrl) return destination;
   return (
     appUrl +
@@ -523,7 +523,7 @@ function buildResultsPageUrl(data, birthDetails, recommendation) {
   return "https://" + STORE_DOMAIN + "/pages/my-gem-recommendation?data=" + encoded;
 }
 
-function esc(str) {
+export function esc(str) {
   return String(str || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
@@ -576,7 +576,7 @@ async function shopifyAdminGraphQLSimple(admin, query, variables) {
 // unset in Shopify. Removing the bad field fixes all of it at once.
 const FALLBACK_LOGO_URL = "https://onlynaturalgemstones.com/cdn/shop/files/ONG_logo_home.png";
 
-async function getShopFooterInfo(admin) {
+export async function getShopFooterInfo(admin) {
   if (shopFooterInfoCache && shopFooterInfoCache.expiresAt > Date.now()) {
     return shopFooterInfoCache.value;
   }
@@ -782,7 +782,7 @@ function stoneCard(label, stone, collectionImages, trackingCtx) {
  * address, website/email/phone row, a social-links row (only shown if
  * any are configured), and a small links row.
  */
-function footerHtml(shopInfo, trackingCtx) {
+export function footerHtml(shopInfo, trackingCtx) {
   const t = (url, label) => trackedClickUrl(trackingCtx.appUrl, trackingCtx.trackingId, url, label);
 
   const socialRow = shopInfo.socialLinks?.length

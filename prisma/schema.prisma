@@ -128,3 +128,23 @@ model AppSettings {
   astroLeadsSpreadsheetId        String?
   updatedAt                      DateTime @updatedAt
 }
+
+// One row per wishlist email sent — mirrors AstroLead's shape but for
+// the wishlist "here's what you saved" email (see
+// app/routes/proxy.wishlist-sync.jsx). The wishlist's existing sync to
+// Shopify (tag/note via the hidden native customer form in theme.liquid)
+// is untouched — this is purely additive, just the email + tracking
+// piece layered on top. EmailEvent rows (sent/opened/clicked) are shared
+// with AstroLead, cross-referenced by trackingId the same way.
+model WishlistLead {
+  id              String   @id @default(cuid())
+  trackingId      String   @unique
+  shop            String?
+  createdAt       DateTime @default(now())
+  email           String?
+  phone           String?
+  // Product handles wishlisted at the moment this sync fired — the full
+  // list, not a diff (matches how the client's own debounced sync works).
+  productHandles  Json?
+  emailSendStatus String?
+}
