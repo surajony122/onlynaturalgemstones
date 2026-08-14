@@ -144,15 +144,25 @@ const GEM_FALLBACK_TEXT = "Ask our expert";
  *
  * ---- Variable mapping ----
  *  {{1}} first name
- *  {{2}} life stone gem name        {{3}} life stone collection link
- *  {{4}} benefic stone gem name     {{5}} benefic stone collection link
- *  {{6}} lucky stone gem name       {{7}} lucky stone collection link
+ *  {{2}} life stone gem name        {{3}} link to browse all collections
+ *  {{4}} benefic stone gem name     {{5}} link to browse all collections
+ *  {{6}} lucky stone gem name       {{7}} link to browse all collections
+ *
+ * {{3}}/{{5}}/{{7}} deliberately all point at the general /collections
+ * page rather than each stone's own specific collection — reads as
+ * "here's where you can browse," not "buy THIS exact product," which
+ * matters for Utility-category template review (Marketing-leaning
+ * per-product purchase links are a common reason Meta pushes a template
+ * back to Marketing). Since this only changes what fills an already-
+ * approved template's variables (not the template's structure), it
+ * takes effect on the very next send — no Interakt/Meta resubmission
+ * needed.
  */
 export function buildGemRecommendationTemplatePayload({ countryCode, phoneNumber, templateName, firstName, life, benefic, lucky, trackingId, resultsUrl, headerImageUrl }) {
+  const ALL_COLLECTIONS_URL = "https://" + STORE_DOMAIN + "/collections";
   const stoneLine = (stone) => {
-    if (!stone || !stone.gem) return { name: GEM_FALLBACK_TEXT, url: "https://" + STORE_DOMAIN };
-    const url = stone.collection ? "https://" + STORE_DOMAIN + "/collections/" + stone.collection : "https://" + STORE_DOMAIN;
-    return { name: stone.gem, url };
+    if (!stone || !stone.gem) return { name: GEM_FALLBACK_TEXT, url: ALL_COLLECTIONS_URL };
+    return { name: stone.gem, url: ALL_COLLECTIONS_URL };
   };
 
   const lifeLine = stoneLine(life);
