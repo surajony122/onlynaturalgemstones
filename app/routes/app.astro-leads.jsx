@@ -252,49 +252,50 @@ function WhatsAppQueueSection({ whatsappQueue }) {
   const processQueue = () => fetcher.submit({ intent: "processQueue" }, { method: "POST" });
 
   return (
-    <s-section heading="WhatsApp send queue">
+    <s-section heading="WhatsApp follow-up reminders">
       <p style={{ margin: "0 0 8px", fontSize: "13px" }}>
-        {whatsappQueue.pacingEnabled ? (
+        First message always sends instantly on submission.{" "}
+        {whatsappQueue.followUpEnabled ? (
           <>
-            Pacing is <s-text>on</s-text> ({whatsappQueue.queued.length} lead{whatsappQueue.queued.length === 1 ? "" : "s"}{" "}
-            waiting)
-            {whatsappQueue.nextSendAt ? ` · next send ~${new Date(whatsappQueue.nextSendAt).toLocaleString()}` : ""}
+            Follow-up reminder is <s-text>on</s-text> ({whatsappQueue.pending.length} lead
+            {whatsappQueue.pending.length === 1 ? "" : "s"} waiting)
+            {whatsappQueue.nextDue ? ` · next due ~${new Date(whatsappQueue.nextDue).toLocaleString()}` : ""}
             {" · "}
             <a href="/app/settings" style={{ color: "#2c6ecb" }}>change in Settings</a>
           </>
         ) : (
           <>
-            Pacing is <s-text>off</s-text> — WhatsApp sends immediately on submission.{" "}
+            Follow-up reminder is <s-text>off</s-text>.{" "}
             <a href="/app/settings" style={{ color: "#2c6ecb" }}>turn it on in Settings</a>
           </>
         )}
       </p>
       <button type="button" style={smallBtn} onClick={processQueue} disabled={busy}>
-        {busy ? "Checking…" : "Process Queue Now"}
+        {busy ? "Checking…" : "Process Follow-ups Now"}
       </button>
       {result && (
         <p style={{ margin: "8px 0 0", fontSize: "12px", color: result.ok ? "#008060" : "#d82c0d" }}>
           {result.ok
             ? result.sent > 0
-              ? `Sent ${result.sent} message${result.sent === 1 ? "" : "s"}.`
-              : result.note || "Nothing to send right now."
+              ? `Sent ${result.sent} follow-up${result.sent === 1 ? "" : "s"}.`
+              : result.note || "Nothing due right now."
             : result.error}
         </p>
       )}
-      {whatsappQueue.queued.length > 0 && (
+      {whatsappQueue.pending.length > 0 && (
         <div style={{ marginTop: "10px", overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
-                <th style={th}>Queued since</th>
+                <th style={th}>First sent</th>
                 <th style={th}>Name</th>
                 <th style={th}>Phone</th>
               </tr>
             </thead>
             <tbody>
-              {whatsappQueue.queued.map((l) => (
+              {whatsappQueue.pending.map((l) => (
                 <tr key={l.id}>
-                  <td style={td}>{new Date(l.createdAt).toLocaleString()}</td>
+                  <td style={td}>{new Date(l.whatsappFirstSentAt).toLocaleString()}</td>
                   <td style={td}>{l.name || "—"}</td>
                   <td style={td}>{l.phone || "—"}</td>
                 </tr>

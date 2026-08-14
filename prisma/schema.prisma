@@ -89,6 +89,18 @@ model AstroLead {
   // on the Astro Leads dashboard. Null/empty means it was never
   // attempted (e.g. no phone on the lead, or Interakt not configured yet).
   whatsappSendStatus String?
+  // When the automatic "first" WhatsApp send was attempted (set by
+  // handleAstroAdviceSubmission, success or failure — either way that's
+  // when the clock starts for the follow-up window). Null means either
+  // no phone was on the lead, or this row predates the follow-up feature.
+  whatsappFirstSentAt    DateTime?
+  // Result + timestamp of the automatic follow-up reminder (same
+  // template, resent once, after AppSettings.whatsappIntervalValue/Unit
+  // has passed since whatsappFirstSentAt) — see
+  // app/utils/whatsappQueue.server.js. Null whatsappFollowUpSentAt means
+  // not sent yet (still pending, or follow-ups are turned off).
+  whatsappFollowUpStatus String?
+  whatsappFollowUpSentAt DateTime?
   // Free-text internal note, editable by staff on the Astro Leads
   // dashboard — never shown to the customer, purely for team use
   // (e.g. "called, not interested" / "followed up via WhatsApp").

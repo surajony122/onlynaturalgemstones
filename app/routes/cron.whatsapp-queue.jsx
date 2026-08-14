@@ -2,18 +2,16 @@
  * Free-tier alternative to a paid Render Cron Job (same pattern as
  * cron.cleanup.jsx / cron.wishlist-email.jsx): hit this URL periodically
  * from a free external scheduler (cron-job.org, GitHub Actions, etc.) to
- * advance the WhatsApp send queue — see processWhatsAppQueue in
- * whatsappQueue.server.js for the actual pacing logic.
+ * send any WhatsApp follow-up reminders that have come due — see
+ * processWhatsAppQueue in whatsappQueue.server.js. The FIRST WhatsApp
+ * message always sends instantly at submission time, no cron needed for
+ * that part; this only covers the optional one-time follow-up.
  *
  *   GET /cron/whatsapp-queue?secret=<CRON_SECRET>
  *
- * Unlike cron.wishlist-email.jsx, HOW OFTEN you ping this matters — each
- * call only ever sends at most one message, so if your pacing interval
- * is e.g. "5 minutes", ping this at least every ~5 minutes (pinging more
- * often than the interval is harmless — most calls will just report
- * "Not due yet"). If your scheduler's shortest interval is coarser than
- * what you set here, the queue will simply drain slower than configured,
- * never faster.
+ * Ping this at least as often as your configured follow-up delay (e.g.
+ * every ~30 min for a 24-hour delay is plenty) — pinging more often is
+ * harmless, it just finds nothing due yet.
  */
 import shopify from "../shopify.server";
 import db from "../db.server";

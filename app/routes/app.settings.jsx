@@ -348,17 +348,15 @@ export default function SettingsPage() {
             </div>
 
             <div style={{ marginTop: "12px" }}>
-              <label style={labelStyle}>WhatsApp send pacing</label>
+              <label style={labelStyle}>WhatsApp follow-up reminder</label>
               <p style={{ ...hintStyle, marginTop: "4px" }}>
-                Space out outgoing WhatsApp messages by at least this long instead of sending the instant each lead
-                submits — leads queue up and go out one at a time. This is the main way to avoid WhatsApp's error
-                131049 ("didn't deliver due to their per-user limit on marketing notifications"), which a brand-new
-                sender number is prone to when bursting messages; pacing gradually is what actually builds up your
-                sender quality rating. Set to <s-text>0</s-text> to turn pacing off and send immediately (the
-                original behaviour). Requires an external scheduler pinging{" "}
-                <s-text>/cron/whatsapp-queue?secret=…</s-text> at least as often as the interval below to drain the
-                queue automatically (same setup as the wishlist email cron) — the{" "}
-                <s-link href="/app/astro-leads">Astro Leads</s-link> page also has a manual "Process Queue Now"
+                The first WhatsApp message always sends <s-text>instantly</s-text> the moment a lead submits — this
+                setting adds an optional SECOND message (the same template, resent as a reminder) sent once this
+                much time has passed since that first message, for any lead who has one. Set to <s-text>0</s-text>{" "}
+                to turn the follow-up off entirely — only the instant first message will send. Requires an external
+                scheduler pinging <s-text>/cron/whatsapp-queue?secret=…</s-text> at least as often as the delay
+                below to send follow-ups automatically (same setup as the wishlist email cron) — the{" "}
+                <s-link href="/app/astro-leads">Astro Leads</s-link> page also has a manual "Process Follow-ups Now"
                 button that works regardless.
               </p>
               <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>

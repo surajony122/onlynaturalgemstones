@@ -27,7 +27,7 @@ import crypto from "node:crypto";
 import nodemailer from "nodemailer";
 import prisma from "../db.server";
 import { mirrorLeadToSheet, mirrorEmailEventToSheet } from "./googleSheets.server";
-import { getAppSettings, whatsappIntervalMs } from "./appSettings.server";
+import { getAppSettings } from "./appSettings.server";
 import { sendGemRecommendationWhatsApp } from "./interakt.server";
 
 // The storefront's real customer-facing domain (not the *.myshopify.com
@@ -198,32 +198,31 @@ export async function handleAstroAdviceSubmission(admin, shop, data) {
   }
 
   // Best-effort: WhatsApp the same recommendation via Interakt, right
-  // alongside email — unless pacing (Settings → WhatsApp send pacing) is
-  // on, in which case this just gets QUEUED (whatsappQueue.server.js's
-  // processWhatsAppQueue actually sends it once its turn comes, respecting
-  // the configured gap between sends across all leads). Only when the
-  // chart resolved and a phone number exists — never allowed to affect
-  // the response sent to the customer.
+  // alongside email — ALWAYS instant, no pacing/delay on this first
+  // message. If Settings → WhatsApp follow-up has a delay configured,
+  // whatsappFirstSentAt (recorded below) is what
+  // whatsappQueue.server.js's processWhatsAppQueue uses to know when a
+  // one-time reminder (same template, resent) becomes due for this lead.
+  // Only when the chart resolved and a phone number exists — never
+  // allowed to affect the response sent to the customer.
   let whatsappSendStatus = "not run";
+  let whatsappFirstSentAt = null;
   if (!astroError && data.phone) {
-    if (whatsappIntervalMs(settings) > 0) {
-      whatsappSendStatus = "queued: waiting for pacing window";
-    } else {
-      try {
-        whatsappSendStatus = await sendWhatsAppForLead(admin, settings, {
-          name: data.name,
-          phone: data.phone,
-          dob: data.dob,
-          tob: data.tob,
-          placeOfBirth: data.placeOfBirth,
-          ascendant: (birthDetails && birthDetails.ascendant) || null,
-          recommendation: recommendation || {},
-          trackingId,
-        });
-      } catch (waErr) {
-        whatsappSendStatus = "threw: " + waErr;
-        console.error("[astroAdvice] failed to send recommendation WhatsApp message:", waErr);
-      }
+    whatsappFirstSentAt = new Date();
+    try {
+      whatsappSendStatus = await sendWhatsAppForLead(admin, settings, {
+        name: data.name,
+        phone: data.phone,
+        dob: data.dob,
+        tob: data.tob,
+        placeOfBirth: data.placeOfBirth,
+        ascendant: (birthDetails && birthDetails.ascendant) || null,
+        recommendation: recommendation || {},
+        trackingId,
+      });
+    } catch (waErr) {
+      whatsappSendStatus = "threw: " + waErr;
+      console.error("[astroAdvice] failed to send recommendation WhatsApp message:", waErr);
     }
   } else if (!data.phone) {
     whatsappSendStatus = "skipped: no phone on lead";
@@ -235,7 +234,7 @@ export async function handleAstroAdviceSubmission(admin, shop, data) {
     try {
       await prisma.astroLead.update({
         where: { id: lead.id },
-        data: { shopifySyncStatus, emailSendStatus, whatsappSendStatus },
+        data: { shopifySyncStatus, emailSendStatus, whatsappSendStatus, whatsappFirstSentAt },
       });
     } catch (updateErr) {
       console.error("[astroAdvice] failed to backfill sync/email status on lead row:", updateErr);
@@ -533,12 +532,14 @@ export function trackedClickUrl(appUrl, trackingId, destination, label) {
  * AstroLead-shaped row — accepts either a real Prisma AstroLead or the
  * equivalent plain object built at submission time (same field names:
  * name/phone/dob/tob/placeOfBirth/ascendant/recommendation/trackingId).
- * One shared implementation used by all three places a WhatsApp send can
- * happen: the original submission (when pacing is off), resendAstroLeadEmail
- * ("Send Now", which always bypasses pacing), and the paced queue
- * processor (whatsappQueue.server.js). Never throws — returns the same
- * "OK: .../skipped: .../FAILED: ..." status string shape used throughout
- * this file.
+ * One shared implementation used everywhere a WhatsApp send can happen:
+ * the original submission's instant "first" send, the automatic 24h(ish)
+ * follow-up reminder (whatsappQueue.server.js), and the dashboard's
+ * "Send Now" manual resend. Never throws — returns the same "OK: .../
+ * skipped: .../FAILED: ..." status string shape used throughout this file.
+ *
+ * Header image is always the store logo — not the recommended stone's
+ * own collection photo (tried that; reverted per explicit request).
  */
 export async function sendWhatsAppForLead(admin, settings, lead) {
   if (!lead.phone) return "skipped: no phone on lead";
@@ -554,11 +555,7 @@ export async function sendWhatsAppForLead(admin, settings, lead) {
   const birthDetails = { ascendant: lead.ascendant };
   const resultsPageUrl = buildResultsPageUrl(data, birthDetails, lead.recommendation);
 
-  const life = (lead.recommendation && lead.recommendation.life) || {};
-  const images = await getCollectionImages(admin, [life.collection]);
-  const headerImageUrl = (life.collection && images[life.collection]) || FALLBACK_LOGO_URL;
-
-  return sendGemRecommendationWhatsApp(settings, data, lead.recommendation, lead.trackingId, resultsPageUrl, headerImageUrl);
+  return sendGemRecommendationWhatsApp(settings, data, lead.recommendation, lead.trackingId, resultsPageUrl, FALLBACK_LOGO_URL);
 }
 
 async function sendGemRecommendationEmail(admin, settings, data, birthDetails, recommendation, trackingId) {
