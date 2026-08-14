@@ -23,7 +23,7 @@ import {
   DEFAULT_WISHLIST_EMAIL_INTERVAL_HOURS,
   DEFAULT_INTERAKT_TEMPLATE_NAME,
 } from "../utils/appSettings.server";
-import { buildResultsPageUrl } from "../utils/astroAdvice.server";
+import { buildResultsPageUrl, FALLBACK_LOGO_URL } from "../utils/astroAdvice.server";
 import { sendGemRecommendationWhatsApp } from "../utils/interakt.server";
 
 export const loader = async ({ request }) => {
@@ -75,7 +75,7 @@ export const action = async ({ request }) => {
 
     let status;
     try {
-      status = await sendGemRecommendationWhatsApp(settings, testData, sampleRecommendation, trackingId, resultsUrl);
+      status = await sendGemRecommendationWhatsApp(settings, testData, sampleRecommendation, trackingId, resultsUrl, FALLBACK_LOGO_URL);
     } catch (err) {
       status = "threw: " + String((err && err.message) || err);
     }

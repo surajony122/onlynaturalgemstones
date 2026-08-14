@@ -203,9 +203,11 @@ export async function handleAstroAdviceSubmission(admin, shop, data) {
   let whatsappSendStatus = "not run";
   if (!astroError && data.phone) {
     try {
-      const settingsForWa = settings;
       const resultsPageUrl = buildResultsPageUrl(data, birthDetails || {}, recommendation || {});
-      whatsappSendStatus = await sendGemRecommendationWhatsApp(settingsForWa, data, recommendation || {}, trackingId, resultsPageUrl);
+      const waLife = (recommendation && recommendation.life) || {};
+      const waImages = await getCollectionImages(admin, [waLife.collection]);
+      const headerImageUrl = (waLife.collection && waImages[waLife.collection]) || FALLBACK_LOGO_URL;
+      whatsappSendStatus = await sendGemRecommendationWhatsApp(settings, data, recommendation || {}, trackingId, resultsPageUrl, headerImageUrl);
     } catch (waErr) {
       whatsappSendStatus = "threw: " + waErr;
       console.error("[astroAdvice] failed to send recommendation WhatsApp message:", waErr);
@@ -293,7 +295,10 @@ export async function resendAstroLeadEmail(admin, leadId) {
   if (lead.phone) {
     try {
       const resultsPageUrl = buildResultsPageUrl(data, birthDetails, lead.recommendation);
-      whatsappStatus = await sendGemRecommendationWhatsApp(settings, { ...data, phone: lead.phone }, lead.recommendation, lead.trackingId, resultsPageUrl);
+      const waLife = (lead.recommendation && lead.recommendation.life) || {};
+      const waImages = await getCollectionImages(admin, [waLife.collection]);
+      const headerImageUrl = (waLife.collection && waImages[waLife.collection]) || FALLBACK_LOGO_URL;
+      whatsappStatus = await sendGemRecommendationWhatsApp(settings, { ...data, phone: lead.phone }, lead.recommendation, lead.trackingId, resultsPageUrl, headerImageUrl);
     } catch (err) {
       whatsappStatus = "threw: " + err;
       console.error("[astroAdvice] resendAstroLeadEmail WhatsApp resend failed:", err);
@@ -644,7 +649,7 @@ async function shopifyAdminGraphQLSimple(admin, query, variables) {
 // operation on any one invalid field, not just that field) — that's why
 // name/address/phone were ALSO coming back empty, not because they were
 // unset in Shopify. Removing the bad field fixes all of it at once.
-const FALLBACK_LOGO_URL = "https://onlynaturalgemstones.com/cdn/shop/files/ONG_logo_home.png";
+export const FALLBACK_LOGO_URL = "https://onlynaturalgemstones.com/cdn/shop/files/ONG_logo_home.png";
 
 export async function getShopFooterInfo(admin) {
   if (shopFooterInfoCache && shopFooterInfoCache.expiresAt > Date.now()) {
@@ -749,7 +754,7 @@ async function getSocialLinksFromTheme(admin) {
  * trips. Cached per-handle for 6 hours since a collection's image rarely
  * changes.
  */
-async function getCollectionImages(admin, handles) {
+export async function getCollectionImages(admin, handles) {
   const images = {};
   const uniqueHandles = [...new Set((handles || []).filter(Boolean))];
 

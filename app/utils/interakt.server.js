@@ -26,6 +26,11 @@ const INTERAKT_MESSAGE_URL = "https://api.interakt.ai/v1/public/message/";
 // dependency. track.$type.jsx already duplicates this same constant for
 // the same reason.
 const STORE_DOMAIN = "onlynaturalgemstones.com";
+// Same reasoning as STORE_DOMAIN above — duplicated, not imported, to
+// keep this file leaf-only. Matches FALLBACK_LOGO_URL in
+// astroAdvice.server.js; used as the header image when the recommended
+// stone's own collection has no image set.
+const FALLBACK_HEADER_IMAGE_URL = "https://onlynaturalgemstones.com/cdn/shop/files/ONG_logo_home.png";
 
 /**
  * Splits a phone number into Interakt's separate countryCode/phoneNumber
@@ -106,7 +111,11 @@ const GEM_FALLBACK_TEXT = "Ask our expert";
  *                              this default if both are left blank)
  * Language: English
  *
- * Header: Text, no variable —  "✨ Your Personalised Gemstone Recommendation"
+ * Header: Image (no header variable text — Interakt/Meta send the actual
+ *   image via headerValues[0] on every call, a real media URL, not a
+ *   caption). This app sends the recommended Life Stone's own collection
+ *   photo here — real per-customer personalisation — falling back to the
+ *   store logo if that collection has no image set.
  *
  * Body:
  *   Hi {{1}}! 💎
@@ -139,7 +148,7 @@ const GEM_FALLBACK_TEXT = "Ask our expert";
  *  {{4}} benefic stone gem name     {{5}} benefic stone collection link
  *  {{6}} lucky stone gem name       {{7}} lucky stone collection link
  */
-export function buildGemRecommendationTemplatePayload({ countryCode, phoneNumber, templateName, firstName, life, benefic, lucky, trackingId, resultsUrl }) {
+export function buildGemRecommendationTemplatePayload({ countryCode, phoneNumber, templateName, firstName, life, benefic, lucky, trackingId, resultsUrl, headerImageUrl }) {
   const stoneLine = (stone) => {
     if (!stone || !stone.gem) return { name: GEM_FALLBACK_TEXT, url: "https://" + STORE_DOMAIN };
     const url = stone.collection ? "https://" + STORE_DOMAIN + "/collections/" + stone.collection : "https://" + STORE_DOMAIN;
@@ -170,6 +179,10 @@ export function buildGemRecommendationTemplatePayload({ countryCode, phoneNumber
     template: {
       name: templateName || DEFAULT_INTERAKT_TEMPLATE_NAME,
       languageCode: "en",
+      // Required now that the approved template's header is Image type —
+      // Interakt rejects the whole send with "Media Url is missing for
+      // header's image" without this.
+      headerValues: [headerImageUrl || FALLBACK_HEADER_IMAGE_URL],
       bodyValues: [
         firstName || "there",
         lifeLine.name,
@@ -190,7 +203,7 @@ export function buildGemRecommendationTemplatePayload({ countryCode, phoneNumber
  * right alongside it from handleAstroAdviceSubmission and
  * resendAstroLeadEmail. Never throws.
  */
-export async function sendGemRecommendationWhatsApp(settings, data, recommendation, trackingId, resultsUrl) {
+export async function sendGemRecommendationWhatsApp(settings, data, recommendation, trackingId, resultsUrl, headerImageUrl) {
   if (!settings.interaktApiKey) {
     return "skipped: Interakt API key not set (Settings page or INTERAKT_API_KEY env var)";
   }
@@ -213,6 +226,7 @@ export async function sendGemRecommendationWhatsApp(settings, data, recommendati
     lucky,
     trackingId,
     resultsUrl,
+    headerImageUrl,
   });
 
   const result = await sendInteraktTemplateMessage(settings.interaktApiKey, payload);
