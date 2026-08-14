@@ -136,6 +136,38 @@ export async function processDueWishlistEmails(admin, shop) {
   return { checked: emails.length, sent: results.filter((r) => r.status?.startsWith("OK")).length, results };
 }
 
+/**
+ * Manually (re)sends the wishlist email for one specific, already-saved
+ * lead — used by the "Send Now" button on the Wishlist Leads dashboard.
+ * Bypasses the interval check entirely (unlike processDueWishlistEmails)
+ * since a human explicitly asked for this one, right now.
+ */
+export async function resendWishlistLeadEmail(admin, leadId) {
+  const lead = await prisma.wishlistLead.findUnique({ where: { id: leadId } });
+  if (!lead) return "error: lead not found";
+  if (!lead.email) return "skipped: lead has no email";
+
+  const settings = await getAppSettings(lead.shop);
+  const handles = Array.isArray(lead.productHandles) ? lead.productHandles : [];
+  const products = Array.isArray(lead.products) ? lead.products : [];
+
+  let status;
+  try {
+    status = await sendWishlistEmail(admin, settings, lead.email, handles, products, lead.trackingId);
+  } catch (err) {
+    status = "threw: " + err;
+    console.error("[wishlist] resendWishlistLeadEmail failed:", err);
+  }
+
+  try {
+    await prisma.wishlistLead.update({ where: { id: leadId }, data: { emailSendStatus: status } });
+  } catch (updateErr) {
+    console.error("[wishlist] failed to record resend result:", updateErr);
+  }
+
+  return status;
+}
+
 /** Fetches title/image/price for each handle in one aliased GraphQL call
  * (same pattern as astroAdvice.server.js's getCollectionImages) — skips
  * any handle that fails to resolve (unpublished/deleted product) rather

@@ -83,6 +83,10 @@ model AstroLead {
   astroError      String?
   shopifySyncStatus String?
   emailSendStatus   String?
+  // Free-text internal note, editable by staff on the Astro Leads
+  // dashboard — never shown to the customer, purely for team use
+  // (e.g. "called, not interested" / "followed up via WhatsApp").
+  notes             String?
 }
 
 // One row per sent/opened/clicked event for a given lead's email — see
@@ -161,4 +165,7 @@ model WishlistLead {
   // a product's title/price/image changes or it's deleted later).
   products        Json?
   emailSendStatus String?
+  // Free-text internal note, editable by staff on the Wishlist Leads
+  // dashboard — same purpose as AstroLead.notes.
+  notes           String?
 }

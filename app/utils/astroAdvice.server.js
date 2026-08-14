@@ -240,6 +240,40 @@ export async function handleAstroAdviceSubmission(admin, shop, data) {
 }
 
 /**
+ * Manually (re)sends the recommendation email for one specific,
+ * already-saved lead — used by the "Send Now" button on the Astro Leads
+ * dashboard. Reconstructs the same data/birthDetails/recommendation
+ * shape sendGemRecommendationEmail expects from the stored row, since
+ * the original raw form submission is long gone by the time this runs.
+ */
+export async function resendAstroLeadEmail(admin, leadId) {
+  const lead = await prisma.astroLead.findUnique({ where: { id: leadId } });
+  if (!lead) return "error: lead not found";
+  if (!lead.email) return "skipped: lead has no email";
+  if (!lead.recommendation) return "skipped: lead has no saved recommendation to send";
+
+  const settings = await getAppSettings(lead.shop);
+  const data = { name: lead.name, email: lead.email };
+  const birthDetails = { ascendant: lead.ascendant, moonsign: lead.moonsign, sunsign: lead.sunsign };
+
+  let status;
+  try {
+    status = await sendGemRecommendationEmail(admin, settings, data, birthDetails, lead.recommendation, lead.trackingId);
+  } catch (err) {
+    status = "threw: " + err;
+    console.error("[astroAdvice] resendAstroLeadEmail failed:", err);
+  }
+
+  try {
+    await prisma.astroLead.update({ where: { id: leadId }, data: { emailSendStatus: status } });
+  } catch (updateErr) {
+    console.error("[astroAdvice] failed to record resend result:", updateErr);
+  }
+
+  return status;
+}
+
+/**
  * Mirrors this lead into Shopify as a tagged, subscribed Customer record —
  * same upsert-by-email-with-tags-and-note-and-metafield trick as
  * Code.gs's syncLeadToShopify, just using the app's own already-
