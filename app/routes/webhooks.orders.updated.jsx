@@ -99,6 +99,16 @@ export const action = async ({ request }) => {
     // alongside it now purely for visibility in the log below — no
     // longer used for the actual decision, but useful to see how far it
     // can drift from the real per-fulfillment-order status.
+    // DIAGNOSTIC ROUND 2: status alone came back [CLOSED, OPEN] — never
+    // IN_PROGRESS — for a real order whose Admin UI badge showed "In
+    // progress". requestStatus (a SEPARATE field, tracking merchant <->
+    // fulfillment-service request/response state, distinct from status's
+    // operational OPEN/IN_PROGRESS/CLOSED lifecycle) is the other
+    // candidate Shopify's own docs point to — fetching it now purely to
+    // observe its real value empirically before changing the decision
+    // logic again, same as fulfillmentOrders itself was added earlier
+    // only after confirming empirically that displayFulfillmentStatus
+    // was wrong.
     const res = await admin.graphql(
       `#graphql
       query OrderFulfillmentStatus($id: ID!) {
@@ -108,6 +118,7 @@ export const action = async ({ request }) => {
             nodes {
               id
               status
+              requestStatus
             }
           }
         }
@@ -128,11 +139,12 @@ export const action = async ({ request }) => {
     const displayStatus = order.displayFulfillmentStatus;
     const fulfillmentOrderNodes = order.fulfillmentOrders?.nodes || [];
     const fulfillmentOrderStatuses = fulfillmentOrderNodes.map((fo) => fo.status);
+    const fulfillmentOrderRequestStatuses = fulfillmentOrderNodes.map((fo) => fo.requestStatus);
     const isInProgress = fulfillmentOrderStatuses.some((s) => String(s).toUpperCase() === "IN_PROGRESS");
 
     if (!isInProgress) {
       await setDetail(
-        `not in progress — fulfillmentOrders: [${fulfillmentOrderStatuses.join(", ") || "none"}] (displayFulfillmentStatus: ${displayStatus})`
+        `not in progress — fulfillmentOrders status: [${fulfillmentOrderStatuses.join(", ") || "none"}], requestStatus: [${fulfillmentOrderRequestStatuses.join(", ") || "none"}] (displayFulfillmentStatus: ${displayStatus})`
       );
       return new Response();
     }
