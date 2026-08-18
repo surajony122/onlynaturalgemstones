@@ -1,6 +1,7 @@
 /**
- * Best-effort mirror of AstroLead/EmailEvent rows into the same Google
- * Sheet the old Apps Script backend (Code.gs) used to write directly —
+ * Best-effort mirror of AstroLead/EmailEvent/WishlistLead rows into the
+ * same Google Sheet the old Apps Script backend (Code.gs) used to write
+ * directly —
  * so the existing "just open the Sheet" review habit keeps working even
  * though the database (see prisma/schema.prisma) is now the real source
  * of truth for this data.
@@ -28,6 +29,7 @@ import { google } from "googleapis";
 
 const LEADS_SHEET_NAME = "Leads";
 const EMAIL_EVENTS_SHEET_NAME = "EmailEvents";
+const WISHLIST_SHEET_NAME = "Wishlist";
 
 const LEADS_HEADER = [
   "Timestamp", "Name", "Email", "Phone", "Gender", "Purpose", "Body Weight (kg)",
@@ -36,6 +38,7 @@ const LEADS_HEADER = [
   "Calculation Status", "Tracking ID",
 ];
 const EMAIL_EVENTS_HEADER = ["Timestamp", "Tracking ID", "Event", "Detail"];
+const WISHLIST_HEADER = ["Timestamp", "Email", "Phone", "Items", "Item Count", "Tracking ID"];
 
 // Cache Sheets clients per spreadsheet+service-account-email pair, since
 // settings can now differ across shops (in a future multi-shop world) —
@@ -263,5 +266,28 @@ export async function mirrorEmailEventToSheet(settings, trackingId, event, detai
     trackingId || "",
     event || "",
     detail || "",
+  ]);
+}
+
+/** Mirrors a WishlistLead row into its own "Wishlist" tab — kept separate
+ * from the astro-advice "Leads" tab since the columns don't overlap
+ * (wishlist items vs. birth-chart data) and wishlist syncs can be much
+ * higher volume (one per debounced sync, not one per form submission).
+ * `lead.products` is the resolved title/price array (see
+ * getProductsByHandles in wishlist.server.js) when available, falling
+ * back to raw handles if a product failed to resolve. */
+export async function mirrorWishlistLeadToSheet(settings, lead) {
+  const products = Array.isArray(lead.products) ? lead.products : [];
+  const handles = Array.isArray(lead.productHandles) ? lead.productHandles : [];
+  const itemsText = products.length
+    ? products.map((p) => p.title || p.handle).join(", ")
+    : handles.join(", ");
+  return prependRow(settings, WISHLIST_SHEET_NAME, WISHLIST_HEADER, [
+    new Date(lead.createdAt || Date.now()).toISOString(),
+    lead.email || "",
+    lead.phone || "",
+    itemsText,
+    String((products.length || handles.length) || 0),
+    lead.trackingId || "",
   ]);
 }

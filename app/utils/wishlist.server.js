@@ -17,7 +17,7 @@ import crypto from "node:crypto";
 import nodemailer from "nodemailer";
 import prisma from "../db.server";
 import { getAppSettings, DEFAULT_WISHLIST_EMAIL_INTERVAL_HOURS } from "./appSettings.server";
-import { mirrorEmailEventToSheet } from "./googleSheets.server";
+import { mirrorEmailEventToSheet, mirrorWishlistLeadToSheet } from "./googleSheets.server";
 import { STORE_DOMAIN, trackedClickUrl, esc, getShopFooterInfo, footerHtml } from "./astroAdvice.server";
 
 /**
@@ -42,8 +42,9 @@ export async function handleWishlistSync(admin, shop, data) {
   // actually sends) has real product data from the start.
   const products = await getProductsByHandles(admin, handles);
 
+  let lead;
   try {
-    await prisma.wishlistLead.create({
+    lead = await prisma.wishlistLead.create({
       data: {
         trackingId,
         shop: shop || null,
@@ -61,6 +62,19 @@ export async function handleWishlistSync(admin, shop, data) {
     console.error("[wishlist] failed to save lead to database:", dbErr);
     return { error: "Failed to save" };
   }
+
+  // Fire-and-forget, same reasoning as astroAdvice.server.js's background
+  // tasks — this route runs under the Shopify App Proxy's response-time
+  // limit, and the client-side caller already does a bare
+  // fetch(...).catch(()=>{}) without reading the response, so nothing is
+  // lost by not awaiting this. Also called far more often than an astro
+  // lead submission (every debounced wishlist-toggle sync, not just once
+  // per form fill), so keeping this off the request's critical path
+  // matters even more here.
+  const settings = await getAppSettings(shop);
+  mirrorWishlistLeadToSheet(settings, lead).catch((err) =>
+    console.error("[wishlist] Sheet mirror failed:", err)
+  );
 
   return { ok: true, emailSendStatus: "pending: scheduled for the next interval check" };
 }
