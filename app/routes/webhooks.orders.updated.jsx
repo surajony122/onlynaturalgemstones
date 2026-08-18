@@ -1,46 +1,52 @@
 /**
  * orders/updated webhook — sends the "order processing" WhatsApp
- * notification the first time an order is seen as IN_PROGRESS (staff
- * manually marking an item "as in progress" in the order's fulfillment
- * card — a distinct, earlier step than actually fulfilling it, confirmed
- * via a screenshot of the order timeline showing two separate entries:
- * "...marked 1 item as in progress" followed later by "...marked 1 item
- * as fulfilled").
+ * notification the first time an order is seen carrying a specific tag
+ * (default "notify-processing", see AppSettings.orderProcessingTriggerTag
+ * / app.settings.jsx) — staff apply this tag manually in Shopify Admin's
+ * order page whenever they want the notification sent.
  *
- * Checks fulfillmentOrders[].status (needs the
- * read_merchant_managed_fulfillment_orders scope — see shopify.app.toml)
- * — NOT order.displayFulfillmentStatus as an earlier version of this
- * file used. That field looked right at first (matches the top-of-page
- * badge in the simple case originally screenshotted) but turned out to
- * be an unreliable AGGREGATE/display-only value — confirmed both by
- * Shopify's own docs (community.shopify.dev has reports of exactly this
- * mismatch) and live: three separate webhook checks 5-11 minutes apart
- * all read displayFulfillmentStatus as UNFULFILLED for a real order
- * whose Admin UI badge clearly showed "In progress" the whole time. The
- * real, granular IN_PROGRESS value only exists on the FulfillmentOrder
- * object itself.
+ * THIS REPLACES three earlier attempts that all tried to infer "in
+ * progress" from Shopify's own fulfillment-status fields, confirmed live
+ * to be unreliable for this store's actual orders:
+ *   1. order.displayFulfillmentStatus — an aggregate/display-only value
+ *      (Shopify's own community docs confirm this can disagree with
+ *      reality); read UNFULFILLED three separate times, 5-11 minutes
+ *      apart, for a real order whose Admin UI badge showed "In progress"
+ *      the whole time.
+ *   2. fulfillmentOrders[].status — the more granular per-shipment field
+ *      Shopify's docs point to instead; came back [CLOSED, OPEN] for
+ *      that same order — never IN_PROGRESS.
+ *   3. fulfillmentOrders[].requestStatus — the other status-like field
+ *      on FulfillmentOrder; came back [UNSUBMITTED, UNSUBMITTED] — also
+ *      never reflecting "in progress".
+ * None of the three matched what the Admin UI badge showed, across
+ * multiple real tests. A merchant-applied TAG sidesteps this entirely —
+ * explicit, no field-semantics guessing, and sourced straight from the
+ * webhook's own REST payload (payload.tags is a comma-separated string),
+ * so this no longer needs any GraphQL call or the
+ * read_merchant_managed_fulfillment_orders scope that was added for
+ * attempt #2 (harmless to leave granted, just no longer required).
  *
  * Deliberately triggered off the broad, well-documented orders/updated
  * topic (fires on essentially any order change, confirmed firing for
- * real via WebhookReceiptLog) rather than betting on one narrow, under-
- * documented FULFILLMENT_ORDERS_* topic name — this webhook just
- * re-checks the order's REAL current status via a fresh GraphQL query
- * every time, authoritative regardless of which action caused the update.
+ * real via WebhookReceiptLog) — tags added via the order page, via bulk
+ * actions, or via other apps/automations all produce this same event.
  *
  * OrderProcessingNotification (unique on orderId) is what stops this
  * from re-sending on every later orders/updated event for the same
- * order (e.g. once it's actually fulfilled/shipped) — checked BEFORE
- * doing anything else past the receipt log, so this stays a no-op fast
- * path for the overwhelming majority of order-update events.
+ * order (e.g. once the tag stays on the order after it's already been
+ * notified) — checked BEFORE doing anything else past the receipt log,
+ * so this stays a no-op fast path for the overwhelming majority of
+ * order-update events.
  *
  * Every step updates the SAME WebhookReceiptLog row's `detail` field
  * (see app.server-health.jsx's "Webhook receipts" section) — nothing
  * about this handler's outcome should ever be invisible again the way
- * "found nothing to do" was before this rewrite.
+ * "found nothing to do" was before the very first rewrite of this file.
  */
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
-import { getAppSettings } from "../utils/appSettings.server";
+import { getAppSettings, DEFAULT_ORDER_PROCESSING_TRIGGER_TAG } from "../utils/appSettings.server";
 import { sendOrderProcessingWhatsApp } from "../utils/interakt.server";
 
 export const action = async ({ request }) => {
@@ -91,71 +97,26 @@ export const action = async ({ request }) => {
       return new Response();
     }
 
-    // Requires read_merchant_managed_fulfillment_orders (see
-    // shopify.app.toml) — without it this field throws "Access denied
-    // for fulfillmentOrders field", which kills the WHOLE GraphQL query
-    // (same all-or-nothing behavior that's bitten this app before), not
-    // just this one field. Also fetching displayFulfillmentStatus
-    // alongside it now purely for visibility in the log below — no
-    // longer used for the actual decision, but useful to see how far it
-    // can drift from the real per-fulfillment-order status.
-    // DIAGNOSTIC ROUND 2: status alone came back [CLOSED, OPEN] — never
-    // IN_PROGRESS — for a real order whose Admin UI badge showed "In
-    // progress". requestStatus (a SEPARATE field, tracking merchant <->
-    // fulfillment-service request/response state, distinct from status's
-    // operational OPEN/IN_PROGRESS/CLOSED lifecycle) is the other
-    // candidate Shopify's own docs point to — fetching it now purely to
-    // observe its real value empirically before changing the decision
-    // logic again, same as fulfillmentOrders itself was added earlier
-    // only after confirming empirically that displayFulfillmentStatus
-    // was wrong.
-    const res = await admin.graphql(
-      `#graphql
-      query OrderFulfillmentStatus($id: ID!) {
-        order(id: $id) {
-          displayFulfillmentStatus
-          fulfillmentOrders(first: 10) {
-            nodes {
-              id
-              status
-              requestStatus
-            }
-          }
-        }
-      }`,
-      { variables: { id: payload.admin_graphql_api_id } }
-    );
-    const json = await res.json();
-    if (json.errors) {
-      await setDetail("GraphQL errors: " + JSON.stringify(json.errors).slice(0, 400));
-      return new Response();
-    }
-    const order = json?.data?.order;
-    if (!order) {
-      await setDetail(`no order data returned for ${payload.admin_graphql_api_id}`);
-      return new Response();
-    }
-
-    const displayStatus = order.displayFulfillmentStatus;
-    const fulfillmentOrderNodes = order.fulfillmentOrders?.nodes || [];
-    const fulfillmentOrderStatuses = fulfillmentOrderNodes.map((fo) => fo.status);
-    const fulfillmentOrderRequestStatuses = fulfillmentOrderNodes.map((fo) => fo.requestStatus);
-    const isInProgress = fulfillmentOrderStatuses.some((s) => String(s).toUpperCase() === "IN_PROGRESS");
-
-    if (!isInProgress) {
-      await setDetail(
-        `not in progress — fulfillmentOrders status: [${fulfillmentOrderStatuses.join(", ") || "none"}], requestStatus: [${fulfillmentOrderRequestStatuses.join(", ") || "none"}] (displayFulfillmentStatus: ${displayStatus})`
-      );
-      return new Response();
-    }
-
     const settings = await getAppSettings(shop);
+    const triggerTag = (settings.orderProcessingTriggerTag || DEFAULT_ORDER_PROCESSING_TRIGGER_TAG).trim().toLowerCase();
+
+    // Shopify's REST webhook payload has tags as one comma-separated
+    // string (e.g. "vip, notify-processing, wholesale"), not an array.
+    const orderTags = String(payload?.tags || "")
+      .split(",")
+      .map((t) => t.trim().toLowerCase())
+      .filter(Boolean);
+    const hasTriggerTag = orderTags.includes(triggerTag);
+
+    if (!hasTriggerTag) {
+      await setDetail(`no trigger tag — order tags: [${orderTags.join(", ") || "none"}], looking for: "${triggerTag}"`);
+      return new Response();
+    }
+
     const phone = payload?.phone || payload?.customer?.phone || payload?.shipping_address?.phone || payload?.billing_address?.phone || null;
     const firstName = payload?.customer?.first_name || "";
     const orderNumber = payload?.name || String(payload.order_number || payload.id);
-    await setDetail(
-      `IN_PROGRESS (fulfillmentOrders: [${fulfillmentOrderStatuses.join(", ")}], displayFulfillmentStatus: ${displayStatus}) — sending to phone: ${phone || "(none found)"}`
-    );
+    await setDetail(`trigger tag "${triggerTag}" found — sending to phone: ${phone || "(none found)"}`);
 
     let status;
     try {

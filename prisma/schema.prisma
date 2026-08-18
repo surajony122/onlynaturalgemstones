@@ -268,6 +268,16 @@ model AppSettings {
   // app/routes/webhooks.orders.updated.jsx. Defaults to "order_inprocess"
   // if left blank — see DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME.
   interaktOrderTemplateName      String?
+  // Tag name that, when present on an order, triggers the order-
+  // processing WhatsApp send (see webhooks.orders.updated.jsx) — added
+  // after confirming live that none of Shopify's own fulfillment-status
+  // fields (displayFulfillmentStatus, fulfillmentOrders[].status,
+  // fulfillmentOrders[].requestStatus) reliably reflected the "In
+  // progress" badge shown in Admin for this store's actual orders. A
+  // merchant-applied tag is explicit and fully reliable by comparison.
+  // Defaults to "processing" if left blank — see
+  // DEFAULT_ORDER_PROCESSING_TRIGGER_TAG.
+  orderProcessingTriggerTag      String?
   // Interakt "API Campaign" — groups every WhatsApp send under one
   // campaign so sent/delivered/read stats show up in Interakt's own
   // dashboard (Notifications -> API Campaigns) instead of only being

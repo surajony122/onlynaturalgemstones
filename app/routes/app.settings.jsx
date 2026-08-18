@@ -24,6 +24,7 @@ import {
   DEFAULT_INTERAKT_TEMPLATE_NAME,
   DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME,
   DEFAULT_INTERAKT_WISHLIST_TEMPLATE_NAME,
+  DEFAULT_ORDER_PROCESSING_TRIGGER_TAG,
   DEFAULT_WHATSAPP_INTERVAL_VALUE,
   DEFAULT_WHATSAPP_INTERVAL_UNIT,
 } from "../utils/appSettings.server";
@@ -47,6 +48,8 @@ export const loader = async ({ request }) => {
     defaultInteraktTemplateName: DEFAULT_INTERAKT_TEMPLATE_NAME,
     interaktOrderTemplateName: row?.interaktOrderTemplateName || "",
     defaultInteraktOrderTemplateName: DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME,
+    orderProcessingTriggerTag: row?.orderProcessingTriggerTag || "",
+    defaultOrderProcessingTriggerTag: DEFAULT_ORDER_PROCESSING_TRIGGER_TAG,
     interaktWishlistTemplateName: row?.interaktWishlistTemplateName || "",
     defaultInteraktWishlistTemplateName: DEFAULT_INTERAKT_WISHLIST_TEMPLATE_NAME,
     whatsappIntervalValue: row?.whatsappIntervalValue || DEFAULT_WHATSAPP_INTERVAL_VALUE,
@@ -170,6 +173,7 @@ export const action = async ({ request }) => {
     interaktTemplateName: formData.get("interaktTemplateName")?.trim() || "",
     interaktOrderTemplateName: formData.get("interaktOrderTemplateName")?.trim() || "",
     interaktWishlistTemplateName: formData.get("interaktWishlistTemplateName")?.trim() || "",
+    orderProcessingTriggerTag: formData.get("orderProcessingTriggerTag")?.trim() || "",
     whatsappIntervalValue: formData.get("whatsappIntervalValue")?.trim() || "",
     whatsappIntervalUnit: formData.get("whatsappIntervalUnit")?.trim() || "",
     interaktWebhookSecret,
@@ -216,6 +220,7 @@ export default function SettingsPage() {
   const [interaktApiKey, setInteraktApiKey] = useState("");
   const [interaktTemplateName, setInteraktTemplateName] = useState(data.interaktTemplateName);
   const [interaktOrderTemplateName, setInteraktOrderTemplateName] = useState(data.interaktOrderTemplateName);
+  const [orderProcessingTriggerTag, setOrderProcessingTriggerTag] = useState(data.orderProcessingTriggerTag);
   const [interaktWishlistTemplateName, setInteraktWishlistTemplateName] = useState(data.interaktWishlistTemplateName);
   const [testPhone, setTestPhone] = useState("");
   const [testOrderPhone, setTestOrderPhone] = useState("");
@@ -286,6 +291,7 @@ export default function SettingsPage() {
         interaktApiKey,
         interaktTemplateName,
         interaktOrderTemplateName,
+        orderProcessingTriggerTag,
         interaktWishlistTemplateName,
         whatsappIntervalValue,
         whatsappIntervalUnit,
@@ -570,13 +576,28 @@ export default function SettingsPage() {
 
           <s-section heading="Order Processing (Interakt)">
             <s-paragraph>
-              Sends automatically — the first time an order's fulfillment shows as "In Progress" (Shopify Admin's
-              own status, staff mark this manually on the order's fulfillment card, a distinct step before actually
-              fulfilling it). Requires a WhatsApp template named{" "}
+              Sends automatically the first time an order is TAGGED with the trigger tag below — add that tag to an
+              order in Shopify Admin whenever you want the notification sent. (Not based on fulfillment status
+              anymore — Shopify's own status fields turned out to be unreliable for this store's orders; a tag is
+              explicit and fully in your control.) Requires a WhatsApp template named{" "}
               <s-text>{interaktOrderTemplateName || data.defaultInteraktOrderTemplateName}</s-text> to exist and be
               Meta-approved in Interakt. Sends at most once per order — later updates to the same order (e.g.
-              shipping) don't repeat it.
+              shipping) don't repeat it, even if the tag stays on.
             </s-paragraph>
+
+            <label style={labelStyle} htmlFor="orderProcessingTriggerTag">Trigger tag</label>
+            <input
+              id="orderProcessingTriggerTag"
+              style={fieldStyle}
+              type="text"
+              value={orderProcessingTriggerTag}
+              onChange={(e) => setOrderProcessingTriggerTag(e.target.value)}
+              placeholder={`${data.defaultOrderProcessingTriggerTag} (default if left blank)`}
+            />
+            <p style={hintStyle}>
+              Add this exact tag (case-insensitive) to an order's Tags field in Shopify Admin to trigger the
+              message.
+            </p>
 
             <label style={labelStyle} htmlFor="interaktOrderTemplateName">Template name</label>
             <input

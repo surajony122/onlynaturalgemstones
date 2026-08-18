@@ -20,6 +20,7 @@ const FIELDS = [
   "interaktTemplateName",
   "interaktOrderTemplateName",
   "interaktWishlistTemplateName",
+  "orderProcessingTriggerTag",
   "whatsappIntervalValue",
   "whatsappIntervalUnit",
   "interaktWebhookSecret",
@@ -38,6 +39,7 @@ const ENV_FALLBACK = {
   interaktTemplateName: "INTERAKT_GEM_TEMPLATE_NAME",
   interaktOrderTemplateName: "INTERAKT_ORDER_TEMPLATE_NAME",
   interaktWishlistTemplateName: "INTERAKT_WISHLIST_TEMPLATE_NAME",
+  orderProcessingTriggerTag: "ORDER_PROCESSING_TRIGGER_TAG",
   whatsappIntervalValue: "WHATSAPP_INTERVAL_VALUE",
   whatsappIntervalUnit: "WHATSAPP_INTERVAL_UNIT",
   interaktWebhookSecret: "INTERAKT_WEBHOOK_SECRET",
@@ -84,6 +86,14 @@ export const DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME = "order_inprocess";
 // wishlist email on the same debounced/interval schedule) — used when
 // the Settings page field is left blank.
 export const DEFAULT_INTERAKT_WISHLIST_TEMPLATE_NAME = "wishlist_reminder";
+
+// Tag that triggers the order-processing WhatsApp send when present on
+// an order (see webhooks.orders.updated.jsx) — used when the Settings
+// page field is left blank. Chosen deliberately distinctive (not a
+// generic word like "processing" that might already exist as an
+// unrelated tag) — change it on the Settings page if it collides with
+// an existing tagging convention.
+export const DEFAULT_ORDER_PROCESSING_TRIGGER_TAG = "notify-processing";
 
 /** Resolved settings for a shop — DB row values win, env vars fill in
  * anything left blank. Always returns a full object, every field a
