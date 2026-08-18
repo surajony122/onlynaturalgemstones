@@ -19,6 +19,7 @@ const FIELDS = [
   "interaktApiKey",
   "interaktTemplateName",
   "interaktOrderTemplateName",
+  "interaktWishlistTemplateName",
   "whatsappIntervalValue",
   "whatsappIntervalUnit",
   "interaktWebhookSecret",
@@ -36,6 +37,7 @@ const ENV_FALLBACK = {
   interaktApiKey: "INTERAKT_API_KEY",
   interaktTemplateName: "INTERAKT_GEM_TEMPLATE_NAME",
   interaktOrderTemplateName: "INTERAKT_ORDER_TEMPLATE_NAME",
+  interaktWishlistTemplateName: "INTERAKT_WISHLIST_TEMPLATE_NAME",
   whatsappIntervalValue: "WHATSAPP_INTERVAL_VALUE",
   whatsappIntervalUnit: "WHATSAPP_INTERVAL_UNIT",
   interaktWebhookSecret: "INTERAKT_WEBHOOK_SECRET",
@@ -76,6 +78,12 @@ export const DEFAULT_INTERAKT_TEMPLATE_NAME = "gem_recommendation";
 // (see webhooks.orders.updated.jsx) — used when the Settings page field
 // is left blank.
 export const DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME = "order_inprocess";
+
+// Third, separate WhatsApp template — the wishlist reminder (see
+// sendWishlistWhatsApp in interakt.server.js, sent alongside the
+// wishlist email on the same debounced/interval schedule) — used when
+// the Settings page field is left blank.
+export const DEFAULT_INTERAKT_WISHLIST_TEMPLATE_NAME = "wishlist_reminder";
 
 /** Resolved settings for a shop — DB row values win, env vars fill in
  * anything left blank. Always returns a full object, every field a

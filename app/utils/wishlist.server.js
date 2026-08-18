@@ -18,7 +18,23 @@ import nodemailer from "nodemailer";
 import prisma from "../db.server";
 import { getAppSettings, DEFAULT_WISHLIST_EMAIL_INTERVAL_HOURS } from "./appSettings.server";
 import { mirrorEmailEventToSheet, mirrorWishlistLeadToSheet } from "./googleSheets.server";
-import { STORE_DOMAIN, trackedClickUrl, esc, getShopFooterInfo, footerHtml } from "./astroAdvice.server";
+import { STORE_DOMAIN, trackedClickUrl, esc, getShopFooterInfo, footerHtml, FALLBACK_LOGO_URL } from "./astroAdvice.server";
+import { sendWishlistWhatsApp } from "./interakt.server";
+
+/** Thin wrapper around interakt.server.js's sendWishlistWhatsApp, taking
+ * a WishlistLead-shaped object directly (same convenience pattern as
+ * astroAdvice.server.js's sendWhatsAppForLead) so call sites don't need
+ * to destructure the same four fields every time. */
+async function sendWishlistWhatsAppForLead(settings, lead) {
+  if (!lead.phone) return "skipped: no phone on lead";
+  return sendWishlistWhatsApp(settings, {
+    phone: lead.phone,
+    email: lead.email,
+    products: Array.isArray(lead.products) ? lead.products : [],
+    productHandles: Array.isArray(lead.productHandles) ? lead.productHandles : [],
+    headerImageUrl: FALLBACK_LOGO_URL,
+  });
+}
 
 /**
  * Main entry point, called from proxy.wishlist-sync.jsx. ONLY saves the
@@ -145,8 +161,19 @@ export async function processDueWishlistEmails(admin, shop) {
       console.error("[wishlist] processDueWishlistEmails send failed for", email, err);
     }
 
+    // WhatsApp goes out on the SAME schedule as the email (once per
+    // customer, when they've gone quiet for the interval) — not sent
+    // per-sync, same debounce reasoning as the email.
+    let whatsappStatus;
     try {
-      await prisma.wishlistLead.update({ where: { id: latest.id }, data: { emailSendStatus: status } });
+      whatsappStatus = await sendWishlistWhatsAppForLead(settings, latest);
+    } catch (err) {
+      whatsappStatus = "threw: " + err;
+      console.error("[wishlist] processDueWishlistEmails WhatsApp send failed for", email, err);
+    }
+
+    try {
+      await prisma.wishlistLead.update({ where: { id: latest.id }, data: { emailSendStatus: status, whatsappSendStatus: whatsappStatus } });
       await prisma.wishlistLead.updateMany({
         where: { shop, email, emailSendStatus: null, id: { not: latest.id }, createdAt: { lt: latest.createdAt } },
         data: { emailSendStatus: "skipped: superseded by " + latest.id },
@@ -155,7 +182,7 @@ export async function processDueWishlistEmails(admin, shop) {
       console.error("[wishlist] failed to record send result:", updateErr);
     }
 
-    results.push({ email, status });
+    results.push({ email, status, whatsappStatus });
   }
 
   return { checked: emails.length, sent: results.filter((r) => r.status?.startsWith("OK")).length, results };
@@ -188,6 +215,35 @@ export async function resendWishlistLeadEmail(admin, leadId) {
     await prisma.wishlistLead.update({ where: { id: leadId }, data: { emailSendStatus: status } });
   } catch (updateErr) {
     console.error("[wishlist] failed to record resend result:", updateErr);
+  }
+
+  return status;
+}
+
+/**
+ * Manual retry for one specific lead's WhatsApp message — mirrors
+ * resendWishlistLeadEmail's shape exactly, but for
+ * sendWishlistWhatsAppForLead, and app.astro-leads.jsx's resendWhatsapp
+ * intent (same pattern: a dedicated Retry button separate from the
+ * email's Send Now, since the two can succeed/fail independently).
+ */
+export async function resendWishlistWhatsapp(leadId) {
+  const lead = await prisma.wishlistLead.findUnique({ where: { id: leadId } });
+  if (!lead) return "error: lead not found";
+
+  const settings = await getAppSettings(lead.shop);
+  let status;
+  try {
+    status = await sendWishlistWhatsAppForLead(settings, lead);
+  } catch (err) {
+    status = "threw: " + err;
+    console.error("[wishlist] resendWishlistWhatsapp failed:", err);
+  }
+
+  try {
+    await prisma.wishlistLead.update({ where: { id: leadId }, data: { whatsappSendStatus: status } });
+  } catch (updateErr) {
+    console.error("[wishlist] failed to record WhatsApp resend result:", updateErr);
   }
 
   return status;

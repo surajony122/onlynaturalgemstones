@@ -12,7 +12,7 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
-import { processDueWishlistEmails, resendWishlistLeadEmail } from "../utils/wishlist.server";
+import { processDueWishlistEmails, resendWishlistLeadEmail, resendWishlistWhatsapp } from "../utils/wishlist.server";
 
 const PAGE_SIZE = 100;
 
@@ -36,6 +36,15 @@ export const action = async ({ request }) => {
   if (intent === "sendNow") {
     try {
       const status = await resendWishlistLeadEmail(admin, leadId);
+      return { intent, ok: status?.startsWith("OK"), leadId, status };
+    } catch (err) {
+      return { intent, ok: false, leadId, error: String(err?.message || err) };
+    }
+  }
+
+  if (intent === "resendWhatsapp") {
+    try {
+      const status = await resendWishlistWhatsapp(leadId);
       return { intent, ok: status?.startsWith("OK"), leadId, status };
     } catch (err) {
       return { intent, ok: false, leadId, error: String(err?.message || err) };
@@ -148,6 +157,7 @@ function LeadRow({ lead }) {
   }, [fetcher.data]);
 
   const sendNow = () => fetcher.submit({ intent: "sendNow", leadId: lead.id }, { method: "POST" });
+  const retryWhatsapp = () => fetcher.submit({ intent: "resendWhatsapp", leadId: lead.id }, { method: "POST" });
   const saveNotes = () => fetcher.submit({ intent: "saveNotes", leadId: lead.id, notes }, { method: "POST" });
   const deleteLead = () => {
     if (!window.confirm(`Delete this lead (${lead.email || "no email"})? This can't be undone.`)) return;
@@ -221,6 +231,24 @@ function LeadRow({ lead }) {
           "Clicked" + (lead.emailStatus.clicked > 1 ? ` ×${lead.emailStatus.clicked}` : ""),
           lead.emailStatus.clicked > 0,
           "#2c6ecb"
+        )}
+      </td>
+      <td style={td} title={lead.whatsappSendStatus || "pending — not due yet"}>
+        {lead.whatsappSendStatus?.startsWith("OK")
+          ? statusPill("Sent", true, "#25d366")
+          : lead.whatsappSendStatus?.startsWith("skipped")
+            ? statusPill("Skipped", true, "#8c9196")
+            : lead.whatsappSendStatus
+              ? statusPill("Failed", true, "#d82c0d")
+              : statusPill("—", false, "#8c9196")}
+        <br />
+        <button type="button" style={{ ...smallBtn, marginTop: "4px" }} onClick={retryWhatsapp} disabled={busy}>
+          {busy && fetcher.formData?.get("intent") === "resendWhatsapp" ? "Sending…" : "Retry"}
+        </button>
+        {fetcher.data?.intent === "resendWhatsapp" && fetcher.data.leadId === lead.id && (
+          <div style={{ fontSize: "10px", marginTop: "3px", color: fetcher.data.ok ? "#008060" : "#d82c0d", whiteSpace: "normal", maxWidth: "160px" }}>
+            {fetcher.data.status || fetcher.data.error}
+          </div>
         )}
       </td>
       <td style={{ ...td, whiteSpace: "normal", minWidth: "180px" }}>
@@ -317,6 +345,7 @@ export default function WishlistLeadsPage() {
                   <th style={th}>Phone</th>
                   <th style={th}>Wishlist Items</th>
                   <th style={th}>Email</th>
+                  <th style={th}>WhatsApp</th>
                   <th style={th}>Clicked Links</th>
                   <th style={th}>Notes</th>
                   <th style={th}>Actions</th>

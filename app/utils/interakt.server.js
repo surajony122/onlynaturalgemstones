@@ -25,7 +25,7 @@
  *  https://www.interakt.shop/resource-center/how-to-send-whatsapp-templates-using-apis-webhooks/
  *  https://www.interakt.shop/resource-center/api-campaign-on-whatsapp/
  */
-import { DEFAULT_INTERAKT_TEMPLATE_NAME, DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME, setInteraktCampaign } from "./appSettings.server";
+import { DEFAULT_INTERAKT_TEMPLATE_NAME, DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME, DEFAULT_INTERAKT_WISHLIST_TEMPLATE_NAME, setInteraktCampaign } from "./appSettings.server";
 
 const INTERAKT_MESSAGE_URL = "https://api.interakt.ai/v1/public/message/";
 const INTERAKT_CREATE_CAMPAIGN_URL = "https://api.interakt.ai/v1/public/create-campaign/";
@@ -449,4 +449,98 @@ export async function sendOrderProcessingWhatsApp(settings, { phone, firstName, 
 
   const result = await sendInteraktTemplateMessage(settings.interaktApiKey, payload);
   return result.status;
+}
+
+/**
+ * Sends the wishlist reminder WhatsApp message — a third, separate
+ * template from gem-recommendation and order-processing. Sent alongside
+ * the wishlist reminder EMAIL (same debounced/interval timing — see
+ * processDueWishlistEmails in wishlist.server.js), not per wishlist
+ * sync, so a customer adding items repeatedly doesn't get spammed.
+ *
+ * ---- TEMPLATE (as configured in Interakt) ----
+ * Name: must match AppSettings.interaktWishlistTemplateName /
+ *       INTERAKT_WISHLIST_TEMPLATE_NAME env var /
+ *       DEFAULT_INTERAKT_WISHLIST_TEMPLATE_NAME.
+ * Category: Utility (same reasoning as gem_recommendation).
+ * Language: English
+ *
+ * Header: Image — store logo, same as the other two templates.
+ *
+ * Body:
+ *   Hello {{1}},
+ *
+ *   You still have items waiting in your wishlist at Only Natural
+ *   Gemstones!
+ *
+ *   {{2}}
+ *   {{3}}
+ *
+ *   {{4}}
+ *   {{5}}
+ *
+ *   Come back anytime to pick up where you left off.
+ *
+ *   Regards,
+ *   Only Natural Gemstones
+ *   from the House of Shubh Gems
+ *
+ * No footer, no buttons. {{3}} and {{5}} MUST be pure URLs with nothing
+ * else in the variable — learned live from the gem-recommendation
+ * template: WhatsApp silently strips a URL out of a variable that mixes
+ * it with other text, but keeps it when the variable's entire value IS
+ * the URL. So {{2}}/{{4}} are item names/filler text ONLY, {{3}}/{{5}}
+ * are links ONLY, never combined.
+ *
+ * ---- Variable mapping ----
+ *  {{1}} first name (or "there")
+ *  {{2}} first wishlisted item's name
+ *  {{3}} first wishlisted item's product page link (pure URL)
+ *  {{4}} second wishlisted item's name — OR, if there's only one item,
+ *        "Explore more gemstones" as filler text
+ *  {{5}} second wishlisted item's product page link — OR, if there's
+ *        only one item, the store homepage link
+ */
+export async function sendWishlistWhatsApp(settings, { phone, email, products, productHandles, headerImageUrl }) {
+  if (!settings.interaktApiKey) {
+    return "skipped: Interakt API key not set (Settings page or INTERAKT_API_KEY env var)";
+  }
+  const split = splitPhoneForInterakt(phone);
+  if (!split) {
+    return "skipped: no usable phone number on this lead";
+  }
+
+  const items = Array.isArray(products) && products.length ? products : [];
+  const handles = Array.isArray(productHandles) ? productHandles : [];
+  const itemName = (i) => (items[i] && (items[i].title || items[i].handle)) || handles[i] || "";
+  const itemLink = (i) => {
+    const handle = (items[i] && items[i].handle) || handles[i];
+    return handle ? `https://${STORE_DOMAIN}/products/${handle}` : "";
+  };
+  const totalItems = items.length || handles.length;
+
+  const firstName = (email || "").split("@")[0] || "there";
+  const templateName = settings.interaktWishlistTemplateName || DEFAULT_INTERAKT_WISHLIST_TEMPLATE_NAME;
+
+  const payload = {
+    countryCode: split.countryCode,
+    phoneNumber: split.phoneNumber,
+    type: "Template",
+    callbackData: "wishlist-" + (handles[0] || "item"),
+    template: {
+      name: templateName,
+      languageCode: "en",
+      headerValues: [headerImageUrl || FALLBACK_HEADER_IMAGE_URL],
+      bodyValues: [
+        firstName,
+        itemName(0) || "Your saved items",
+        itemLink(0) || `https://${STORE_DOMAIN}`,
+        totalItems > 1 ? itemName(1) : "Explore more gemstones",
+        totalItems > 1 ? itemLink(1) || `https://${STORE_DOMAIN}` : `https://${STORE_DOMAIN}`,
+      ],
+    },
+  };
+
+  const result = await sendInteraktTemplateMessage(settings.interaktApiKey, payload);
+  return result.status + (result.rawResponse ? " | raw: " + result.rawResponse : "");
 }

@@ -333,6 +333,12 @@ model WishlistLead {
   // a product's title/price/image changes or it's deleted later).
   products        Json?
   emailSendStatus String?
+  // Result of the WhatsApp send via Interakt (see
+  // sendWishlistWhatsApp in interakt.server.js) — same "OK: ..." /
+  // "skipped: ..." / "FAILED: ..." shape as emailSendStatus, sent
+  // alongside the email (same debounced/interval timing, not per-sync),
+  // shown as its own status pill on the Wishlist Leads dashboard.
+  whatsappSendStatus String?
   // Free-text internal note, editable by staff on the Wishlist Leads
   // dashboard — same purpose as AstroLead.notes.
   notes           String?

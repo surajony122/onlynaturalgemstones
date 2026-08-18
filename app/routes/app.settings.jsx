@@ -23,11 +23,12 @@ import {
   DEFAULT_WISHLIST_EMAIL_INTERVAL_HOURS,
   DEFAULT_INTERAKT_TEMPLATE_NAME,
   DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME,
+  DEFAULT_INTERAKT_WISHLIST_TEMPLATE_NAME,
   DEFAULT_WHATSAPP_INTERVAL_VALUE,
   DEFAULT_WHATSAPP_INTERVAL_UNIT,
 } from "../utils/appSettings.server";
 import { FALLBACK_LOGO_URL } from "../utils/astroAdvice.server";
-import { sendGemRecommendationWhatsApp, getOrCreateInteraktCampaignId, sendOrderProcessingWhatsApp } from "../utils/interakt.server";
+import { sendGemRecommendationWhatsApp, getOrCreateInteraktCampaignId, sendOrderProcessingWhatsApp, sendWishlistWhatsApp } from "../utils/interakt.server";
 
 export const loader = async ({ request }) => {
   const { session } = await authenticate.admin(request);
@@ -46,6 +47,8 @@ export const loader = async ({ request }) => {
     defaultInteraktTemplateName: DEFAULT_INTERAKT_TEMPLATE_NAME,
     interaktOrderTemplateName: row?.interaktOrderTemplateName || "",
     defaultInteraktOrderTemplateName: DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME,
+    interaktWishlistTemplateName: row?.interaktWishlistTemplateName || "",
+    defaultInteraktWishlistTemplateName: DEFAULT_INTERAKT_WISHLIST_TEMPLATE_NAME,
     whatsappIntervalValue: row?.whatsappIntervalValue || DEFAULT_WHATSAPP_INTERVAL_VALUE,
     whatsappIntervalUnit: row?.whatsappIntervalUnit || DEFAULT_WHATSAPP_INTERVAL_UNIT,
     interaktWebhookSecretSet: !!row?.interaktWebhookSecret,
@@ -118,6 +121,31 @@ export const action = async ({ request }) => {
     return { intent, ok: status.startsWith("OK"), status };
   }
 
+  if (intent === "sendTestWishlistWhatsapp") {
+    const phone = formData.get("testWishlistPhone")?.trim();
+    if (!phone) return { intent, ok: false, error: "Enter a phone number first" };
+
+    const settings = await getAppSettings(session.shop);
+    // Sample data — same reasoning as the gem-recommendation test above.
+    const sampleProducts = [
+      { handle: "ruby", title: "Ruby" },
+      { handle: "blue-sapphire", title: "Blue Sapphire" },
+    ];
+    let status;
+    try {
+      status = await sendWishlistWhatsApp(settings, {
+        phone,
+        email: "test@example.com",
+        products: sampleProducts,
+        productHandles: sampleProducts.map((p) => p.handle),
+        headerImageUrl: FALLBACK_LOGO_URL,
+      });
+    } catch (err) {
+      status = "threw: " + String((err && err.message) || err);
+    }
+    return { intent, ok: status.startsWith("OK"), status };
+  }
+
   // Blank secret fields mean "leave unchanged", not "clear" — merge with
   // whatever's already saved so re-saving the non-secret fields doesn't
   // accidentally wipe a previously-set password/key.
@@ -141,6 +169,7 @@ export const action = async ({ request }) => {
     interaktApiKey,
     interaktTemplateName: formData.get("interaktTemplateName")?.trim() || "",
     interaktOrderTemplateName: formData.get("interaktOrderTemplateName")?.trim() || "",
+    interaktWishlistTemplateName: formData.get("interaktWishlistTemplateName")?.trim() || "",
     whatsappIntervalValue: formData.get("whatsappIntervalValue")?.trim() || "",
     whatsappIntervalUnit: formData.get("whatsappIntervalUnit")?.trim() || "",
     interaktWebhookSecret,
@@ -169,10 +198,12 @@ export default function SettingsPage() {
   const fetcher = useFetcher();
   const testFetcher = useFetcher();
   const testOrderFetcher = useFetcher();
+  const testWishlistFetcher = useFetcher();
   const shopify = useAppBridge();
   const isSaving = fetcher.state === "submitting";
   const isSendingTest = testFetcher.state !== "idle";
   const isSendingOrderTest = testOrderFetcher.state !== "idle";
+  const isSendingWishlistTest = testWishlistFetcher.state !== "idle";
 
   const [gmailUser, setGmailUser] = useState(data.gmailUser);
   const [gmailAppPassword, setGmailAppPassword] = useState("");
@@ -185,8 +216,10 @@ export default function SettingsPage() {
   const [interaktApiKey, setInteraktApiKey] = useState("");
   const [interaktTemplateName, setInteraktTemplateName] = useState(data.interaktTemplateName);
   const [interaktOrderTemplateName, setInteraktOrderTemplateName] = useState(data.interaktOrderTemplateName);
+  const [interaktWishlistTemplateName, setInteraktWishlistTemplateName] = useState(data.interaktWishlistTemplateName);
   const [testPhone, setTestPhone] = useState("");
   const [testOrderPhone, setTestOrderPhone] = useState("");
+  const [testWishlistPhone, setTestWishlistPhone] = useState("");
   const [whatsappIntervalValue, setWhatsappIntervalValue] = useState(data.whatsappIntervalValue);
   const [whatsappIntervalUnit, setWhatsappIntervalUnit] = useState(data.whatsappIntervalUnit);
   const [interaktWebhookSecret, setInteraktWebhookSecret] = useState("");
@@ -218,8 +251,20 @@ export default function SettingsPage() {
     }
   }, [testOrderFetcher.data, shopify]);
 
+  useEffect(() => {
+    if (testWishlistFetcher.data?.intent === "sendTestWishlistWhatsapp") {
+      shopify.toast.show(testWishlistFetcher.data.status || (testWishlistFetcher.data.ok ? "Sent" : "Failed"), {
+        isError: !testWishlistFetcher.data.ok,
+      });
+    }
+  }, [testWishlistFetcher.data, shopify]);
+
   const sendTestOrderWhatsapp = () => {
     testOrderFetcher.submit({ intent: "sendTestOrderWhatsapp", testOrderPhone }, { method: "POST" });
+  };
+
+  const sendTestWishlistWhatsapp = () => {
+    testWishlistFetcher.submit({ intent: "sendTestWishlistWhatsapp", testWishlistPhone }, { method: "POST" });
   };
 
   const sendTestWhatsapp = () => {
@@ -241,6 +286,7 @@ export default function SettingsPage() {
         interaktApiKey,
         interaktTemplateName,
         interaktOrderTemplateName,
+        interaktWishlistTemplateName,
         whatsappIntervalValue,
         whatsappIntervalUnit,
         interaktWebhookSecret,
@@ -565,6 +611,54 @@ export default function SettingsPage() {
               {testOrderFetcher.data?.intent === "sendTestOrderWhatsapp" && (
                 <p style={{ ...hintStyle, marginTop: "8px", color: testOrderFetcher.data.ok ? "#008060" : "#d82c0d" }}>
                   {testOrderFetcher.data.status || testOrderFetcher.data.error}
+                </p>
+              )}
+            </div>
+          </s-section>
+
+          <s-section heading="Wishlist Reminder (Interakt)">
+            <s-paragraph>
+              Sends alongside the wishlist reminder email — same debounced/interval timing (Settings above), not
+              per wishlist-toggle. Requires a WhatsApp template named{" "}
+              <s-text>{interaktWishlistTemplateName || data.defaultInteraktWishlistTemplateName}</s-text> to exist
+              and be Meta-approved in Interakt. See{" "}
+              <s-link href="/app/wishlist-leads">Wishlist Leads</s-link> for per-lead status and a manual retry
+              button.
+            </s-paragraph>
+
+            <label style={labelStyle} htmlFor="interaktWishlistTemplateName">Template name</label>
+            <input
+              id="interaktWishlistTemplateName"
+              style={fieldStyle}
+              type="text"
+              value={interaktWishlistTemplateName}
+              onChange={(e) => setInteraktWishlistTemplateName(e.target.value)}
+              placeholder={`${data.defaultInteraktWishlistTemplateName} (default if left blank)`}
+            />
+
+            <div style={{ marginTop: "8px", padding: "12px", background: "#f6f6f7", borderRadius: "8px" }}>
+              <label style={labelStyle} htmlFor="testWishlistPhone">Send test WhatsApp message</label>
+              <p style={{ ...hintStyle, marginTop: "4px" }}>
+                Fires the real template with two sample items (Ruby, Blue Sapphire) — save your settings above
+                first if you just entered the API key. Only works once the template shows a green "Approved" dot
+                in Interakt.
+              </p>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <input
+                  id="testWishlistPhone"
+                  style={{ ...fieldStyle, marginBottom: 0, maxWidth: "220px" }}
+                  type="tel"
+                  value={testWishlistPhone}
+                  onChange={(e) => setTestWishlistPhone(e.target.value)}
+                  placeholder="9876543210 or +919876543210"
+                />
+                <s-button {...(isSendingWishlistTest ? { loading: true } : {})} onClick={sendTestWishlistWhatsapp}>
+                  Send Test
+                </s-button>
+              </div>
+              {testWishlistFetcher.data?.intent === "sendTestWishlistWhatsapp" && (
+                <p style={{ ...hintStyle, marginTop: "8px", color: testWishlistFetcher.data.ok ? "#008060" : "#d82c0d" }}>
+                  {testWishlistFetcher.data.status || testWishlistFetcher.data.error}
                 </p>
               )}
             </div>
