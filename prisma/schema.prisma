@@ -182,11 +182,24 @@ model WhatsAppMessageEvent {
 model OrderProcessingNotification {
   id         String   @id @default(cuid())
   shop       String?
-  orderId    String   @unique // Shopify numeric order id
+  orderId    String // Shopify numeric order id — no longer unique alone,
+  // see triggerKey below.
+  // Identifies WHICH occurrence this notification was for, so a genuinely
+  // new occurrence can notify again instead of being blocked forever by
+  // an earlier one. "tag" for the tag-based trigger (a tag has no
+  // natural per-occurrence identity, so that trigger still only ever
+  // fires once per order) — or the ISO timestamp of the specific order-
+  // timeline event for the "in progress" events-based trigger, so each
+  // distinct "marked as in progress" action gets its own notification
+  // even if it happens more than once on the same order (per explicit
+  // user request — see webhooks.orders.updated.jsx).
+  triggerKey String   @default("tag")
   orderName  String? // e.g. "#1001", customer-facing
   phone      String?
   status     String? // same "OK: .../FAILED: ..." shape as elsewhere
   notifiedAt DateTime @default(now())
+
+  @@unique([orderId, triggerKey])
 }
 
 // Append-only, unconditional log of every orders/updated webhook receipt

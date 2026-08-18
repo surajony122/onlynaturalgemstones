@@ -43,13 +43,17 @@
  * topic (fires on essentially any order change, confirmed firing for
  * real via WebhookReceiptLog) rather than betting on one narrow topic.
  *
- * OrderProcessingNotification (unique on orderId) is what stops this
- * from re-sending on every later orders/updated event for the same
- * order (e.g. once the tag stays on the order after it's already been
- * notified, or the "in progress" event is still the most recent one) —
- * checked BEFORE doing anything else past the receipt log, so this
- * stays a no-op fast path for the overwhelming majority of order-update
- * events.
+ * OrderProcessingNotification is now keyed on (orderId, triggerKey) —
+ * NOT just orderId — per explicit user request: a genuinely NEW "marked
+ * as in progress" occurrence on the same order (e.g. reverted, then
+ * marked in-progress again later) should notify again, not be blocked
+ * forever by the first occurrence. triggerKey is "tag" for the tag
+ * trigger (a tag has no per-occurrence identity, so that one still only
+ * ever fires once per order — avoids spamming on every unrelated edit
+ * while the tag stays applied) or the specific matching order-timeline
+ * event's createdAt for the events trigger (so each distinct event gets
+ * its own notification, but the SAME event being seen again across
+ * multiple unrelated later webhook firings is still deduped correctly).
  *
  * Every step updates the SAME WebhookReceiptLog row's `detail` field
  * (see app.server-health.jsx's "Webhook receipts" section) — nothing
@@ -103,12 +107,6 @@ export const action = async ({ request }) => {
   }
 
   try {
-    const already = await prisma.orderProcessingNotification.findUnique({ where: { orderId } });
-    if (already) {
-      await setDetail(`skipped: already notified at ${already.notifiedAt.toISOString()} (status: ${already.status})`);
-      return new Response();
-    }
-
     const settings = await getAppSettings(shop);
     const triggerTag = (settings.orderProcessingTriggerTag || DEFAULT_ORDER_PROCESSING_TRIGGER_TAG).trim().toLowerCase();
 
@@ -128,7 +126,7 @@ export const action = async ({ request }) => {
     // keep the common no-op case (neither trigger applies) to a single
     // GraphQL call at most.
     let recentEventMessages = [];
-    let hasInProgressEvent = false;
+    let latestInProgressEvent = null;
     if (!hasTriggerTag) {
       const res = await admin.graphql(
         `#graphql
@@ -151,10 +149,14 @@ export const action = async ({ request }) => {
       }
       const eventNodes = json?.data?.order?.events?.nodes || [];
       recentEventMessages = eventNodes.map((e) => e.message).filter(Boolean);
-      hasInProgressEvent = recentEventMessages.some((m) => String(m).toLowerCase().includes("in progress"));
+      // Nodes are already newest-first (reverse: true) — the first match
+      // is the MOST RECENT "in progress" event, which is what determines
+      // this order's current triggerKey. An older matching event further
+      // down the list doesn't matter once a newer one exists.
+      latestInProgressEvent = eventNodes.find((e) => String(e.message || "").toLowerCase().includes("in progress")) || null;
     }
 
-    if (!hasTriggerTag && !hasInProgressEvent) {
+    if (!hasTriggerTag && !latestInProgressEvent) {
       await setDetail(
         `no trigger — order tags: [${orderTags.join(", ") || "none"}] (looking for: "${triggerTag}"), ` +
           `recent events: [${recentEventMessages.map((m) => JSON.stringify(m.slice(0, 60))).join(", ") || "none"}]`
@@ -162,10 +164,27 @@ export const action = async ({ request }) => {
       return new Response();
     }
 
+    // "tag" for the tag trigger (fires once ever per order); the
+    // matching event's own createdAt for the events trigger (fires once
+    // per DISTINCT "in progress" occurrence — a later, genuinely new
+    // occurrence gets its own, different triggerKey and so notifies
+    // again, exactly as requested).
+    const triggerKey = hasTriggerTag ? "tag" : latestInProgressEvent.createdAt;
+
+    const already = await prisma.orderProcessingNotification.findUnique({
+      where: { orderId_triggerKey: { orderId, triggerKey } },
+    });
+    if (already) {
+      await setDetail(`skipped: already notified for this occurrence at ${already.notifiedAt.toISOString()} (status: ${already.status})`);
+      return new Response();
+    }
+
     const phone = payload?.phone || payload?.customer?.phone || payload?.shipping_address?.phone || payload?.billing_address?.phone || null;
     const firstName = payload?.customer?.first_name || "";
     const orderNumber = payload?.name || String(payload.order_number || payload.id);
-    const triggerReason = hasTriggerTag ? `tag "${triggerTag}"` : "order timeline event mentioning \"in progress\"";
+    const triggerReason = hasTriggerTag
+      ? `tag "${triggerTag}"`
+      : `order timeline event at ${triggerKey} mentioning "in progress"`;
     await setDetail(`triggered by ${triggerReason} — sending to phone: ${phone || "(none found)"}`);
 
     let status;
@@ -178,10 +197,11 @@ export const action = async ({ request }) => {
 
     // Recorded regardless of success/failure — a failed send (bad phone,
     // template not approved yet, etc.) shouldn't retry-spam the customer
-    // on every subsequent orders/updated event either; fix the
-    // underlying issue and resend manually if that ever matters.
+    // for the SAME occurrence on every subsequent orders/updated event
+    // either; fix the underlying issue and resend manually if that ever
+    // matters. A future, genuinely new occurrence still gets its own row.
     await prisma.orderProcessingNotification.create({
-      data: { shop, orderId, orderName: orderNumber, phone, status },
+      data: { shop, orderId, triggerKey, orderName: orderNumber, phone, status },
     });
   } catch (err) {
     console.error("[webhooks.orders.updated] failed:", err);
