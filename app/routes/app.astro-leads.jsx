@@ -340,10 +340,82 @@ function WhatsAppQueueSection({ whatsappQueue }) {
   );
 }
 
+// Values used both as the <select> option and as the match test below —
+// kept in one place so the dropdown and the filter logic can't drift
+// out of sync with each other. Same pattern as app.wishlist-leads.jsx.
+const CALC_STATUS_OPTIONS = [
+  { value: "all", label: "Any calculation status" },
+  { value: "ok", label: "OK" },
+  { value: "failed", label: "Failed" },
+];
+const EMAIL_STATUS_OPTIONS = [
+  { value: "all", label: "Any email status" },
+  { value: "sent", label: "Sent" },
+  { value: "opened", label: "Opened" },
+  { value: "clicked", label: "Clicked" },
+  { value: "none", label: "Not sent" },
+];
+const WHATSAPP_STATUS_OPTIONS = [
+  { value: "all", label: "Any WhatsApp status" },
+  { value: "sent", label: "Sent" },
+  { value: "queued", label: "Queued" },
+  { value: "skipped", label: "Skipped" },
+  { value: "failed", label: "Failed" },
+  { value: "none", label: "Not sent" },
+];
+
+function matchesCalcStatus(lead, filter) {
+  if (filter === "all") return true;
+  if (filter === "ok") return !!lead.calculationOk;
+  if (filter === "failed") return !lead.calculationOk;
+  return true;
+}
+
+function matchesEmailStatus(lead, filter) {
+  if (filter === "all") return true;
+  if (filter === "sent") return lead.emailStatus.sent > 0;
+  if (filter === "opened") return lead.emailStatus.opened > 0;
+  if (filter === "clicked") return lead.emailStatus.clicked > 0;
+  if (filter === "none") return lead.emailStatus.sent === 0;
+  return true;
+}
+
+function matchesWhatsappStatus(lead, filter) {
+  if (filter === "all") return true;
+  const status = lead.whatsappSendStatus || "";
+  if (filter === "sent") return status.startsWith("OK");
+  if (filter === "queued") return status.startsWith("queued");
+  if (filter === "skipped") return status.startsWith("skipped");
+  if (filter === "failed") return !!status && !status.startsWith("OK") && !status.startsWith("queued") && !status.startsWith("skipped");
+  if (filter === "none") return !status;
+  return true;
+}
+
 export default function AstroLeadsPage() {
   const { leads, whatsappQueue } = useLoaderData();
   const revalidator = useRevalidator();
   const isRefreshing = revalidator.state === "loading";
+
+  const [searchText, setSearchText] = useState("");
+  const [calcFilter, setCalcFilter] = useState("all");
+  const [emailFilter, setEmailFilter] = useState("all");
+  const [whatsappFilter, setWhatsappFilter] = useState("all");
+
+  const filteredLeads = leads.filter((lead) => {
+    const q = searchText.trim().toLowerCase();
+    const matchesSearch =
+      !q ||
+      (lead.name || "").toLowerCase().includes(q) ||
+      (lead.email || "").toLowerCase().includes(q) ||
+      (lead.phone || "").toLowerCase().includes(q) ||
+      (lead.lifeStoneGem || "").toLowerCase().includes(q);
+    return (
+      matchesSearch &&
+      matchesCalcStatus(lead, calcFilter) &&
+      matchesEmailStatus(lead, emailFilter) &&
+      matchesWhatsappStatus(lead, whatsappFilter)
+    );
+  });
 
   return (
     <s-page heading={`Astro Advice — Leads (${leads.length})`} width="full">
@@ -372,8 +444,59 @@ export default function AstroLeadsPage() {
           .
         </p>
 
+        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center", marginBottom: "14px" }}>
+          <input
+            type="text"
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            placeholder="Search name, email, phone, or stone…"
+            style={{ padding: "6px 10px", borderRadius: "6px", border: "1px solid #c9cccf", fontSize: "13px", minWidth: "220px" }}
+          />
+          <select
+            value={calcFilter}
+            onChange={(e) => setCalcFilter(e.target.value)}
+            style={{ padding: "6px 10px", borderRadius: "6px", border: "1px solid #c9cccf", fontSize: "13px" }}
+          >
+            {CALC_STATUS_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          <select
+            value={emailFilter}
+            onChange={(e) => setEmailFilter(e.target.value)}
+            style={{ padding: "6px 10px", borderRadius: "6px", border: "1px solid #c9cccf", fontSize: "13px" }}
+          >
+            {EMAIL_STATUS_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          <select
+            value={whatsappFilter}
+            onChange={(e) => setWhatsappFilter(e.target.value)}
+            style={{ padding: "6px 10px", borderRadius: "6px", border: "1px solid #c9cccf", fontSize: "13px" }}
+          >
+            {WHATSAPP_STATUS_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          {(searchText || calcFilter !== "all" || emailFilter !== "all" || whatsappFilter !== "all") && (
+            <button
+              type="button"
+              onClick={() => { setSearchText(""); setCalcFilter("all"); setEmailFilter("all"); setWhatsappFilter("all"); }}
+              style={{ ...smallBtn, fontSize: "12px", padding: "6px 12px" }}
+            >
+              Clear filters
+            </button>
+          )}
+          <span style={{ fontSize: "12px", color: "#6d7175" }}>
+            Showing {filteredLeads.length} of {leads.length}
+          </span>
+        </div>
+
         {leads.length === 0 ? (
           <s-paragraph>No leads yet.</s-paragraph>
+        ) : filteredLeads.length === 0 ? (
+          <s-paragraph>No leads match the current filters.</s-paragraph>
         ) : (
           <div style={{ overflowX: "auto", width: "100%" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -394,7 +517,7 @@ export default function AstroLeadsPage() {
                 </tr>
               </thead>
               <tbody>
-                {leads.map((lead) => (
+                {filteredLeads.map((lead) => (
                   <LeadRow key={lead.id} lead={lead} />
                 ))}
               </tbody>
