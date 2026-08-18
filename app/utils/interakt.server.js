@@ -448,7 +448,13 @@ export async function sendOrderProcessingWhatsApp(settings, { phone, firstName, 
   };
 
   const result = await sendInteraktTemplateMessage(settings.interaktApiKey, payload);
-  return result.status;
+  // Same reasoning as sendGemRecommendationWhatsApp — the short "OK:
+  // queued (id: ...)" status alone wasn't enough to diagnose why
+  // gem-recommendation sends reported success but never showed up
+  // anywhere in Interakt's own UI; surfacing the full raw response here
+  // too so the same investigation is possible for order-processing sends
+  // without needing Render logs.
+  return result.status + (result.rawResponse ? " | raw: " + result.rawResponse : "");
 }
 
 /**
