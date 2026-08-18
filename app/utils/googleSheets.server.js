@@ -75,6 +75,45 @@ function isConfigured(settings, cacheKey) {
   return configured;
 }
 
+// Alternative to the service-account path above — this store's Google
+// Workspace org policy (iam.managed.disableServiceAccountKeyCreation)
+// blocks creating a service account key entirely, with no override
+// available to this account. A tiny Apps Script Web App deployed under
+// the merchant's OWN Google account sidesteps that: Apps Script
+// deployment isn't gated by that IAM policy at all. If sheetsRelayUrl is
+// set, it's tried FIRST; the service-account path above is only used as
+// a fallback when the relay isn't configured. See
+// scripts/sheets-relay.gs (delivered to the user separately) for the
+// Apps Script source this calls.
+async function sendViaRelay(settings, sheetName, header, row) {
+  const res = await withTimeout(
+    fetch(settings.sheetsRelayUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        secret: settings.sheetsRelaySecret || "",
+        sheetName,
+        header,
+        row,
+      }),
+      signal: AbortSignal.timeout(15000),
+    }),
+    15000,
+    `Sheets relay to "${sheetName}"`
+  );
+  const text = await res.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new Error(`relay returned non-JSON (HTTP ${res.status}): ${text.slice(0, 200)}`);
+  }
+  if (!res.ok || !json.ok) {
+    throw new Error(`relay error (HTTP ${res.status}): ${json.error || text.slice(0, 200)}`);
+  }
+  return "OK";
+}
+
 function getSheetsClient(settings) {
   const cacheKeyForClient = settings.googleServiceAccountEmail + "|" + settings.astroLeadsSpreadsheetId;
   if (clientCache.has(cacheKeyForClient)) return clientCache.get(cacheKeyForClient);
@@ -136,9 +175,20 @@ async function ensureSheetWithHeader(sheets, spreadsheetId, sheetName, header) {
  * "prepend" operation: (1) insertDimension via batchUpdate opens up a
  * blank row 2, (2) values.update writes the actual values into it. */
 async function prependRow(settings, sheetName, header, row) {
+  // Relay path first — no service account needed at all, so this alone
+  // being set is sufficient regardless of the service-account fields.
+  if (settings?.sheetsRelayUrl) {
+    try {
+      return await sendViaRelay(settings, sheetName, header, row);
+    } catch (err) {
+      console.error(`[googleSheets.server] relay failed for "${sheetName}":`, err);
+      return "FAILED (relay): " + String((err && err.message) || err).slice(0, 300);
+    }
+  }
+
   const cacheKey = (settings?.astroLeadsSpreadsheetId || "") + ":" + sheetName;
   if (!isConfigured(settings, cacheKey)) {
-    return "skipped: Google Sheets not configured (Settings page or GOOGLE_SERVICE_ACCOUNT_EMAIL / GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY / ASTRO_LEADS_SPREADSHEET_ID env vars)";
+    return "skipped: Google Sheets not configured (Settings page: Sheets relay URL, or GOOGLE_SERVICE_ACCOUNT_EMAIL / GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY / ASTRO_LEADS_SPREADSHEET_ID env vars)";
   }
   try {
     await withTimeout(

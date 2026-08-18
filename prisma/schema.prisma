@@ -232,6 +232,18 @@ model AppSettings {
   googleServiceAccountEmail      String?
   googleServiceAccountPrivateKey String?
   astroLeadsSpreadsheetId        String?
+  // Alternative to the service-account approach above — a tiny Google
+  // Apps Script Web App URL (deployed under the merchant's own Google
+  // account, bound to the target Sheet, no service account/key needed
+  // at all). Added because this store's Google Workspace org policy
+  // blocks service account key creation entirely
+  // (iam.managed.disableServiceAccountKeyCreation) with no override
+  // available to this user — the relay sidesteps that requirement
+  // completely. See app/utils/googleSheets.server.js: if this is set,
+  // it's tried first; the service-account fields above are only used as
+  // a fallback if this is blank.
+  sheetsRelayUrl                 String?
+  sheetsRelaySecret              String?
   // Hours to wait after a customer's LATEST wishlist change before
   // emailing them — each new change pushes this out again (classic
   // abandoned-wishlist debounce), so someone actively adding items all

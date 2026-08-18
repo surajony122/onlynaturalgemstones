@@ -38,6 +38,8 @@ export const loader = async ({ request }) => {
     googleServiceAccountEmail: row?.googleServiceAccountEmail || "",
     googleServiceAccountPrivateKeySet: !!row?.googleServiceAccountPrivateKey,
     astroLeadsSpreadsheetId: row?.astroLeadsSpreadsheetId || "",
+    sheetsRelayUrl: row?.sheetsRelayUrl || "",
+    sheetsRelaySecretSet: !!row?.sheetsRelaySecret,
     wishlistEmailIntervalHours: row?.wishlistEmailIntervalHours || String(DEFAULT_WISHLIST_EMAIL_INTERVAL_HOURS),
     interaktApiKeySet: !!row?.interaktApiKey,
     interaktTemplateName: row?.interaktTemplateName || "",
@@ -125,6 +127,7 @@ export const action = async ({ request }) => {
     formData.get("googleServiceAccountPrivateKey")?.trim() || existing?.googleServiceAccountPrivateKey || "";
   const interaktApiKey = formData.get("interaktApiKey")?.trim() || existing?.interaktApiKey || "";
   const interaktWebhookSecret = formData.get("interaktWebhookSecret")?.trim() || existing?.interaktWebhookSecret || "";
+  const sheetsRelaySecret = formData.get("sheetsRelaySecret")?.trim() || existing?.sheetsRelaySecret || "";
 
   await saveAppSettings(session.shop, {
     gmailUser: formData.get("gmailUser")?.trim() || "",
@@ -132,6 +135,8 @@ export const action = async ({ request }) => {
     googleServiceAccountEmail: formData.get("googleServiceAccountEmail")?.trim() || "",
     googleServiceAccountPrivateKey,
     astroLeadsSpreadsheetId: formData.get("astroLeadsSpreadsheetId")?.trim() || "",
+    sheetsRelayUrl: formData.get("sheetsRelayUrl")?.trim() || "",
+    sheetsRelaySecret,
     wishlistEmailIntervalHours: formData.get("wishlistEmailIntervalHours")?.trim() || "",
     interaktApiKey,
     interaktTemplateName: formData.get("interaktTemplateName")?.trim() || "",
@@ -174,6 +179,8 @@ export default function SettingsPage() {
   const [gsaEmail, setGsaEmail] = useState(data.googleServiceAccountEmail);
   const [gsaKey, setGsaKey] = useState("");
   const [sheetId, setSheetId] = useState(data.astroLeadsSpreadsheetId);
+  const [sheetsRelayUrl, setSheetsRelayUrl] = useState(data.sheetsRelayUrl);
+  const [sheetsRelaySecret, setSheetsRelaySecret] = useState("");
   const [wishlistInterval, setWishlistInterval] = useState(data.wishlistEmailIntervalHours);
   const [interaktApiKey, setInteraktApiKey] = useState("");
   const [interaktTemplateName, setInteraktTemplateName] = useState(data.interaktTemplateName);
@@ -191,6 +198,7 @@ export default function SettingsPage() {
       setGsaKey("");
       setInteraktApiKey("");
       setInteraktWebhookSecret("");
+      setSheetsRelaySecret("");
     }
   }, [fetcher.data, shopify]);
 
@@ -227,6 +235,8 @@ export default function SettingsPage() {
         googleServiceAccountEmail: gsaEmail,
         googleServiceAccountPrivateKey: gsaKey,
         astroLeadsSpreadsheetId: sheetId,
+        sheetsRelayUrl,
+        sheetsRelaySecret,
         wishlistEmailIntervalHours: wishlistInterval,
         interaktApiKey,
         interaktTemplateName,
@@ -280,6 +290,46 @@ export default function SettingsPage() {
               Also mirrors every lead/email-event row into a Google Sheet, in
               addition to this app's own database. Leave blank to skip —
               nothing else depends on this.
+            </s-paragraph>
+
+            <s-paragraph>
+              <s-text fontWeight="bold">Sheets relay (recommended)</s-text> — a
+              tiny Apps Script Web App deployed inside your own Sheet under
+              your own Google account. No service account or key needed at
+              all, which is why this is the way to go if you ever hit a
+              "service account key creation is disabled" error trying to set
+              up the fields below. Ask for the <s-text fontWeight="bold">sheets-relay.gs</s-text> file
+              and the 5-minute setup steps if you haven't deployed it yet.
+              If a Relay URL is set here, it's used instead of the
+              service-account fields below — no need to fill in both.
+            </s-paragraph>
+
+            <label style={labelStyle} htmlFor="sheetsRelayUrl">Sheets relay URL</label>
+            <input
+              id="sheetsRelayUrl"
+              style={fieldStyle}
+              type="text"
+              value={sheetsRelayUrl}
+              onChange={(e) => setSheetsRelayUrl(e.target.value)}
+              placeholder="https://script.google.com/macros/s/.../exec"
+            />
+
+            <label style={labelStyle} htmlFor="sheetsRelaySecret">
+              Sheets relay secret{" "}
+              {data.sheetsRelaySecretSet ? "(●●●● already set — leave blank to keep it)" : "(not set yet)"}
+            </label>
+            <input
+              id="sheetsRelaySecret"
+              style={fieldStyle}
+              type="password"
+              autoComplete="new-password"
+              value={sheetsRelaySecret}
+              onChange={(e) => setSheetsRelaySecret(e.target.value)}
+              placeholder={data.sheetsRelaySecretSet ? "•••• already set ••••" : "must match SHARED_SECRET in the script"}
+            />
+
+            <s-paragraph>
+              <s-text fontWeight="bold">Service account (fallback, needs no relay set above)</s-text>
             </s-paragraph>
 
             <label style={labelStyle} htmlFor="gsaEmail">Service account email</label>
