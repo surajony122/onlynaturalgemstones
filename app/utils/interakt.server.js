@@ -39,12 +39,12 @@ const FALLBACK_HEADER_IMAGE_URL = "https://onlynaturalgemstones.com/cdn/shop/fil
 
 // Same duplication reasoning as above — the storefront's real
 // customer-facing domain, used to build each stone's collection link
-// appended into its tagline variable (see tagline() in
-// buildGemRecommendationTemplatePayload) so the message includes a real,
-// clickable link per recommendation without needing a template button
-// (WhatsApp allows at most 2 URL buttons per template — not enough for
-// 3 independent per-stone links — but plain http(s) URLs inside a body
-// variable's text render as clickable automatically, no button needed).
+// (see linkOrTagline() in buildGemRecommendationTemplatePayload) so the
+// message includes a real, clickable link per recommendation without
+// needing a template button (WhatsApp allows at most 2 URL buttons per
+// template — not enough for 3 independent per-stone links — but a body
+// variable whose ENTIRE value is a plain http(s) URL renders as
+// clickable automatically; mixed with other text, it gets stripped).
 const STORE_DOMAIN = "onlynaturalgemstones.com";
 
 // Also duplicated (not imported, same circular-dependency reason as
@@ -259,16 +259,20 @@ const GEM_FALLBACK_TEXT = "Ask our expert";
  *   from the House of Shubh Gems
  *
  * No footer, no buttons in the template itself — instead, each stone's
- * {{3}}/{{5}}/{{7}} variable now carries its benefit tagline PLUS that
- * stone's own collection link appended as plain text (e.g. "for Wealth,
- * Wisdom & Prosperity https://onlynaturalgemstones.com/collections/
- * yellow-sapphire"). Per-user request ("one message with links of
- * collections of recommendations") — WhatsApp templates cap out at 2 URL
- * buttons, not enough for 3 independent per-stone links, but a plain
- * http(s) URL inside body text renders as a tappable link automatically
- * with no button/extra template approval needed. WhatsApp does NOT allow
- * newlines inside a variable's value, so tagline and link stay on one
- * line, space-separated — see tagline() below.
+ * {{3}}/{{5}}/{{7}} variable carries ONLY that stone's collection link
+ * (no benefit tagline text alongside it). This was tuned empirically:
+ * WhatsApp/Meta silently STRIPS a URL out of a body variable's value
+ * whenever that variable also contains other text (confirmed live —
+ * "tagline + url" arrived with the tagline intact and the url gone), but
+ * lets a URL through fine when the variable's entire value IS the URL
+ * and nothing else (confirmed live via a manual Interakt test message
+ * with a plain-URL variable). So the tagline text was dropped entirely
+ * in favor of a working link — per-user request ("one message with
+ * links of collections of recommendations") prioritizes the link over
+ * the descriptive tagline. WhatsApp templates cap out at 2 URL buttons
+ * anyway, not enough for 3 independent per-stone links, so this
+ * plain-URL-variable approach is what makes 3 working links possible in
+ * one message without a button/extra template approval.
  *
  * No submission-date variable in this version — the `submittedOn`
  * parameter below is accepted for call-site compatibility
@@ -278,20 +282,20 @@ const GEM_FALLBACK_TEXT = "Ask our expert";
  * ---- Variable mapping ----
  *  {{1}} first name
  *  {{2}} life stone gem name
- *  {{3}} life stone's benefit tagline + its collection link
+ *  {{3}} life stone's collection link (URL only, no other text)
  *  {{4}} benefic stone gem name
- *  {{5}} benefic stone's benefit tagline + its collection link
+ *  {{5}} benefic stone's collection link (URL only)
  *  {{6}} lucky stone gem name
- *  {{7}} lucky stone's benefit tagline + its collection link
+ *  {{7}} lucky stone's collection link (URL only)
  */
 export function buildGemRecommendationTemplatePayload({ countryCode, phoneNumber, templateName, firstName, submittedOn, life, benefic, lucky, headerImageUrl, trackingId, campaignId }) {
   const gemName = (stone) => (stone && stone.gem) || GEM_FALLBACK_TEXT;
   const collectionUrl = (stone) => (stone && stone.collection ? `https://${STORE_DOMAIN}/collections/${stone.collection}` : "");
-  const tagline = (stone) => {
-    const base = GEM_TAGLINE[gemName(stone)] || "";
-    const url = collectionUrl(stone);
-    return url ? (base ? `${base} ${url}` : url) : base;
-  };
+  // Plain URL only — see the doc comment above for why tagline text
+  // can't be combined into this same variable anymore. Falls back to the
+  // gem's benefit tagline as plain text ONLY when there's no collection
+  // link to give (better than an empty line).
+  const linkOrTagline = (stone) => collectionUrl(stone) || GEM_TAGLINE[gemName(stone)] || "";
 
   return {
     countryCode,
@@ -317,11 +321,11 @@ export function buildGemRecommendationTemplatePayload({ countryCode, phoneNumber
       bodyValues: [
         firstName || "there",
         gemName(life),
-        tagline(life),
+        linkOrTagline(life),
         gemName(benefic),
-        tagline(benefic),
+        linkOrTagline(benefic),
         gemName(lucky),
-        tagline(lucky),
+        linkOrTagline(lucky),
       ],
     },
   };
