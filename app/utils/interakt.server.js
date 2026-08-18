@@ -37,6 +37,25 @@ const INTERAKT_CREATE_CAMPAIGN_URL = "https://api.interakt.ai/v1/public/create-c
 // doesn't pass its own headerImageUrl.
 const FALLBACK_HEADER_IMAGE_URL = "https://onlynaturalgemstones.com/cdn/shop/files/ONG_logo_home.png";
 
+// Also duplicated (not imported, same circular-dependency reason as
+// above) from astroAdvice.server.js's GEM_TAGLINE — plain-text version
+// here (no "&amp;" HTML entity) since this fills a WhatsApp template
+// variable, not HTML email markup. Keep in sync by hand if either ever
+// changes. Used for the current approved gem_recommendation template's
+// {{3}}/{{5}}/{{7}} description lines (see buildGemRecommendationTemplatePayload).
+const GEM_TAGLINE = {
+  Ruby: "for Leadership, Vitality & Success",
+  Pearl: "for Peace, Emotional Balance & Calm",
+  "Red Coral": "for Courage, Strength & Vitality",
+  Emerald: "for Health, Success & Growth",
+  "Yellow Sapphire": "for Wealth, Wisdom & Prosperity",
+  Diamond: "for Luxury, Love & Elegance",
+  "Blue Sapphire": "for Good Fortune, Wealth & Success",
+  Hessonite: "for Protection & Stability",
+  "Cat's Eye": "for Protection & Spiritual Insight",
+  Opal: "for Marital Bliss, Luxury & Pleasure",
+};
+
 /**
  * Splits a phone number into Interakt's separate countryCode/phoneNumber
  * fields. This store's customers are assumed India-based (+91) by
@@ -195,36 +214,52 @@ const GEM_FALLBACK_TEXT = "Ask our expert";
  * Header: Image — headerValues[0] carries the actual media URL on every
  *   send (always the store logo — see FALLBACK_HEADER_IMAGE_URL/callers).
  *
- * Body:
+ * Body (current live/approved version — confirmed against a real HTTP 400
+ * "expected number of values are 7" error, then matched exactly to what
+ * the user pasted back from Interakt's own template details page; this
+ * REPLACES an earlier, never-actually-approved 5-variable/no-descriptions
+ * design this comment used to describe):
  *   Hello {{1}},
  *
- *   Thank you for your request on {{2}} at Only Natural Gemstones for a
- *   Gemstone Recommendation.
+ *   Thank you for your request at Only Natural Gemstones for Gemstone
+ *   Recommendation!
  *
- *   Based on your Birth-Chart (Kundli), your results are as follows:
- *   Life Stone: {{3}}
- *   Benefic Stone: {{4}}
- *   Lucky Stone: {{5}}
+ *   💎 Based on your Birth-Chart (Kundli), our Vedic astrology experts
+ *   recommend:
  *
- *   For further support, reply to this message.
+ *   🔶 Life Stone: {{2}}
+ *   {{3}}
+ *
+ *   🍀 Benefic Stone: {{4}}
+ *   {{5}}
+ *
+ *   🔷 Lucky Stone: {{6}}
+ *   {{7}}
+ *
+ *   If you have any questions about your results, feel free to reach out
+ *   to astro-vedic experts.
  *
  *   Regards,
  *   Only Natural Gemstones
  *   from the House of Shubh Gems
  *
- * No footer, no buttons.
+ * No footer, no buttons. No submission-date variable in this version —
+ * the `submittedOn` parameter below is accepted for call-site
+ * compatibility (astroAdvice.server.js still computes and passes it,
+ * used elsewhere) but is NOT part of this template's body values.
  *
  * ---- Variable mapping ----
  *  {{1}} first name
- *  {{2}} the date this lead's request was submitted (not "today" at send
- *        time — computed once, at submission, from the lead's own
- *        createdAt, so a later resend still shows the original date)
- *  {{3}} life stone gem name
+ *  {{2}} life stone gem name
+ *  {{3}} life stone's short benefit tagline (GEM_TAGLINE lookup)
  *  {{4}} benefic stone gem name
- *  {{5}} lucky stone gem name
+ *  {{5}} benefic stone's short benefit tagline
+ *  {{6}} lucky stone gem name
+ *  {{7}} lucky stone's short benefit tagline
  */
 export function buildGemRecommendationTemplatePayload({ countryCode, phoneNumber, templateName, firstName, submittedOn, life, benefic, lucky, headerImageUrl, trackingId, campaignId }) {
   const gemName = (stone) => (stone && stone.gem) || GEM_FALLBACK_TEXT;
+  const tagline = (stone) => GEM_TAGLINE[gemName(stone)] || "";
 
   return {
     countryCode,
@@ -249,10 +284,12 @@ export function buildGemRecommendationTemplatePayload({ countryCode, phoneNumber
       headerValues: [headerImageUrl || FALLBACK_HEADER_IMAGE_URL],
       bodyValues: [
         firstName || "there",
-        submittedOn,
         gemName(life),
+        tagline(life),
         gemName(benefic),
+        tagline(benefic),
         gemName(lucky),
+        tagline(lucky),
       ],
     },
   };
@@ -264,11 +301,12 @@ export function buildGemRecommendationTemplatePayload({ countryCode, phoneNumber
  * right alongside it from handleAstroAdviceSubmission and
  * resendAstroLeadEmail. Never throws.
  *
- * submittedOn: a pre-formatted display string (e.g. "14 Aug 2026") for
- * the template's {{2}} — computed by the caller (sendWhatsAppForLead in
- * astroAdvice.server.js) from the lead's own createdAt, so a later resend
- * still shows the ORIGINAL request date, not whatever day the resend
- * happens to run.
+ * submittedOn: accepted for call-site compatibility with
+ * sendWhatsAppForLead (astroAdvice.server.js), which still computes it
+ * from the lead's own createdAt for other uses — NOT used in this
+ * template's body values (see buildGemRecommendationTemplatePayload's
+ * doc comment for why: the currently-approved template has no date
+ * placeholder).
  *
  * shop: needed only to persist a newly-created Interakt API Campaign id
  * (see getOrCreateInteraktCampaignId) — every other lookup here already
