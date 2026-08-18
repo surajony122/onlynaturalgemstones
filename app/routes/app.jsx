@@ -18,6 +18,7 @@ export default function App() {
       <s-app-nav>
         <s-link href="/app/overview">Overview</s-link>
         <s-link href="/app">Jewelry Pricing</s-link>
+        <s-link href="/app/video-urls">Video URLs</s-link>
         <s-link href="/app/astro-leads">Astro Leads</s-link>
         <s-link href="/app/wishlist-leads">Wishlist Leads</s-link>
         <s-link href="/app/whatsapp-events">WhatsApp Events</s-link>
