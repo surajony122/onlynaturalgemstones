@@ -81,6 +81,31 @@ async function checkGmail(settings) {
 }
 
 async function checkGoogleSheets(settings) {
+  // Relay path (see googleSheets.server.js) takes priority when set,
+  // same as the actual mirror code — this check was only ever looking
+  // at the service-account fields, so it kept showing "Not configured"
+  // even after the relay was set up and working. A plain GET (doGet in
+  // the deployed Apps Script) is a safe, non-destructive reachability
+  // check — it can't confirm the shared secret is correct without
+  // actually writing a row, which this deliberately avoids doing on
+  // every page load; the debug astro-advice submission (sheetMirrorStatus)
+  // is the real end-to-end proof.
+  if (settings.sheetsRelayUrl) {
+    try {
+      const res = await withTimeout(fetch(settings.sheetsRelayUrl, { method: "GET" }), 8000, "Sheets relay");
+      if (!res.ok) {
+        const text = await res.text();
+        return { ok: false, detail: `Relay URL unreachable — HTTP ${res.status}: ${text.slice(0, 200)}` };
+      }
+      return {
+        ok: true,
+        detail: "Sheets relay (Apps Script Web App) is reachable. This only confirms the deployment responds — it can't verify the shared secret without writing a real row, so a debug astro-advice submission's sheetMirrorStatus is still the definitive end-to-end check.",
+      };
+    } catch (err) {
+      return { ok: false, detail: "Relay URL unreachable: " + String(err?.message || err) };
+    }
+  }
+
   if (!settings.googleServiceAccountEmail || !settings.googleServiceAccountPrivateKey || !settings.astroLeadsSpreadsheetId) {
     return { ok: null, detail: "Not configured — optional, leads/events still save to the database regardless." };
   }
@@ -121,6 +146,19 @@ async function checkInterakt(settings) {
     );
     if (res.status === 401 || res.status === 403) {
       return { ok: false, detail: `HTTP ${res.status}: Secret Key rejected — check it's copied correctly from Interakt → Settings → Developer Setting.` };
+    }
+    if (res.status === 405) {
+      // Seen live with a real, working key — this specific diagnostic
+      // endpoint (Contacts Retrieval) rejected the call, but the actual
+      // Send Template API (a different endpoint entirely) kept sending
+      // real messages successfully at the same time. Downgraded from a
+      // hard failure to a warning so it stops reading as "WhatsApp
+      // sending is broken" when it isn't — see Settings page's Send Test
+      // button for the check that actually matters.
+      return {
+        ok: "warn",
+        detail: "HTTP 405 from this diagnostic endpoint (Contacts Retrieval) specifically — does NOT mean sending is broken. The Send Template API is a separate endpoint; use Settings → Send Test to confirm the path that actually matters.",
+      };
     }
     if (!res.ok) {
       const text = await res.text();
@@ -282,8 +320,8 @@ export const loader = async ({ request }) => {
   };
 };
 
-const statusColor = (ok) => (ok === true ? "#008060" : ok === null ? "#8c9196" : "#d82c0d");
-const statusLabel = (ok) => (ok === true ? "OK" : ok === null ? "Not configured" : "FAILING");
+const statusColor = (ok) => (ok === true ? "#008060" : ok === null ? "#8c9196" : ok === "warn" ? "#8a6116" : "#d82c0d");
+const statusLabel = (ok) => (ok === true ? "OK" : ok === null ? "Not configured" : ok === "warn" ? "WARNING (see detail)" : "FAILING");
 
 const th = { textAlign: "left", padding: "8px 10px", fontSize: "12px", color: "#6d7175", borderBottom: "1px solid #e1e3e5" };
 const td = { padding: "8px 10px", fontSize: "13px", borderBottom: "1px solid #f1f2f3", verticalAlign: "top" };
