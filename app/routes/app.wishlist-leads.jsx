@@ -292,6 +292,43 @@ function LeadRow({ lead }) {
   );
 }
 
+// Values used both as the <select> option and as the match test below —
+// kept in one place so the dropdown and the filter logic can't drift
+// out of sync with each other.
+const EMAIL_STATUS_OPTIONS = [
+  { value: "all", label: "Any email status" },
+  { value: "sent", label: "Sent" },
+  { value: "opened", label: "Opened" },
+  { value: "clicked", label: "Clicked" },
+  { value: "pending", label: "Pending (not due yet)" },
+];
+const WHATSAPP_STATUS_OPTIONS = [
+  { value: "all", label: "Any WhatsApp status" },
+  { value: "sent", label: "Sent" },
+  { value: "skipped", label: "Skipped" },
+  { value: "failed", label: "Failed" },
+  { value: "pending", label: "Pending (not due yet)" },
+];
+
+function matchesEmailStatus(lead, filter) {
+  if (filter === "all") return true;
+  if (filter === "sent") return lead.emailStatus.sent > 0;
+  if (filter === "opened") return lead.emailStatus.opened > 0;
+  if (filter === "clicked") return lead.emailStatus.clicked > 0;
+  if (filter === "pending") return !lead.emailSendStatus;
+  return true;
+}
+
+function matchesWhatsappStatus(lead, filter) {
+  if (filter === "all") return true;
+  const status = lead.whatsappSendStatus || "";
+  if (filter === "sent") return status.startsWith("OK");
+  if (filter === "skipped") return status.startsWith("skipped");
+  if (filter === "failed") return !!status && !status.startsWith("OK") && !status.startsWith("skipped");
+  if (filter === "pending") return !status;
+  return true;
+}
+
 export default function WishlistLeadsPage() {
   const { leads } = useLoaderData();
   const fetcher = useFetcher();
@@ -299,6 +336,21 @@ export default function WishlistLeadsPage() {
   const revalidator = useRevalidator();
   const isSending = fetcher.state !== "idle" && fetcher.formData?.get("intent") === "sendDueNow";
   const isRefreshing = revalidator.state === "loading";
+
+  const [searchText, setSearchText] = useState("");
+  const [emailFilter, setEmailFilter] = useState("all");
+  const [whatsappFilter, setWhatsappFilter] = useState("all");
+
+  const filteredLeads = leads.filter((lead) => {
+    const q = searchText.trim().toLowerCase();
+    const matchesSearch =
+      !q ||
+      (lead.email || "").toLowerCase().includes(q) ||
+      (lead.phone || "").toLowerCase().includes(q) ||
+      lead.products.some((p) => (p.title || "").toLowerCase().includes(q)) ||
+      lead.productHandles.some((h) => (h || "").toLowerCase().includes(q));
+    return matchesSearch && matchesEmailStatus(lead, emailFilter) && matchesWhatsappStatus(lead, whatsappFilter);
+  });
 
   useEffect(() => {
     if (!fetcher.data || fetcher.data.intent !== "sendDueNow") return;
@@ -329,12 +381,54 @@ export default function WishlistLeadsPage() {
         <p style={{ margin: "0 0 14px", fontSize: "12px", color: "#6d7175" }}>
           Most recent {PAGE_SIZE} wishlist syncs · emails don't send immediately — a customer gets one email once
           they've gone quiet for the interval set on the Settings page (default 2h), using their latest wishlist
-          snapshot · use each row's "Send Now" to bypass that for one specific lead · the wishlist's Shopify
-          tag/note sync is separate and untouched by this.
+          snapshot · each row has its own "Send Now" (email) / "Retry" (WhatsApp) buttons to bypass that, plus
+          "Delete" · the wishlist's Shopify tag/note sync is separate and untouched by this.
         </p>
+
+        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center", marginBottom: "14px" }}>
+          <input
+            type="text"
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            placeholder="Search email, phone, or item…"
+            style={{ padding: "6px 10px", borderRadius: "6px", border: "1px solid #c9cccf", fontSize: "13px", minWidth: "220px" }}
+          />
+          <select
+            value={emailFilter}
+            onChange={(e) => setEmailFilter(e.target.value)}
+            style={{ padding: "6px 10px", borderRadius: "6px", border: "1px solid #c9cccf", fontSize: "13px" }}
+          >
+            {EMAIL_STATUS_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          <select
+            value={whatsappFilter}
+            onChange={(e) => setWhatsappFilter(e.target.value)}
+            style={{ padding: "6px 10px", borderRadius: "6px", border: "1px solid #c9cccf", fontSize: "13px" }}
+          >
+            {WHATSAPP_STATUS_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          {(searchText || emailFilter !== "all" || whatsappFilter !== "all") && (
+            <button
+              type="button"
+              onClick={() => { setSearchText(""); setEmailFilter("all"); setWhatsappFilter("all"); }}
+              style={{ ...smallBtn, fontSize: "12px", padding: "6px 12px" }}
+            >
+              Clear filters
+            </button>
+          )}
+          <span style={{ fontSize: "12px", color: "#6d7175" }}>
+            Showing {filteredLeads.length} of {leads.length}
+          </span>
+        </div>
 
         {leads.length === 0 ? (
           <s-paragraph>No wishlist syncs yet.</s-paragraph>
+        ) : filteredLeads.length === 0 ? (
+          <s-paragraph>No wishlist syncs match the current filters.</s-paragraph>
         ) : (
           <div style={{ overflowX: "auto", width: "100%" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -352,7 +446,7 @@ export default function WishlistLeadsPage() {
                 </tr>
               </thead>
               <tbody>
-                {leads.map((lead) => (
+                {filteredLeads.map((lead) => (
                   <LeadRow key={lead.id} lead={lead} />
                 ))}
               </tbody>
