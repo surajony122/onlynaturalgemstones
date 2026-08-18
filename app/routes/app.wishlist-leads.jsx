@@ -3,8 +3,8 @@
  * WishlistLead rows (most recent first) with rolled-up email status
  * (sent / opened / clicked, and which specific links were clicked)
  * sourced from the same EmailEvent table, matched by trackingId, plus
- * per-lead management: an editable internal note, a "Send Now" button
- * (bypasses the interval check), and a "Delete" button.
+ * per-lead management: an editable internal note and a "..." row-actions
+ * menu (Send Now / Retry WhatsApp / Delete).
  */
 import { useEffect, useState } from "react";
 import { useFetcher, useLoaderData, useRevalidator } from "react-router";
@@ -13,6 +13,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { processDueWishlistEmails, resendWishlistLeadEmail, resendWishlistWhatsapp } from "../utils/wishlist.server";
+import { tableWrapStyle, tableStyle, thStyle, tdStyle, TableGlobalStyles, useSort, SortTh, Pill, RowMenu } from "../components/table-kit";
 
 const PAGE_SIZE = 100;
 
@@ -114,8 +115,6 @@ export const loader = async ({ request }) => {
   };
 };
 
-const th = { textAlign: "left", padding: "8px 10px", fontSize: "12px", color: "#6d7175", borderBottom: "1px solid #e1e3e5", whiteSpace: "nowrap" };
-const td = { padding: "8px 10px", fontSize: "13px", borderBottom: "1px solid #f1f2f3", whiteSpace: "nowrap", verticalAlign: "top" };
 const smallBtn = {
   fontSize: "11px",
   padding: "4px 10px",
@@ -126,25 +125,6 @@ const smallBtn = {
   marginRight: "4px",
   marginBottom: "4px",
 };
-
-function statusPill(label, active, color) {
-  return (
-    <span
-      style={{
-        display: "inline-block",
-        padding: "1px 7px",
-        marginRight: "4px",
-        borderRadius: "10px",
-        fontSize: "11px",
-        fontWeight: 600,
-        background: active ? color + "22" : "#f1f2f3",
-        color: active ? color : "#8c9196",
-      }}
-    >
-      {label}
-    </span>
-  );
-}
 
 function LeadRow({ lead }) {
   const fetcher = useFetcher();
@@ -168,12 +148,17 @@ function LeadRow({ lead }) {
     return null; // optimistically hide once deleted
   }
 
+  const lastActionResult =
+    fetcher.data && ["sendNow", "resendWhatsapp"].includes(fetcher.data.intent) && fetcher.data.leadId === lead.id
+      ? fetcher.data
+      : null;
+
   return (
-    <tr style={{ opacity: busy ? 0.6 : 1 }}>
-      <td style={td}>{new Date(lead.createdAt).toLocaleString()}</td>
-      <td style={td}>{lead.email || "—"}</td>
-      <td style={td}>{lead.phone || "—"}</td>
-      <td style={{ ...td, whiteSpace: "normal", minWidth: "260px" }}>
+    <tr className="dt-row" style={{ opacity: busy ? 0.6 : 1 }}>
+      <td style={tdStyle}>{new Date(lead.createdAt).toLocaleString()}</td>
+      <td style={tdStyle}>{lead.email || "—"}</td>
+      <td style={tdStyle}>{lead.phone || "—"}</td>
+      <td style={{ ...tdStyle, whiteSpace: "normal", minWidth: "260px" }}>
         {lead.products.length ? (
           <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
             {lead.products.map((p) => (
@@ -220,38 +205,31 @@ function LeadRow({ lead }) {
           "—"
         )}
       </td>
-      <td style={td} title={lead.emailSendStatus || "pending — not due yet"}>
-        {statusPill("Sent", lead.emailStatus.sent > 0, "#008060")}
-        {statusPill(
-          "Opened" + (lead.emailStatus.opened > 1 ? ` ×${lead.emailStatus.opened}` : ""),
-          lead.emailStatus.opened > 0,
-          "#6b5ce0"
-        )}
-        {statusPill(
-          "Clicked" + (lead.emailStatus.clicked > 1 ? ` ×${lead.emailStatus.clicked}` : ""),
-          lead.emailStatus.clicked > 0,
-          "#2c6ecb"
+      <td style={tdStyle} title={lead.emailSendStatus || "pending — not due yet"}>
+        <Pill label="Sent" active={lead.emailStatus.sent > 0} color="#008060" />
+        <Pill
+          label={"Opened" + (lead.emailStatus.opened > 1 ? ` ×${lead.emailStatus.opened}` : "")}
+          active={lead.emailStatus.opened > 0}
+          color="#6b5ce0"
+        />
+        <Pill
+          label={"Clicked" + (lead.emailStatus.clicked > 1 ? ` ×${lead.emailStatus.clicked}` : "")}
+          active={lead.emailStatus.clicked > 0}
+          color="#2c6ecb"
+        />
+      </td>
+      <td style={tdStyle} title={lead.whatsappSendStatus || "pending — not due yet"}>
+        {lead.whatsappSendStatus?.startsWith("OK") ? (
+          <Pill label="Sent" active color="#25d366" />
+        ) : lead.whatsappSendStatus?.startsWith("skipped") ? (
+          <Pill label="Skipped" active color="#8c9196" />
+        ) : lead.whatsappSendStatus ? (
+          <Pill label="Failed" active color="#d82c0d" />
+        ) : (
+          <Pill label="—" color="#8c9196" />
         )}
       </td>
-      <td style={td} title={lead.whatsappSendStatus || "pending — not due yet"}>
-        {lead.whatsappSendStatus?.startsWith("OK")
-          ? statusPill("Sent", true, "#25d366")
-          : lead.whatsappSendStatus?.startsWith("skipped")
-            ? statusPill("Skipped", true, "#8c9196")
-            : lead.whatsappSendStatus
-              ? statusPill("Failed", true, "#d82c0d")
-              : statusPill("—", false, "#8c9196")}
-        <br />
-        <button type="button" style={{ ...smallBtn, marginTop: "4px" }} onClick={retryWhatsapp} disabled={busy}>
-          {busy && fetcher.formData?.get("intent") === "resendWhatsapp" ? "Sending…" : "Retry"}
-        </button>
-        {fetcher.data?.intent === "resendWhatsapp" && fetcher.data.leadId === lead.id && (
-          <div style={{ fontSize: "10px", marginTop: "3px", color: fetcher.data.ok ? "#008060" : "#d82c0d", whiteSpace: "normal", maxWidth: "160px" }}>
-            {fetcher.data.status || fetcher.data.error}
-          </div>
-        )}
-      </td>
-      <td style={{ ...td, whiteSpace: "normal", minWidth: "180px" }}>
+      <td style={{ ...tdStyle, whiteSpace: "normal", minWidth: "180px" }}>
         {lead.emailStatus.clickedLinks?.length
           ? lead.emailStatus.clickedLinks.map((link, i) => (
               <span
@@ -263,7 +241,7 @@ function LeadRow({ lead }) {
             ))
           : "—"}
       </td>
-      <td style={{ ...td, minWidth: "180px" }}>
+      <td style={{ ...tdStyle, minWidth: "180px" }}>
         <textarea
           value={notes}
           onChange={(e) => {
@@ -279,14 +257,19 @@ function LeadRow({ lead }) {
           </button>
         )}
       </td>
-      <td style={{ ...td, minWidth: "140px" }}>
-        <button type="button" style={smallBtn} onClick={sendNow} disabled={busy}>
-          Send Now
-        </button>
-        <br />
-        <button type="button" style={{ ...smallBtn, color: "#d82c0d", borderColor: "#d82c0d" }} onClick={deleteLead} disabled={busy}>
-          Delete
-        </button>
+      <td style={{ ...tdStyle, minWidth: "90px" }}>
+        <RowMenu
+          items={[
+            { label: "Send Now (Email)", onClick: sendNow, disabled: busy },
+            { label: "Retry WhatsApp", onClick: retryWhatsapp, disabled: busy },
+            { label: "Delete", onClick: deleteLead, tone: "danger", disabled: busy },
+          ]}
+        />
+        {lastActionResult && (
+          <div style={{ fontSize: "10px", marginTop: "4px", color: lastActionResult.ok ? "#008060" : "#d82c0d", whiteSpace: "normal", maxWidth: "160px" }}>
+            {lastActionResult.status || lastActionResult.error}
+          </div>
+        )}
       </td>
     </tr>
   );
@@ -352,6 +335,8 @@ export default function WishlistLeadsPage() {
     return matchesSearch && matchesEmailStatus(lead, emailFilter) && matchesWhatsappStatus(lead, whatsappFilter);
   });
 
+  const { sorted: sortedLeads, sortKey, sortDir, onSort } = useSort(filteredLeads, "createdAt", "desc");
+
   useEffect(() => {
     if (!fetcher.data || fetcher.data.intent !== "sendDueNow") return;
     if (fetcher.data.ok) {
@@ -370,6 +355,7 @@ export default function WishlistLeadsPage() {
       </s-button>
 
       <s-section>
+        <TableGlobalStyles />
         <button
           type="button"
           onClick={() => revalidator.revalidate()}
@@ -381,8 +367,7 @@ export default function WishlistLeadsPage() {
         <p style={{ margin: "0 0 14px", fontSize: "12px", color: "#6d7175" }}>
           Most recent {PAGE_SIZE} wishlist syncs · emails don't send immediately — a customer gets one email once
           they've gone quiet for the interval set on the Settings page (default 2h), using their latest wishlist
-          snapshot · each row has its own "Send Now" (email) / "Retry" (WhatsApp) buttons to bypass that, plus
-          "Delete" · the wishlist's Shopify tag/note sync is separate and untouched by this.
+          snapshot · each row's "..." menu has Send Now (email) / Retry WhatsApp / Delete.
         </p>
 
         <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center", marginBottom: "14px" }}>
@@ -430,23 +415,23 @@ export default function WishlistLeadsPage() {
         ) : filteredLeads.length === 0 ? (
           <s-paragraph>No wishlist syncs match the current filters.</s-paragraph>
         ) : (
-          <div style={{ overflowX: "auto", width: "100%" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <div style={tableWrapStyle}>
+            <table style={tableStyle}>
               <thead>
                 <tr>
-                  <th style={th}>When</th>
-                  <th style={th}>Email</th>
-                  <th style={th}>Phone</th>
-                  <th style={th}>Wishlist Items</th>
-                  <th style={th}>Email</th>
-                  <th style={th}>WhatsApp</th>
-                  <th style={th}>Clicked Links</th>
-                  <th style={th}>Notes</th>
-                  <th style={th}>Actions</th>
+                  <SortTh label="When" sortKey="createdAt" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                  <SortTh label="Email" sortKey="email" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                  <SortTh label="Phone" sortKey="phone" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                  <th style={thStyle}>Wishlist Items</th>
+                  <th style={thStyle}>Email</th>
+                  <th style={thStyle}>WhatsApp</th>
+                  <th style={thStyle}>Clicked Links</th>
+                  <th style={thStyle}>Notes</th>
+                  <th style={thStyle}></th>
                 </tr>
               </thead>
               <tbody>
-                {filteredLeads.map((lead) => (
+                {sortedLeads.map((lead) => (
                   <LeadRow key={lead.id} lead={lead} />
                 ))}
               </tbody>

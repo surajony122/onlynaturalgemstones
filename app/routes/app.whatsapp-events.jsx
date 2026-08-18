@@ -14,11 +14,10 @@
  * Interakt and a real message has gone all the way through — see the
  * Settings page's "Delivery/read tracking (webhook)" section for setup.
  *
- * Lead management: each row has its own Retry (resend) and Delete
- * (removes this event log entry only — never touches the underlying
- * lead/order) — mirrors the pattern already used on the Astro Leads and
- * Wishlist Leads pages. Retry for Gem Recommendation/Wishlist reuses the
- * exact same resend functions those dashboards use, once a matching
+ * Lead management: each row has its own "..." menu with Retry (resend)
+ * and Delete (removes this event log entry only — never touches the
+ * underlying lead/order). Retry for Gem Recommendation/Wishlist reuses
+ * the exact same resend functions those dashboards use, once a matching
  * lead is found (Gem Recommendation via trackingId — exact; Wishlist via
  * phone number — best-effort, since wishlist sends don't carry a
  * trackingId). Order Processing retry re-sends directly from the phone/
@@ -34,6 +33,7 @@ import { getAppSettings } from "../utils/appSettings.server";
 import { sendWhatsAppForLead } from "../utils/astroAdvice.server";
 import { sendOrderProcessingWhatsApp } from "../utils/interakt.server";
 import { resendWishlistWhatsapp } from "../utils/wishlist.server";
+import { tableWrapStyle, tableStyle, thStyle, tdStyle, TableGlobalStyles, useSort, SortTh, Pill, RowMenu } from "../components/table-kit";
 
 const PAGE_SIZE = 500;
 
@@ -215,8 +215,6 @@ export const loader = async ({ request }) => {
   };
 };
 
-const th = { textAlign: "left", padding: "8px 10px", fontSize: "12px", color: "#6d7175", borderBottom: "1px solid #e1e3e5", whiteSpace: "nowrap" };
-const td = { padding: "8px 10px", fontSize: "13px", borderBottom: "1px solid #f1f2f3", whiteSpace: "nowrap", verticalAlign: "top" };
 const smallBtn = {
   fontSize: "12px",
   padding: "6px 14px",
@@ -226,35 +224,6 @@ const smallBtn = {
   cursor: "pointer",
   marginBottom: "10px",
 };
-const rowBtn = {
-  fontSize: "11px",
-  padding: "3px 9px",
-  borderRadius: "6px",
-  border: "1px solid #c9cccf",
-  background: "#ffffff",
-  cursor: "pointer",
-  marginRight: "4px",
-  marginTop: "4px",
-};
-
-function statusPill(label, active, color) {
-  return (
-    <span
-      style={{
-        display: "inline-block",
-        padding: "1px 7px",
-        marginRight: "4px",
-        borderRadius: "10px",
-        fontSize: "11px",
-        fontWeight: 600,
-        background: active ? color + "22" : "#f1f2f3",
-        color: active ? color : "#8c9196",
-      }}
-    >
-      {label}
-    </span>
-  );
-}
 
 function StatTile({ label, value, color }) {
   return (
@@ -268,7 +237,6 @@ function StatTile({ label, value, color }) {
 function MessageRow({ m }) {
   const fetcher = useFetcher();
   const busy = fetcher.state !== "idle";
-  const busyIntent = fetcher.formData?.get("intent");
 
   const retry = () => {
     if (m.kind === "Gem Recommendation") {
@@ -297,45 +265,43 @@ function MessageRow({ m }) {
   if (result?.intent === "delete" && result.ok) return null; // optimistically hide once deleted
 
   return (
-    <tr style={{ opacity: busy ? 0.6 : 1 }}>
-      <td style={td}>{m.sentAt ? new Date(m.sentAt).toLocaleString() : "—"}</td>
-      <td style={td}>{m.kind}</td>
-      <td style={td}>
+    <tr className="dt-row" style={{ opacity: busy ? 0.6 : 1 }}>
+      <td style={tdStyle}>{m.sentAt ? new Date(m.sentAt).toLocaleString() : "—"}</td>
+      <td style={tdStyle}>{m.kind}</td>
+      <td style={tdStyle}>
         {m.orderNumber ? `#${m.orderNumber}` : m.kind === "Wishlist" ? (m.wishlistHandle || "—") : m.lead?.name || "—"}
       </td>
-      <td style={td}>{m.lead?.email || m.wishlistLead?.email || "—"}</td>
-      <td style={td}>{m.phone || "—"}</td>
-      <td style={td}>
+      <td style={tdStyle}>{m.lead?.email || m.wishlistLead?.email || "—"}</td>
+      <td style={tdStyle}>{m.phone || "—"}</td>
+      <td style={tdStyle}>
         {m.lead
           ? [m.lead.lifeStoneGem, m.lead.beneficStoneGem, m.lead.luckyStoneGem].filter(Boolean).join(" / ") || "—"
           : "—"}
       </td>
-      <td style={td} title={m.failureReason || ""}>
-        {m.failedAt
-          ? statusPill("Failed", true, "#d82c0d")
-          : m.readAt
-            ? statusPill("Read", true, "#6b5ce0")
-            : m.deliveredAt
-              ? statusPill("Delivered", true, "#008060")
-              : m.sentAt
-                ? statusPill("Sent", true, "#8c7a4e")
-                : statusPill("—", false, "#8c9196")}
-      </td>
-      <td style={td}>{m.deliveredAt ? new Date(m.deliveredAt).toLocaleString() : "—"}</td>
-      <td style={td}>{m.readAt ? new Date(m.readAt).toLocaleString() : "—"}</td>
-      <td style={{ ...td, minWidth: "150px", whiteSpace: "normal" }}>
-        {canRetry && (
-          <button type="button" style={rowBtn} onClick={retry} disabled={busy}>
-            {busy && (busyIntent === "retryGemRecommendation" || busyIntent === "retryOrderProcessing" || busyIntent === "retryWishlist")
-              ? "Sending…"
-              : "Retry"}
-          </button>
+      <td style={tdStyle} title={m.failureReason || ""}>
+        {m.failedAt ? (
+          <Pill label="Failed" active color="#d82c0d" />
+        ) : m.readAt ? (
+          <Pill label="Read" active color="#6b5ce0" />
+        ) : m.deliveredAt ? (
+          <Pill label="Delivered" active color="#008060" />
+        ) : m.sentAt ? (
+          <Pill label="Sent" active color="#8c7a4e" />
+        ) : (
+          <Pill label="—" color="#8c9196" />
         )}
-        <button type="button" style={{ ...rowBtn, color: "#d82c0d", borderColor: "#d82c0d" }} onClick={deleteEntry} disabled={busy}>
-          Delete
-        </button>
+      </td>
+      <td style={tdStyle}>{m.deliveredAt ? new Date(m.deliveredAt).toLocaleString() : "—"}</td>
+      <td style={tdStyle}>{m.readAt ? new Date(m.readAt).toLocaleString() : "—"}</td>
+      <td style={{ ...tdStyle, minWidth: "90px" }}>
+        <RowMenu
+          items={[
+            canRetry && { label: "Retry", onClick: retry, disabled: busy },
+            { label: "Delete", onClick: deleteEntry, tone: "danger", disabled: busy },
+          ]}
+        />
         {result && result.intent !== "delete" && (
-          <div style={{ fontSize: "10px", marginTop: "3px", color: result.ok ? "#008060" : "#d82c0d", maxWidth: "160px" }}>
+          <div style={{ fontSize: "10px", marginTop: "4px", color: result.ok ? "#008060" : "#d82c0d", maxWidth: "160px" }}>
             {result.status || result.error}
           </div>
         )}
@@ -384,9 +350,12 @@ export default function WhatsAppEventsPage() {
     return matchesSearch && matchesKind && matchesStatus(m, statusFilter);
   });
 
+  const { sorted: sortedMessages, sortKey, sortDir, onSort } = useSort(filteredMessages, "sentAt", "desc");
+
   return (
     <s-page heading={`WhatsApp Events (${summary.total})`} width="full">
       <s-section>
+        <TableGlobalStyles />
         <button type="button" style={smallBtn} onClick={() => revalidator.revalidate()} disabled={isRefreshing}>
           {isRefreshing ? "Refreshing…" : "↻ Refresh"}
         </button>
@@ -394,7 +363,7 @@ export default function WhatsAppEventsPage() {
           Real delivered/read status from Interakt's own webhook — Interakt has no API to fetch this, so nothing
           shows here until the webhook is registered (see{" "}
           <s-link href="/app/settings">Settings → Delivery/read tracking</s-link>) and a message has actually gone
-          through end to end. Each row has its own Retry (resend) and Delete (removes this log entry only).
+          through end to end. Each row's "..." menu has Retry (resend) and Delete (removes this log entry only).
         </p>
 
         <div style={{ display: "flex", gap: "12px", marginBottom: "20px", flexWrap: "wrap" }}>
@@ -452,24 +421,24 @@ export default function WhatsAppEventsPage() {
         ) : filteredMessages.length === 0 ? (
           <s-paragraph>No events match the current filters.</s-paragraph>
         ) : (
-          <div style={{ overflowX: "auto", width: "100%" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <div style={tableWrapStyle}>
+            <table style={tableStyle}>
               <thead>
                 <tr>
-                  <th style={th}>Sent</th>
-                  <th style={th}>Type</th>
-                  <th style={th}>Name / Order # / Item</th>
-                  <th style={th}>Email</th>
-                  <th style={th}>Phone</th>
-                  <th style={th}>Life / Benefic / Lucky</th>
-                  <th style={th}>Status</th>
-                  <th style={th}>Delivered</th>
-                  <th style={th}>Read</th>
-                  <th style={th}>Actions</th>
+                  <SortTh label="Sent" sortKey="sentAt" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                  <SortTh label="Type" sortKey="kind" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                  <th style={thStyle}>Name / Order # / Item</th>
+                  <th style={thStyle}>Email</th>
+                  <SortTh label="Phone" sortKey="phone" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                  <th style={thStyle}>Life / Benefic / Lucky</th>
+                  <th style={thStyle}>Status</th>
+                  <SortTh label="Delivered" sortKey="deliveredAt" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                  <SortTh label="Read" sortKey="readAt" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                  <th style={thStyle}></th>
                 </tr>
               </thead>
               <tbody>
-                {filteredMessages.map((m) => (
+                {sortedMessages.map((m) => (
                   <MessageRow key={m.messageId} m={m} />
                 ))}
               </tbody>

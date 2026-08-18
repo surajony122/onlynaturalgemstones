@@ -45,6 +45,7 @@ import { useMemo, useState } from "react";
 import { useFetcher, useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
+import { tableWrapStyle, tableStyle, thStyle, tdStyle, TableGlobalStyles, useSort, SortTh, Pill } from "../components/table-kit";
 
 const METAFIELD_NAMESPACE = "custom";
 const METAFIELD_KEY = "product_video_url";
@@ -371,9 +372,6 @@ export const action = async ({ request }) => {
   };
 };
 
-const th = { textAlign: "left", padding: "8px 10px", fontSize: "12px", color: "#6d7175", borderBottom: "1px solid #e1e3e5" };
-const td = { padding: "8px 10px", fontSize: "13px", borderBottom: "1px solid #f1f2f3", verticalAlign: "top" };
-
 export default function VideoUrlsPage() {
   const { rows, totalProducts, totalVideoFiles, matchedCount } = useLoaderData();
   const fetcher = useFetcher();
@@ -383,6 +381,7 @@ export default function VideoUrlsPage() {
   const [alsoUploadToGallery, setAlsoUploadToGallery] = useState(false);
   const [forceGalleryUpload, setForceGalleryUpload] = useState(false);
   const matchedRows = useMemo(() => rows.filter((r) => r.suggestedUrl), [rows]);
+  const { sorted: sortedRows, sortKey, sortDir, onSort } = useSort(rows, null, "asc");
 
   const toggle = (id) => {
     setChecked((prev) => {
@@ -483,22 +482,23 @@ export default function VideoUrlsPage() {
           </p>
         )}
 
-        <div style={{ overflowX: "auto", marginTop: "12px" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <TableGlobalStyles />
+        <div style={tableWrapStyle}>
+          <table style={tableStyle}>
             <thead>
               <tr>
-                <th style={th}></th>
-                <th style={th}>Product</th>
-                <th style={th}>SKU(s)</th>
-                <th style={th}>Current video URL (metafield)</th>
-                <th style={th}>In product gallery</th>
-                <th style={th}>Suggested match</th>
+                <th style={thStyle}></th>
+                <SortTh label="Product" sortKey="title" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                <SortTh label="SKU(s)" sortKey="skus" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                <th style={thStyle}>Current video URL (metafield)</th>
+                <SortTh label="In product gallery" sortKey="galleryVideoCount" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                <SortTh label="Suggested match" sortKey="suggestedFilename" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
-                <tr key={r.id} style={{ opacity: r.suggestedUrl ? 1 : 0.5 }}>
-                  <td style={td}>
+              {sortedRows.map((r) => (
+                <tr key={r.id} className="dt-row" style={{ opacity: r.suggestedUrl ? 1 : 0.5 }}>
+                  <td style={tdStyle}>
                     <input
                       type="checkbox"
                       checked={checked.has(r.id)}
@@ -506,21 +506,19 @@ export default function VideoUrlsPage() {
                       onChange={() => toggle(r.id)}
                     />
                   </td>
-                  <td style={td}>{r.title}</td>
-                  <td style={{ ...td, fontFamily: "monospace", fontSize: "11px" }}>{r.skus || "—"}</td>
-                  <td style={{ ...td, fontFamily: "monospace", fontSize: "11px", maxWidth: "220px", overflow: "hidden", textOverflow: "ellipsis" }} title={r.currentUrl}>
+                  <td style={tdStyle}>{r.title}</td>
+                  <td style={{ ...tdStyle, fontFamily: "monospace", fontSize: "11px" }}>{r.skus || "—"}</td>
+                  <td style={{ ...tdStyle, fontFamily: "monospace", fontSize: "11px", maxWidth: "220px", overflow: "hidden", textOverflow: "ellipsis" }} title={r.currentUrl}>
                     {r.currentUrl || "(not set)"}
                   </td>
-                  <td style={{ ...td, fontSize: "12px" }}>
+                  <td style={tdStyle}>
                     {r.galleryVideoCount > 0 ? (
-                      <span style={{ color: "#008060" }}>
-                        ✓ {r.galleryVideoCount} video{r.galleryVideoCount > 1 ? "s" : ""}
-                      </span>
+                      <Pill label={`✓ ${r.galleryVideoCount} video${r.galleryVideoCount > 1 ? "s" : ""}`} active color="#008060" />
                     ) : (
-                      <span style={{ color: "#8c9196" }}>— none</span>
+                      <Pill label="none" color="#8c9196" />
                     )}
                   </td>
-                  <td style={{ ...td, fontFamily: "monospace", fontSize: "11px", maxWidth: "260px" }}>
+                  <td style={{ ...tdStyle, fontFamily: "monospace", fontSize: "11px", maxWidth: "260px" }}>
                     {r.suggestedUrl ? (
                       <>
                         <div style={{ color: "#008060" }}>{r.suggestedFilename}</div>

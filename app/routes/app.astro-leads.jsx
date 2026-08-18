@@ -3,8 +3,7 @@
  * (most recent first) with a rolled-up email status (sent/opened/clicked,
  * and which specific links were clicked) sourced from EmailEvent rows
  * matched by trackingId, plus per-lead management: an editable internal
- * note, a "Send Now" button (resends the recommendation email), and a
- * "Delete" button.
+ * note and a "..." row-actions menu (Send Now / Retry WhatsApp / Delete).
  */
 import { useEffect, useState } from "react";
 import { useFetcher, useLoaderData, useRevalidator } from "react-router";
@@ -14,6 +13,7 @@ import prisma from "../db.server";
 import { resendAstroLeadEmail, sendWhatsAppForLead } from "../utils/astroAdvice.server";
 import { processWhatsAppQueue, getWhatsAppQueueSummary } from "../utils/whatsappQueue.server";
 import { getAppSettings } from "../utils/appSettings.server";
+import { tableWrapStyle, tableStyle, thStyle, tdStyle, TableGlobalStyles, useSort, SortTh, Pill, RowMenu } from "../components/table-kit";
 
 const PAGE_SIZE = 100;
 
@@ -131,8 +131,6 @@ export const loader = async ({ request }) => {
   };
 };
 
-const th = { textAlign: "left", padding: "8px 10px", fontSize: "12px", color: "#6d7175", borderBottom: "1px solid #e1e3e5", whiteSpace: "nowrap" };
-const td = { padding: "8px 10px", fontSize: "13px", borderBottom: "1px solid #f1f2f3", whiteSpace: "nowrap", verticalAlign: "top" };
 const smallBtn = {
   fontSize: "11px",
   padding: "4px 10px",
@@ -143,25 +141,6 @@ const smallBtn = {
   marginRight: "4px",
   marginBottom: "4px",
 };
-
-function statusPill(label, active, color) {
-  return (
-    <span
-      style={{
-        display: "inline-block",
-        padding: "1px 7px",
-        marginRight: "4px",
-        borderRadius: "10px",
-        fontSize: "11px",
-        fontWeight: 600,
-        background: active ? color + "22" : "#f1f2f3",
-        color: active ? color : "#8c9196",
-      }}
-    >
-      {label}
-    </span>
-  );
-}
 
 function LeadRow({ lead }) {
   const fetcher = useFetcher();
@@ -185,57 +164,57 @@ function LeadRow({ lead }) {
     return null; // optimistically hide once deleted
   }
 
+  const lastActionResult =
+    fetcher.data && ["sendNow", "resendWhatsapp"].includes(fetcher.data.intent) && fetcher.data.leadId === lead.id
+      ? fetcher.data
+      : null;
+
   return (
-    <tr style={{ opacity: busy ? 0.6 : 1 }}>
-      <td style={td}>{new Date(lead.createdAt).toLocaleString()}</td>
-      <td style={td}>{lead.name || "—"}</td>
-      <td style={td}>{lead.email || "—"}</td>
-      <td style={td}>{lead.phone || "—"}</td>
-      <td style={td}>{lead.lifeStoneGem || "—"}</td>
-      <td style={td}>
-        {lead.calculationOk ? statusPill("OK", true, "#008060") : statusPill("Failed", true, "#d82c0d")}
+    <tr className="dt-row" style={{ opacity: busy ? 0.6 : 1 }}>
+      <td style={tdStyle}>{new Date(lead.createdAt).toLocaleString()}</td>
+      <td style={tdStyle}>{lead.name || "—"}</td>
+      <td style={tdStyle}>{lead.email || "—"}</td>
+      <td style={tdStyle}>{lead.phone || "—"}</td>
+      <td style={tdStyle}>{lead.lifeStoneGem || "—"}</td>
+      <td style={tdStyle}>
+        {lead.calculationOk ? <Pill label="OK" active color="#008060" /> : <Pill label="Failed" active color="#d82c0d" />}
       </td>
-      <td style={td} title={lead.shopifySyncStatus || ""}>
-        {(lead.shopifySyncStatus || "").startsWith("OK")
-          ? statusPill("Synced", true, "#008060")
-          : lead.shopifySyncStatus
-            ? statusPill("Failed", true, "#d82c0d")
-            : statusPill("—", false, "#8c9196")}
-      </td>
-      <td style={td} title={lead.emailSendStatus || ""}>
-        {statusPill("Sent", lead.emailStatus.sent > 0, "#008060")}
-        {statusPill(
-          "Opened" + (lead.emailStatus.opened > 1 ? ` ×${lead.emailStatus.opened}` : ""),
-          lead.emailStatus.opened > 0,
-          "#6b5ce0"
-        )}
-        {statusPill(
-          "Clicked" + (lead.emailStatus.clicked > 1 ? ` ×${lead.emailStatus.clicked}` : ""),
-          lead.emailStatus.clicked > 0,
-          "#2c6ecb"
+      <td style={tdStyle} title={lead.shopifySyncStatus || ""}>
+        {(lead.shopifySyncStatus || "").startsWith("OK") ? (
+          <Pill label="Synced" active color="#008060" />
+        ) : lead.shopifySyncStatus ? (
+          <Pill label="Failed" active color="#d82c0d" />
+        ) : (
+          <Pill label="—" color="#8c9196" />
         )}
       </td>
-      <td style={td} title={lead.whatsappSendStatus || ""}>
-        {lead.whatsappSendStatus?.startsWith("OK")
-          ? statusPill("Sent", true, "#25d366")
-          : lead.whatsappSendStatus?.startsWith("queued")
-            ? statusPill("Queued", true, "#b98900")
-            : lead.whatsappSendStatus?.startsWith("skipped")
-              ? statusPill("Skipped", true, "#8c9196")
-              : lead.whatsappSendStatus
-                ? statusPill("Failed", true, "#d82c0d")
-                : statusPill("—", false, "#8c9196")}
-        <br />
-        <button type="button" style={{ ...smallBtn, marginTop: "4px" }} onClick={retryWhatsapp} disabled={busy}>
-          {busy && fetcher.formData?.get("intent") === "resendWhatsapp" ? "Sending…" : "Retry"}
-        </button>
-        {fetcher.data?.intent === "resendWhatsapp" && fetcher.data.leadId === lead.id && (
-          <div style={{ fontSize: "10px", marginTop: "3px", color: fetcher.data.ok ? "#008060" : "#d82c0d", whiteSpace: "normal", maxWidth: "160px" }}>
-            {fetcher.data.status || fetcher.data.error}
-          </div>
+      <td style={tdStyle} title={lead.emailSendStatus || ""}>
+        <Pill label="Sent" active={lead.emailStatus.sent > 0} color="#008060" />
+        <Pill
+          label={"Opened" + (lead.emailStatus.opened > 1 ? ` ×${lead.emailStatus.opened}` : "")}
+          active={lead.emailStatus.opened > 0}
+          color="#6b5ce0"
+        />
+        <Pill
+          label={"Clicked" + (lead.emailStatus.clicked > 1 ? ` ×${lead.emailStatus.clicked}` : "")}
+          active={lead.emailStatus.clicked > 0}
+          color="#2c6ecb"
+        />
+      </td>
+      <td style={tdStyle} title={lead.whatsappSendStatus || ""}>
+        {lead.whatsappSendStatus?.startsWith("OK") ? (
+          <Pill label="Sent" active color="#25d366" />
+        ) : lead.whatsappSendStatus?.startsWith("queued") ? (
+          <Pill label="Queued" active color="#b98900" />
+        ) : lead.whatsappSendStatus?.startsWith("skipped") ? (
+          <Pill label="Skipped" active color="#8c9196" />
+        ) : lead.whatsappSendStatus ? (
+          <Pill label="Failed" active color="#d82c0d" />
+        ) : (
+          <Pill label="—" color="#8c9196" />
         )}
       </td>
-      <td style={{ ...td, whiteSpace: "normal", minWidth: "180px" }}>
+      <td style={{ ...tdStyle, whiteSpace: "normal", minWidth: "180px" }}>
         {lead.emailStatus.clickedLinks?.length
           ? lead.emailStatus.clickedLinks.map((link, i) => (
               <span
@@ -247,7 +226,7 @@ function LeadRow({ lead }) {
             ))
           : "—"}
       </td>
-      <td style={{ ...td, minWidth: "180px" }}>
+      <td style={{ ...tdStyle, minWidth: "180px" }}>
         <textarea
           value={notes}
           onChange={(e) => {
@@ -263,14 +242,19 @@ function LeadRow({ lead }) {
           </button>
         )}
       </td>
-      <td style={{ ...td, minWidth: "140px" }}>
-        <button type="button" style={smallBtn} onClick={sendNow} disabled={busy}>
-          Send Now
-        </button>
-        <br />
-        <button type="button" style={{ ...smallBtn, color: "#d82c0d", borderColor: "#d82c0d" }} onClick={deleteLead} disabled={busy}>
-          Delete
-        </button>
+      <td style={{ ...tdStyle, minWidth: "90px" }}>
+        <RowMenu
+          items={[
+            { label: "Send Now (Email)", onClick: sendNow, disabled: busy },
+            { label: "Retry WhatsApp", onClick: retryWhatsapp, disabled: busy },
+            { label: "Delete", onClick: deleteLead, tone: "danger", disabled: busy },
+          ]}
+        />
+        {lastActionResult && (
+          <div style={{ fontSize: "10px", marginTop: "4px", color: lastActionResult.ok ? "#008060" : "#d82c0d", whiteSpace: "normal", maxWidth: "160px" }}>
+            {lastActionResult.status || lastActionResult.error}
+          </div>
+        )}
       </td>
     </tr>
   );
@@ -319,17 +303,17 @@ function WhatsAppQueueSection({ whatsappQueue }) {
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
-                <th style={th}>First sent</th>
-                <th style={th}>Name</th>
-                <th style={th}>Phone</th>
+                <th style={thStyle}>First sent</th>
+                <th style={thStyle}>Name</th>
+                <th style={thStyle}>Phone</th>
               </tr>
             </thead>
             <tbody>
               {whatsappQueue.pending.map((l) => (
                 <tr key={l.id}>
-                  <td style={td}>{new Date(l.whatsappFirstSentAt).toLocaleString()}</td>
-                  <td style={td}>{l.name || "—"}</td>
-                  <td style={td}>{l.phone || "—"}</td>
+                  <td style={tdStyle}>{new Date(l.whatsappFirstSentAt).toLocaleString()}</td>
+                  <td style={tdStyle}>{l.name || "—"}</td>
+                  <td style={tdStyle}>{l.phone || "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -417,10 +401,13 @@ export default function AstroLeadsPage() {
     );
   });
 
+  const { sorted: sortedLeads, sortKey, sortDir, onSort } = useSort(filteredLeads, "createdAt", "desc");
+
   return (
     <s-page heading={`Astro Advice — Leads (${leads.length})`} width="full">
       <WhatsAppQueueSection whatsappQueue={whatsappQueue} />
       <s-section>
+        <TableGlobalStyles />
         <button
           type="button"
           onClick={() => revalidator.revalidate()}
@@ -498,26 +485,26 @@ export default function AstroLeadsPage() {
         ) : filteredLeads.length === 0 ? (
           <s-paragraph>No leads match the current filters.</s-paragraph>
         ) : (
-          <div style={{ overflowX: "auto", width: "100%" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <div style={tableWrapStyle}>
+            <table style={tableStyle}>
               <thead>
                 <tr>
-                  <th style={th}>When</th>
-                  <th style={th}>Name</th>
-                  <th style={th}>Email</th>
-                  <th style={th}>Phone</th>
-                  <th style={th}>Life Stone</th>
-                  <th style={th}>Calculation</th>
-                  <th style={th}>Shopify Sync</th>
-                  <th style={th}>Email</th>
-                  <th style={th}>WhatsApp</th>
-                  <th style={th}>Clicked Links</th>
-                  <th style={th}>Notes</th>
-                  <th style={th}>Actions</th>
+                  <SortTh label="When" sortKey="createdAt" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                  <SortTh label="Name" sortKey="name" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                  <SortTh label="Email" sortKey="email" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                  <th style={thStyle}>Phone</th>
+                  <SortTh label="Life Stone" sortKey="lifeStoneGem" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                  <th style={thStyle}>Calculation</th>
+                  <th style={thStyle}>Shopify Sync</th>
+                  <th style={thStyle}>Email</th>
+                  <th style={thStyle}>WhatsApp</th>
+                  <th style={thStyle}>Clicked Links</th>
+                  <th style={thStyle}>Notes</th>
+                  <th style={thStyle}></th>
                 </tr>
               </thead>
               <tbody>
-                {filteredLeads.map((lead) => (
+                {sortedLeads.map((lead) => (
                   <LeadRow key={lead.id} lead={lead} />
                 ))}
               </tbody>
