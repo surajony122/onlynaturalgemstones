@@ -1,37 +1,51 @@
 /**
- * Bulk-sets the custom.product_video_url metafield (confirmed live in
- * theme code — snippets/card-product.liquid, product-media-gallery.liquid,
- * shubh-gems-customizer.liquid, sections/shubh-featured-collection.liquid
- * all read product.metafields.custom.product_video_url.value) from a
- * pasted SKU -> video URL list, matched by product SKU per explicit
- * user request.
+ * Product <-> video matcher for the custom.product_video_url metafield
+ * (confirmed live in theme code — see snippets/card-product.liquid,
+ * product-media-gallery.liquid, shubh-gems-customizer.liquid,
+ * sections/shubh-featured-collection.liquid, all of which read
+ * product.metafields.custom.product_video_url.value).
  *
- * Deliberately does NOT try to guess/construct the video URL from a
- * filename itself (Shopify's exact file-path prefix is store-specific
- * and fragile to hardcode) — the user already has the working formula
- * (prefix + filename, from Settings -> Files uploads) and builds the
- * full URL in their own sheet; this page's job is just the bulk-apply-
- * to-Shopify part, which is what's actually tedious/error-prone across
- * many products by hand.
+ * Lists every product with its CURRENT metafield value alongside a
+ * SUGGESTED video the app found by scanning the store's Files library
+ * (Settings -> Files — NOT Product Media, which auto-transcodes and
+ * loses the filename; see the file-naming conversation this page came
+ * out of) and matching each file's name against the product's SKU(s)
+ * and/or title. Nothing is written until the merchant checks a row and
+ * clicks Apply — this never renames, uploads, or moves the actual video
+ * file, only points the metafield at whichever Files-library file
+ * already has a matching name.
  *
- * Input format: one product per line, SKU and URL separated by a comma
- * or tab (so pasting straight from a spreadsheet — which uses tabs
- * between columns — works without any reformatting):
- *   YV801625023-5,https://cdn.shopify.com/s/files/1/.../Yellow-Sapphire-YV801625023-5.mp4
- *
- * The metafield's actual type (single_line_text_field vs url, etc.) is
- * looked up once via metafieldDefinitions before writing anything, so
- * this matches whatever type the merchant's existing definition already
- * uses rather than guessing and risking a type-mismatch error on every
- * row.
+ * Matching, in priority order:
+ *   1. SKU match — any variant SKU (normalized: lowercase, strip
+ *      non-alphanumeric) appears as a substring of the normalized
+ *      filename. Strongest signal since SKUs are usually unique.
+ *   2. Title match — fallback when no SKU match: significant words
+ *      (4+ letters, ignoring generic filler like "the"/"and") from the
+ *      product title are checked against the filename; matches if most
+ *      of them appear.
+ * Each suggested row is labeled with which one fired, so it's obvious
+ * why the app thinks that's the right file — not a silent guess.
  */
-import { useState } from "react";
-import { useFetcher } from "react-router";
+import { useMemo, useState } from "react";
+import { useFetcher, useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 
 const METAFIELD_NAMESPACE = "custom";
 const METAFIELD_KEY = "product_video_url";
+const VIDEO_EXTENSIONS = [".mp4", ".mov", ".webm", ".m4v"];
+const STOPWORDS = new Set(["the", "and", "for", "with", "from", "this", "that"]);
+
+function normalize(s) {
+  return String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function titleTokens(title) {
+  return String(title || "")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length >= 4 && !STOPWORDS.has(w));
+}
 
 async function getMetafieldType(admin) {
   const res = await admin.graphql(
@@ -46,177 +60,275 @@ async function getMetafieldType(admin) {
   return json?.data?.metafieldDefinitions?.nodes?.[0]?.type?.name || "single_line_text_field";
 }
 
-async function findProductIdBySku(admin, sku) {
-  const safeSku = sku.replace(/"/g, "");
-  const res = await admin.graphql(
-    `#graphql
-    query ProductBySku($q: String!) {
-      productVariants(first: 1, query: $q) {
-        nodes { id product { id title } }
-      }
-    }`,
-    { variables: { q: `sku:${safeSku}` } }
-  );
-  const json = await res.json();
-  const node = json?.data?.productVariants?.nodes?.[0];
-  return node ? { productId: node.product.id, title: node.product.title } : null;
+async function fetchAllProducts(admin) {
+  const products = [];
+  let after = null;
+  // Capped at 500 (5 pages of 100) — enough for this store's catalog
+  // size without risking a very long page load; rerun after a batch is
+  // applied to pick up the rest if the store ever grows past this.
+  for (let page = 0; page < 5; page++) {
+    const res = await admin.graphql(
+      `#graphql
+      query AllProductsForVideoMatch($after: String) {
+        products(first: 100, after: $after) {
+          nodes {
+            id
+            title
+            metafield(namespace: "${METAFIELD_NAMESPACE}", key: "${METAFIELD_KEY}") { value }
+            variants(first: 20) { nodes { sku } }
+          }
+          pageInfo { hasNextPage endCursor }
+        }
+      }`,
+      { variables: { after } }
+    );
+    const json = await res.json();
+    const conn = json?.data?.products;
+    if (!conn) break;
+    products.push(
+      ...conn.nodes.map((p) => ({
+        id: p.id,
+        title: p.title,
+        currentUrl: p.metafield?.value || "",
+        skus: (p.variants?.nodes || []).map((v) => v.sku).filter(Boolean),
+      }))
+    );
+    if (!conn.pageInfo.hasNextPage) break;
+    after = conn.pageInfo.endCursor;
+  }
+  return products;
 }
+
+async function fetchAllVideoFiles(admin) {
+  const files = [];
+  let after = null;
+  for (let page = 0; page < 5; page++) {
+    const res = await admin.graphql(
+      `#graphql
+      query AllFilesForVideoMatch($after: String) {
+        files(first: 100, after: $after) {
+          nodes {
+            id
+            ... on GenericFile { url }
+          }
+          pageInfo { hasNextPage endCursor }
+        }
+      }`,
+      { variables: { after } }
+    );
+    const json = await res.json();
+    const conn = json?.data?.files;
+    if (!conn) break;
+    for (const f of conn.nodes) {
+      if (!f.url) continue; // not a GenericFile (e.g. an image) — skip
+      const filename = decodeURIComponent(f.url.split("/").pop().split("?")[0]);
+      if (!VIDEO_EXTENSIONS.some((ext) => filename.toLowerCase().endsWith(ext))) continue;
+      files.push({ url: f.url, filename });
+    }
+    if (!conn.pageInfo.hasNextPage) break;
+    after = conn.pageInfo.endCursor;
+  }
+  return files;
+}
+
+function findMatch(product, files) {
+  const normalizedSkus = product.skus.map(normalize).filter((s) => s.length >= 4);
+  for (const file of files) {
+    const normalizedFilename = normalize(file.filename);
+    for (const sku of normalizedSkus) {
+      if (normalizedFilename.includes(sku)) {
+        return { url: file.url, filename: file.filename, matchedBy: "SKU" };
+      }
+    }
+  }
+  const tokens = titleTokens(product.title);
+  if (tokens.length) {
+    for (const file of files) {
+      const normalizedFilename = normalize(file.filename);
+      const hits = tokens.filter((t) => normalizedFilename.includes(t));
+      if (hits.length >= Math.max(1, Math.ceil(tokens.length * 0.6))) {
+        return { url: file.url, filename: file.filename, matchedBy: "title" };
+      }
+    }
+  }
+  return null;
+}
+
+export const loader = async ({ request }) => {
+  const { admin } = await authenticate.admin(request);
+
+  const [products, files] = await Promise.all([fetchAllProducts(admin), fetchAllVideoFiles(admin)]);
+
+  const rows = products.map((p) => {
+    const match = findMatch(p, files);
+    return {
+      id: p.id,
+      title: p.title,
+      skus: p.skus.join(", "),
+      currentUrl: p.currentUrl,
+      suggestedUrl: match?.url || null,
+      suggestedFilename: match?.filename || null,
+      matchedBy: match?.matchedBy || null,
+    };
+  });
+
+  return {
+    rows,
+    totalProducts: products.length,
+    totalVideoFiles: files.length,
+    matchedCount: rows.filter((r) => r.suggestedUrl).length,
+  };
+};
 
 export const action = async ({ request }) => {
   const { admin } = await authenticate.admin(request);
   const formData = await request.formData();
-  const rawInput = formData.get("input") || "";
+  const updatesRaw = formData.get("updates");
 
-  const lines = rawInput
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
-
-  if (!lines.length) {
-    return { ok: false, error: "Paste at least one SKU,URL line first." };
+  let updates;
+  try {
+    updates = JSON.parse(updatesRaw);
+  } catch {
+    return { ok: false, error: "Bad request." };
+  }
+  if (!Array.isArray(updates) || !updates.length) {
+    return { ok: false, error: "Check at least one row first." };
   }
 
   const metafieldType = await getMetafieldType(admin);
 
-  const results = [];
-  for (const line of lines) {
-    const parts = line.includes("\t") ? line.split("\t") : line.split(",");
-    const sku = (parts[0] || "").trim();
-    const url = (parts.slice(1).join(",") || "").trim();
-
-    if (!sku || !url) {
-      results.push({ sku: sku || "(blank)", ok: false, detail: "Missing SKU or URL on this line — skipped." });
-      continue;
-    }
-
-    try {
-      const match = await findProductIdBySku(admin, sku);
-      if (!match) {
-        results.push({ sku, ok: false, detail: "No product found with this SKU." });
-        continue;
+  const res = await admin.graphql(
+    `#graphql
+    mutation SetVideoUrls($metafields: [MetafieldsSetInput!]!) {
+      metafieldsSet(metafields: $metafields) {
+        metafields { id }
+        userErrors { field message }
       }
-
-      const res = await admin.graphql(
-        `#graphql
-        mutation SetVideoUrl($metafields: [MetafieldsSetInput!]!) {
-          metafieldsSet(metafields: $metafields) {
-            metafields { id }
-            userErrors { field message }
-          }
-        }`,
-        {
-          variables: {
-            metafields: [
-              {
-                ownerId: match.productId,
-                namespace: METAFIELD_NAMESPACE,
-                key: METAFIELD_KEY,
-                type: metafieldType,
-                value: url,
-              },
-            ],
-          },
-        }
-      );
-      const json = await res.json();
-      const userErrors = json?.data?.metafieldsSet?.userErrors || [];
-      if (json.errors || userErrors.length) {
-        results.push({
-          sku,
-          title: match.title,
-          ok: false,
-          detail: "FAILED: " + JSON.stringify(json.errors || userErrors).slice(0, 200),
-        });
-      } else {
-        results.push({ sku, title: match.title, ok: true, detail: "OK: video URL set" });
-      }
-    } catch (err) {
-      results.push({ sku, ok: false, detail: "threw: " + String(err?.message || err) });
+    }`,
+    {
+      variables: {
+        metafields: updates.map((u) => ({
+          ownerId: u.productId,
+          namespace: METAFIELD_NAMESPACE,
+          key: METAFIELD_KEY,
+          type: metafieldType,
+          value: u.url,
+        })),
+      },
     }
+  );
+  const json = await res.json();
+  const userErrors = json?.data?.metafieldsSet?.userErrors || [];
+  if (json.errors || userErrors.length) {
+    return { ok: false, error: "FAILED: " + JSON.stringify(json.errors || userErrors).slice(0, 300) };
   }
-
-  return {
-    ok: true,
-    metafieldType,
-    total: results.length,
-    succeeded: results.filter((r) => r.ok).length,
-    results,
-  };
+  return { ok: true, applied: updates.length };
 };
 
 const th = { textAlign: "left", padding: "8px 10px", fontSize: "12px", color: "#6d7175", borderBottom: "1px solid #e1e3e5" };
 const td = { padding: "8px 10px", fontSize: "13px", borderBottom: "1px solid #f1f2f3", verticalAlign: "top" };
 
 export default function VideoUrlsPage() {
+  const { rows, totalProducts, totalVideoFiles, matchedCount } = useLoaderData();
   const fetcher = useFetcher();
-  const [input, setInput] = useState("");
   const busy = fetcher.state !== "idle";
-  const data = fetcher.data;
 
-  const submit = () => fetcher.submit({ input }, { method: "POST" });
+  const [checked, setChecked] = useState(() => new Set());
+  const matchedRows = useMemo(() => rows.filter((r) => r.suggestedUrl), [rows]);
+
+  const toggle = (id) => {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const checkAllMatched = () => setChecked(new Set(matchedRows.map((r) => r.id)));
+  const clearAll = () => setChecked(new Set());
+
+  const apply = () => {
+    const updates = rows
+      .filter((r) => checked.has(r.id) && r.suggestedUrl)
+      .map((r) => ({ productId: r.id, url: r.suggestedUrl }));
+    fetcher.submit({ updates: JSON.stringify(updates) }, { method: "POST" });
+  };
 
   return (
-    <s-page heading="Bulk product video URLs">
-      <s-section heading="Set custom.product_video_url from a SKU list">
+    <s-page heading="Video URL matcher">
+      <s-section heading={`Products (${totalProducts}) vs. video files found (${totalVideoFiles}) — ${matchedCount} matched`}>
         <s-paragraph>
-          One product per line: <s-text>SKU, video URL</s-text> — paste straight from a spreadsheet (tab-separated
-          also works). Matches each SKU to its product and sets the same{" "}
-          <s-text>custom.product_video_url</s-text> metafield your theme already reads on the product card, media
-          gallery, and customizer. Doesn't touch anything else on the product.
+          Scans your Files library (Settings → Files) for video files and matches each one to a product by SKU or
+          title. Nothing is written until you check rows and click Apply — this only sets the{" "}
+          <s-text>custom.product_video_url</s-text> metafield, it never touches the video files themselves.
+          {" "}Products with no match are still listed (greyed out, can't be checked) so you can see what's left to
+          upload.
         </s-paragraph>
 
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder={"YV801625023-5,https://cdn.shopify.com/s/files/1/0992/9929/5531/files/Yellow-Sapphire-YV801625023-5.mp4\nYV801625024-2,https://cdn.shopify.com/s/files/1/0992/9929/5531/files/Yellow-Sapphire-YV801625024-2.mp4"}
-          style={{
-            width: "100%",
-            minHeight: "200px",
-            fontFamily: "monospace",
-            fontSize: "12px",
-            padding: "10px",
-            border: "1px solid #c9cccf",
-            borderRadius: "6px",
-            boxSizing: "border-box",
-            marginBottom: "12px",
-          }}
-        />
+        <div style={{ display: "flex", gap: "10px", margin: "12px 0" }}>
+          <button type="button" onClick={checkAllMatched} disabled={!matchedRows.length}
+            style={{ fontSize: "12px", padding: "6px 12px", borderRadius: "6px", border: "1px solid #c9cccf", background: "#fff", cursor: "pointer" }}>
+            Check all matched ({matchedRows.length})
+          </button>
+          <button type="button" onClick={clearAll}
+            style={{ fontSize: "12px", padding: "6px 12px", borderRadius: "6px", border: "1px solid #c9cccf", background: "#fff", cursor: "pointer" }}>
+            Clear selection
+          </button>
+          <s-button {...(busy ? { loading: true } : {})} onClick={apply}>
+            Apply to {checked.size} selected
+          </s-button>
+        </div>
 
-        <s-button {...(busy ? { loading: true } : {})} onClick={submit}>
-          Set video URLs
-        </s-button>
-
-        {data?.ok === false && (
-          <p style={{ color: "#d82c0d", fontSize: "13px", marginTop: "10px" }}>{data.error}</p>
+        {fetcher.data?.ok === false && <p style={{ color: "#d82c0d", fontSize: "13px" }}>{fetcher.data.error}</p>}
+        {fetcher.data?.ok && (
+          <p style={{ color: "#008060", fontSize: "13px" }}>
+            Applied to {fetcher.data.applied} product(s). Reload the page to see updated "Current" values.
+          </p>
         )}
 
-        {data?.ok && (
-          <div style={{ marginTop: "16px" }}>
-            <p style={{ fontSize: "13px", color: "#6d7175", marginBottom: "10px" }}>
-              {data.succeeded} of {data.total} succeeded · metafield type used: <s-text>{data.metafieldType}</s-text>
-            </p>
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr>
-                    <th style={th}>SKU</th>
-                    <th style={th}>Product</th>
-                    <th style={th}>Result</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.results.map((r, i) => (
-                    <tr key={i}>
-                      <td style={td}>{r.sku}</td>
-                      <td style={td}>{r.title || "—"}</td>
-                      <td style={{ ...td, color: r.ok ? "#008060" : "#d82c0d" }}>{r.detail}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+        <div style={{ overflowX: "auto", marginTop: "12px" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr>
+                <th style={th}></th>
+                <th style={th}>Product</th>
+                <th style={th}>SKU(s)</th>
+                <th style={th}>Current video URL (metafield)</th>
+                <th style={th}>Suggested match</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} style={{ opacity: r.suggestedUrl ? 1 : 0.5 }}>
+                  <td style={td}>
+                    <input
+                      type="checkbox"
+                      checked={checked.has(r.id)}
+                      disabled={!r.suggestedUrl}
+                      onChange={() => toggle(r.id)}
+                    />
+                  </td>
+                  <td style={td}>{r.title}</td>
+                  <td style={{ ...td, fontFamily: "monospace", fontSize: "11px" }}>{r.skus || "—"}</td>
+                  <td style={{ ...td, fontFamily: "monospace", fontSize: "11px", maxWidth: "220px", overflow: "hidden", textOverflow: "ellipsis" }} title={r.currentUrl}>
+                    {r.currentUrl || "(not set)"}
+                  </td>
+                  <td style={{ ...td, fontFamily: "monospace", fontSize: "11px", maxWidth: "260px" }}>
+                    {r.suggestedUrl ? (
+                      <>
+                        <div style={{ color: "#008060" }}>{r.suggestedFilename}</div>
+                        <div style={{ fontSize: "10px", color: "#6d7175" }}>matched by {r.matchedBy}</div>
+                      </>
+                    ) : (
+                      "no match found"
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </s-section>
     </s-page>
   );
