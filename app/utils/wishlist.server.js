@@ -72,9 +72,20 @@ export async function handleWishlistSync(admin, shop, data) {
   // per form fill), so keeping this off the request's critical path
   // matters even more here.
   const settings = await getAppSettings(shop);
-  mirrorWishlistLeadToSheet(settings, lead).catch((err) =>
-    console.error("[wishlist] Sheet mirror failed:", err)
+  const mirrorPromise = mirrorWishlistLeadToSheet(settings, lead).catch(
+    (err) => "threw: " + String((err && err.message) || err)
   );
+
+  // TEMPORARY: {"debug": true} in the request body awaits the mirror
+  // call and reports its real status instead of firing-and-forgetting it
+  // — for diagnosing exactly what happens server-side without needing
+  // Render's logs. Never triggered by the real theme JS (only sends
+  // email/phone/productHandles), so this never adds latency to a real
+  // customer's sync.
+  if (data.debug === true) {
+    const sheetMirrorStatus = await mirrorPromise;
+    return { ok: true, emailSendStatus: "pending: scheduled for the next interval check", sheetMirrorStatus, shop, hasRelayUrl: !!settings.sheetsRelayUrl };
+  }
 
   return { ok: true, emailSendStatus: "pending: scheduled for the next interval check" };
 }
