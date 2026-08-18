@@ -11,8 +11,9 @@ import { useFetcher, useLoaderData, useRevalidator } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
-import { resendAstroLeadEmail } from "../utils/astroAdvice.server";
+import { resendAstroLeadEmail, sendWhatsAppForLead } from "../utils/astroAdvice.server";
 import { processWhatsAppQueue, getWhatsAppQueueSummary } from "../utils/whatsappQueue.server";
+import { getAppSettings } from "../utils/appSettings.server";
 
 const PAGE_SIZE = 100;
 
@@ -36,6 +37,27 @@ export const action = async ({ request }) => {
   if (intent === "sendNow") {
     try {
       const status = await resendAstroLeadEmail(admin, leadId);
+      return { intent, ok: status?.startsWith("OK"), leadId, status };
+    } catch (err) {
+      return { intent, ok: false, leadId, error: String(err?.message || err) };
+    }
+  }
+
+  // Manual retry for a WhatsApp send that failed (or was skipped, or you
+  // just want to resend) — mirrors sendNow's shape/pattern exactly, but
+  // for sendWhatsAppForLead instead of the email. Reuses the lead's own
+  // saved recommendation/dob/tob/etc., so this works even long after the
+  // original submission (same as a follow-up reminder would).
+  if (intent === "resendWhatsapp") {
+    try {
+      const lead = await prisma.astroLead.findUnique({ where: { id: leadId } });
+      if (!lead) return { intent, ok: false, leadId, error: "Lead not found" };
+      const settings = await getAppSettings(lead.shop || session.shop);
+      const status = await sendWhatsAppForLead(admin, settings, lead);
+      await prisma.astroLead.update({
+        where: { id: leadId },
+        data: { whatsappSendStatus: status, whatsappFirstSentAt: lead.whatsappFirstSentAt || new Date() },
+      });
       return { intent, ok: status?.startsWith("OK"), leadId, status };
     } catch (err) {
       return { intent, ok: false, leadId, error: String(err?.message || err) };
@@ -152,6 +174,7 @@ function LeadRow({ lead }) {
   }, [fetcher.data]);
 
   const sendNow = () => fetcher.submit({ intent: "sendNow", leadId: lead.id }, { method: "POST" });
+  const retryWhatsapp = () => fetcher.submit({ intent: "resendWhatsapp", leadId: lead.id }, { method: "POST" });
   const saveNotes = () => fetcher.submit({ intent: "saveNotes", leadId: lead.id, notes }, { method: "POST" });
   const deleteLead = () => {
     if (!window.confirm(`Delete this lead (${lead.email || "no email"})? This can't be undone.`)) return;
@@ -202,6 +225,15 @@ function LeadRow({ lead }) {
               : lead.whatsappSendStatus
                 ? statusPill("Failed", true, "#d82c0d")
                 : statusPill("—", false, "#8c9196")}
+        <br />
+        <button type="button" style={{ ...smallBtn, marginTop: "4px" }} onClick={retryWhatsapp} disabled={busy}>
+          {busy && fetcher.formData?.get("intent") === "resendWhatsapp" ? "Sending…" : "Retry"}
+        </button>
+        {fetcher.data?.intent === "resendWhatsapp" && fetcher.data.leadId === lead.id && (
+          <div style={{ fontSize: "10px", marginTop: "3px", color: fetcher.data.ok ? "#008060" : "#d82c0d", whiteSpace: "normal", maxWidth: "160px" }}>
+            {fetcher.data.status || fetcher.data.error}
+          </div>
+        )}
       </td>
       <td style={{ ...td, whiteSpace: "normal", minWidth: "180px" }}>
         {lead.emailStatus.clickedLinks?.length
