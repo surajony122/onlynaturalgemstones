@@ -37,6 +37,16 @@ const INTERAKT_CREATE_CAMPAIGN_URL = "https://api.interakt.ai/v1/public/create-c
 // doesn't pass its own headerImageUrl.
 const FALLBACK_HEADER_IMAGE_URL = "https://onlynaturalgemstones.com/cdn/shop/files/ONG_logo_home.png";
 
+// Same duplication reasoning as above — the storefront's real
+// customer-facing domain, used to build each stone's collection link
+// appended into its tagline variable (see tagline() in
+// buildGemRecommendationTemplatePayload) so the message includes a real,
+// clickable link per recommendation without needing a template button
+// (WhatsApp allows at most 2 URL buttons per template — not enough for
+// 3 independent per-stone links — but plain http(s) URLs inside a body
+// variable's text render as clickable automatically, no button needed).
+const STORE_DOMAIN = "onlynaturalgemstones.com";
+
 // Also duplicated (not imported, same circular-dependency reason as
 // above) from astroAdvice.server.js's GEM_TAGLINE — plain-text version
 // here (no "&amp;" HTML entity) since this fills a WhatsApp template
@@ -208,10 +218,7 @@ const GEM_FALLBACK_TEXT = "Ask our expert";
 
 /**
  * Builds the Send Template API payload for the gem-recommendation
- * WhatsApp message. Rewritten to match the leaner Utility-category
- * template actually in use now — plain text, no links, no button, just
- * the requested information (per-user request: less "marketing," more
- * "here's what you asked for").
+ * WhatsApp message.
  *
  * ---- TEMPLATE (as configured in Interakt) ----
  *
@@ -251,23 +258,40 @@ const GEM_FALLBACK_TEXT = "Ask our expert";
  *   Only Natural Gemstones
  *   from the House of Shubh Gems
  *
- * No footer, no buttons. No submission-date variable in this version —
- * the `submittedOn` parameter below is accepted for call-site
- * compatibility (astroAdvice.server.js still computes and passes it,
- * used elsewhere) but is NOT part of this template's body values.
+ * No footer, no buttons in the template itself — instead, each stone's
+ * {{3}}/{{5}}/{{7}} variable now carries its benefit tagline PLUS that
+ * stone's own collection link appended as plain text (e.g. "for Wealth,
+ * Wisdom & Prosperity https://onlynaturalgemstones.com/collections/
+ * yellow-sapphire"). Per-user request ("one message with links of
+ * collections of recommendations") — WhatsApp templates cap out at 2 URL
+ * buttons, not enough for 3 independent per-stone links, but a plain
+ * http(s) URL inside body text renders as a tappable link automatically
+ * with no button/extra template approval needed. WhatsApp does NOT allow
+ * newlines inside a variable's value, so tagline and link stay on one
+ * line, space-separated — see tagline() below.
+ *
+ * No submission-date variable in this version — the `submittedOn`
+ * parameter below is accepted for call-site compatibility
+ * (astroAdvice.server.js still computes and passes it, used elsewhere)
+ * but is NOT part of this template's body values.
  *
  * ---- Variable mapping ----
  *  {{1}} first name
  *  {{2}} life stone gem name
- *  {{3}} life stone's short benefit tagline (GEM_TAGLINE lookup)
+ *  {{3}} life stone's benefit tagline + its collection link
  *  {{4}} benefic stone gem name
- *  {{5}} benefic stone's short benefit tagline
+ *  {{5}} benefic stone's benefit tagline + its collection link
  *  {{6}} lucky stone gem name
- *  {{7}} lucky stone's short benefit tagline
+ *  {{7}} lucky stone's benefit tagline + its collection link
  */
 export function buildGemRecommendationTemplatePayload({ countryCode, phoneNumber, templateName, firstName, submittedOn, life, benefic, lucky, headerImageUrl, trackingId, campaignId }) {
   const gemName = (stone) => (stone && stone.gem) || GEM_FALLBACK_TEXT;
-  const tagline = (stone) => GEM_TAGLINE[gemName(stone)] || "";
+  const collectionUrl = (stone) => (stone && stone.collection ? `https://${STORE_DOMAIN}/collections/${stone.collection}` : "");
+  const tagline = (stone) => {
+    const base = GEM_TAGLINE[gemName(stone)] || "";
+    const url = collectionUrl(stone);
+    return url ? (base ? `${base} ${url}` : url) : base;
+  };
 
   return {
     countryCode,
