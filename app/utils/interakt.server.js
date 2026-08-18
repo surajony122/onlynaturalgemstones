@@ -117,9 +117,17 @@ async function sendInteraktTemplateMessage(apiKey, payload) {
       body = { raw: text.slice(0, 300) };
     }
     if (!res.ok || body?.result === false) {
-      return { ok: false, status: `FAILED: HTTP ${res.status} — ${JSON.stringify(body).slice(0, 300)}` };
+      return { ok: false, status: `FAILED: HTTP ${res.status} — ${JSON.stringify(body).slice(0, 300)}`, rawResponse: text.slice(0, 1000) };
     }
-    return { ok: true, status: "OK: queued (id: " + (body?.id || "?") + ")", id: body?.id };
+    // rawResponse kept alongside the short status — Interakt's HTTP 200 +
+    // result:true only means "we accepted your request", not "WhatsApp
+    // delivered it" (that's what the separate delivery webhook is for).
+    // Surfacing the FULL body (not just id) here so debug callers can see
+    // everything Interakt actually returned — e.g. a message/campaign_id/
+    // conversation_id field that might reveal it landed somewhere
+    // unexpected (wrong campaign, wrong channel, etc.) when a send
+    // reports success here but never shows up in Interakt's own UI.
+    return { ok: true, status: "OK: queued (id: " + (body?.id || "?") + ")", id: body?.id, rawResponse: text.slice(0, 1000) };
   } catch (err) {
     return { ok: false, status: "threw: " + String((err && err.message) || err) };
   }
@@ -341,7 +349,14 @@ export async function sendGemRecommendationWhatsApp(settings, data, recommendati
   });
 
   const result = await sendInteraktTemplateMessage(settings.interaktApiKey, payload);
-  return result.status;
+  // Raw body appended (not just the short "OK: queued (id: ...)" status)
+  // so a lead row / debug response shows EXACTLY what Interakt returned —
+  // useful when Interakt reports success here but the message never
+  // shows up in Interakt's own Conversations/Campaign UI, since that
+  // gap can only be explained by something in the fields we normally
+  // don't surface (e.g. which channel/number/campaign it actually
+  // attached to).
+  return result.status + (result.rawResponse ? " | raw: " + result.rawResponse : "");
 }
 
 /**
