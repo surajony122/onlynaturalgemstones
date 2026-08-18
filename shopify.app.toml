@@ -24,7 +24,19 @@ embedded = true
 #   app now handles both jobs; astro-lead-sync-app's own client_id/secret
 #   can be retired once this is confirmed working — see
 #   MERGE_ASTRO_ADVICE.md.
-scopes = "write_products,read_products,read_themes,write_inventory,read_orders,write_metaobjects,write_metaobject_definitions,write_publications,write_customers,read_customers"
+# read_merchant_managed_fulfillment_orders: added after confirming live
+#   that Order.displayFulfillmentStatus (the field webhooks.orders.updated.jsx
+#   originally used) is NOT reliable — Shopify's own docs confirm it's an
+#   aggregate/display-only field that can disagree with the actual
+#   FulfillmentOrder.status, and this was reproduced live: three separate
+#   webhook checks over 11 minutes all read displayFulfillmentStatus as
+#   UNFULFILLED while the Admin UI's own badge showed "In progress" the
+#   whole time for the same order. The real, granular IN_PROGRESS value
+#   only exists on FulfillmentOrder.status, which needs this scope —
+#   confirmed via a live "Access denied for fulfillmentOrders field"
+#   error the first time this was tried without it. Adding it back
+#   requires the merchant to re-approve the app's permissions once.
+scopes = "write_products,read_products,read_themes,write_inventory,read_orders,write_metaobjects,write_metaobject_definitions,write_publications,write_customers,read_customers,read_merchant_managed_fulfillment_orders"
 
 # Lets the theme call https://<store-domain>/apps/customize , which Shopify
 # signs and proxies to this app's /proxy route — see app/routes/proxy.jsx.

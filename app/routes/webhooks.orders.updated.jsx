@@ -7,13 +7,18 @@
  * "...marked 1 item as in progress" followed later by "...marked 1 item
  * as fulfilled").
  *
- * Checks order.displayFulfillmentStatus — the exact field driving the
- * "Fulfillment status: In progress" badge shown in Shopify Admin's own
- * order page (confirmed via screenshot) — NOT fulfillmentOrders[].status
- * as originally written; those are a different, more granular per-
- * shipment concept that can lag or differ from the order-level display
- * status a merchant actually looks at. Checking both, since either being
- * true is a reasonable signal.
+ * Checks fulfillmentOrders[].status (needs the
+ * read_merchant_managed_fulfillment_orders scope — see shopify.app.toml)
+ * — NOT order.displayFulfillmentStatus as an earlier version of this
+ * file used. That field looked right at first (matches the top-of-page
+ * badge in the simple case originally screenshotted) but turned out to
+ * be an unreliable AGGREGATE/display-only value — confirmed both by
+ * Shopify's own docs (community.shopify.dev has reports of exactly this
+ * mismatch) and live: three separate webhook checks 5-11 minutes apart
+ * all read displayFulfillmentStatus as UNFULFILLED for a real order
+ * whose Admin UI badge clearly showed "In progress" the whole time. The
+ * real, granular IN_PROGRESS value only exists on the FulfillmentOrder
+ * object itself.
  *
  * Deliberately triggered off the broad, well-documented orders/updated
  * topic (fires on essentially any order change, confirmed firing for
@@ -86,21 +91,25 @@ export const action = async ({ request }) => {
       return new Response();
     }
 
-    // fulfillmentOrders was tried here too (belt-and-suspenders with
-    // displayFulfillmentStatus) but turned out to need a scope this app
-    // doesn't have (read_merchant_managed_fulfillment_orders) — confirmed
-    // live via a real "Access denied for fulfillmentOrders field" error,
-    // which throws and kills the WHOLE query (same GraphQL behavior
-    // that's bitten this app before). Dropped entirely: adding that scope
-    // would require the merchant to re-approve permissions, and it's not
-    // needed anyway — displayFulfillmentStatus alone is the exact field
-    // driving the "In progress" badge in Shopify Admin, a plain Order
-    // field that needs nothing beyond the read_orders scope already held.
+    // Requires read_merchant_managed_fulfillment_orders (see
+    // shopify.app.toml) — without it this field throws "Access denied
+    // for fulfillmentOrders field", which kills the WHOLE GraphQL query
+    // (same all-or-nothing behavior that's bitten this app before), not
+    // just this one field. Also fetching displayFulfillmentStatus
+    // alongside it now purely for visibility in the log below — no
+    // longer used for the actual decision, but useful to see how far it
+    // can drift from the real per-fulfillment-order status.
     const res = await admin.graphql(
       `#graphql
       query OrderFulfillmentStatus($id: ID!) {
         order(id: $id) {
           displayFulfillmentStatus
+          fulfillmentOrders(first: 10) {
+            nodes {
+              id
+              status
+            }
+          }
         }
       }`,
       { variables: { id: payload.admin_graphql_api_id } }
@@ -117,10 +126,14 @@ export const action = async ({ request }) => {
     }
 
     const displayStatus = order.displayFulfillmentStatus;
-    const isInProgress = String(displayStatus).toUpperCase() === "IN_PROGRESS";
+    const fulfillmentOrderNodes = order.fulfillmentOrders?.nodes || [];
+    const fulfillmentOrderStatuses = fulfillmentOrderNodes.map((fo) => fo.status);
+    const isInProgress = fulfillmentOrderStatuses.some((s) => String(s).toUpperCase() === "IN_PROGRESS");
 
     if (!isInProgress) {
-      await setDetail(`not in progress — displayFulfillmentStatus: ${displayStatus}`);
+      await setDetail(
+        `not in progress — fulfillmentOrders: [${fulfillmentOrderStatuses.join(", ") || "none"}] (displayFulfillmentStatus: ${displayStatus})`
+      );
       return new Response();
     }
 
@@ -128,7 +141,9 @@ export const action = async ({ request }) => {
     const phone = payload?.phone || payload?.customer?.phone || payload?.shipping_address?.phone || payload?.billing_address?.phone || null;
     const firstName = payload?.customer?.first_name || "";
     const orderNumber = payload?.name || String(payload.order_number || payload.id);
-    await setDetail(`IN_PROGRESS (displayFulfillmentStatus: ${displayStatus}) — sending to phone: ${phone || "(none found)"}`);
+    await setDetail(
+      `IN_PROGRESS (fulfillmentOrders: [${fulfillmentOrderStatuses.join(", ")}], displayFulfillmentStatus: ${displayStatus}) — sending to phone: ${phone || "(none found)"}`
+    );
 
     let status;
     try {
