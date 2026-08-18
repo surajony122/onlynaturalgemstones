@@ -219,7 +219,62 @@ export const loader = async ({ request }) => {
   };
 };
 
+// productCreateMedia's originalSource rejects URLs already on Shopify's
+// own CDN ("Invalid video url") — it only accepts external hosts or a
+// URL from Shopify's own staged-upload flow. Since the matched video
+// file already lives on cdn.shopify.com (Files library), it has to be
+// downloaded and re-uploaded through stagedUploadsCreate first — the
+// same two-step flow the Admin UI itself uses for a manual upload —
+// before productCreateMedia will accept it as a fresh source.
+async function stagedUploadFromUrl(admin, sourceUrl, filename) {
+  const fileRes = await fetch(sourceUrl);
+  if (!fileRes.ok) {
+    throw new Error(`Couldn't download source video (HTTP ${fileRes.status})`);
+  }
+  const mimeType = fileRes.headers.get("content-type") || "video/mp4";
+  const buffer = Buffer.from(await fileRes.arrayBuffer());
+
+  const stagedRes = await admin.graphql(
+    `#graphql
+    mutation StagedUploadForVideo($input: [StagedUploadInput!]!) {
+      stagedUploadsCreate(input: $input) {
+        stagedTargets { url resourceUrl parameters { name value } }
+        userErrors { field message }
+      }
+    }`,
+    {
+      variables: {
+        input: [{ resource: "VIDEO", filename: filename || "video.mp4", mimeType, httpMethod: "POST" }],
+      },
+    }
+  );
+  const stagedJson = await stagedRes.json();
+  const target = stagedJson?.data?.stagedUploadsCreate?.stagedTargets?.[0];
+  const stagedErrors = stagedJson?.data?.stagedUploadsCreate?.userErrors || [];
+  if (!target || stagedErrors.length || stagedJson.errors) {
+    throw new Error("stagedUploadsCreate failed: " + JSON.stringify(stagedJson.errors || stagedErrors).slice(0, 200));
+  }
+
+  const form = new FormData();
+  for (const p of target.parameters) form.append(p.name, p.value);
+  form.append("file", new Blob([buffer], { type: mimeType }), filename || "video.mp4");
+
+  const uploadRes = await fetch(target.url, { method: "POST", body: form });
+  if (!uploadRes.ok) {
+    throw new Error(`Staged upload POST failed (HTTP ${uploadRes.status})`);
+  }
+
+  return target.resourceUrl;
+}
+
 async function uploadToProductGallery(admin, productId, url, filename) {
+  let resourceUrl;
+  try {
+    resourceUrl = await stagedUploadFromUrl(admin, url, filename);
+  } catch (err) {
+    return { ok: false, error: String(err.message || err).slice(0, 200) };
+  }
+
   const res = await admin.graphql(
     `#graphql
     mutation UploadVideoToGallery($media: [CreateMediaInput!]!, $productId: ID!) {
@@ -231,7 +286,7 @@ async function uploadToProductGallery(admin, productId, url, filename) {
     {
       variables: {
         productId,
-        media: [{ originalSource: url, mediaContentType: "VIDEO", alt: filename || "" }],
+        media: [{ originalSource: resourceUrl, mediaContentType: "VIDEO", alt: filename || "" }],
       },
     }
   );
