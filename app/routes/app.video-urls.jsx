@@ -7,13 +7,23 @@
  *
  * Lists every product with its CURRENT metafield value alongside a
  * SUGGESTED video the app found by scanning the store's Files library
- * (Settings -> Files — NOT Product Media, which auto-transcodes and
- * loses the filename; see the file-naming conversation this page came
- * out of) and matching each file's name against the product's SKU(s)
- * and/or title. Nothing is written until the merchant checks a row and
- * clicks Apply — this never renames, uploads, or moves the actual video
- * file, only points the metafield at whichever Files-library file
- * already has a matching name.
+ * (Settings -> Files) and matching each file's name against the
+ * product's SKU(s) and/or title. Nothing is written until the merchant
+ * checks a row and clicks Apply — this never renames, uploads, or moves
+ * the actual video file, only points the metafield at whichever
+ * Files-library file already has a matching name.
+ *
+ * Files-library uploads can come back as one of two GraphQL types, and
+ * they must be handled differently to get the real name:
+ *   - GenericFile: url keeps the original filename as-is
+ *     (cdn.shopify.com/.../my-video-name.mp4) — filename is parsed off it.
+ *   - Video: Shopify always transcodes these, so the CDN url is a hash
+ *     with zero relation to what was uploaded
+ *     (cdn.shopify.com/videos/c/o/v/ece62978....mp4) — the real name only
+ *     exists in the separate `filename` field, which is what's used here.
+ *     (This is true even for videos uploaded through Settings -> Files,
+ *     not just Product Media — Shopify recognizes video content and
+ *     transcodes it either way.)
  *
  * Matching, in priority order:
  *   1. SKU match — any variant SKU (normalized: lowercase, strip
@@ -110,6 +120,11 @@ async function fetchAllVideoFiles(admin) {
           nodes {
             id
             ... on GenericFile { url }
+            ... on Video {
+              filename
+              sources { url format }
+              originalSource { url }
+            }
           }
           pageInfo { hasNextPage endCursor }
         }
@@ -120,7 +135,19 @@ async function fetchAllVideoFiles(admin) {
     const conn = json?.data?.files;
     if (!conn) break;
     for (const f of conn.nodes) {
-      if (!f.url) continue; // not a GenericFile (e.g. an image) — skip
+      if (f.sources || f.originalSource) {
+        // Video-type file. Shopify transcodes these to a hash-based CDN
+        // URL (e.g. .../ece62978ea5f419287b7293522c928c1.mp4) that has
+        // nothing to do with the original filename — so the real name
+        // has to come from the `filename` field, never parsed off the URL.
+        if (!f.filename) continue;
+        const mp4Source = (f.sources || []).find((s) => s.format === "mp4");
+        const url = mp4Source?.url || f.sources?.[0]?.url || f.originalSource?.url;
+        if (!url) continue; // still processing, no playable source yet
+        files.push({ url, filename: f.filename });
+        continue;
+      }
+      if (!f.url) continue; // not a GenericFile or Video (e.g. an image) — skip
       const filename = decodeURIComponent(f.url.split("/").pop().split("?")[0]);
       if (!VIDEO_EXTENSIONS.some((ext) => filename.toLowerCase().endsWith(ext))) continue;
       files.push({ url: f.url, filename });
