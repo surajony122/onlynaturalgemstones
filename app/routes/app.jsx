@@ -16,7 +16,8 @@ export default function App() {
   return (
     <AppProvider embedded apiKey={apiKey}>
       <s-app-nav>
-        <s-link href="/app">Home</s-link>
+        <s-link href="/app/overview">Overview</s-link>
+        <s-link href="/app">Jewelry Pricing</s-link>
         <s-link href="/app/astro-leads">Astro Leads</s-link>
         <s-link href="/app/wishlist-leads">Wishlist Leads</s-link>
         <s-link href="/app/whatsapp-events">WhatsApp Events</s-link>
