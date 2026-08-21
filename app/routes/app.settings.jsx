@@ -301,15 +301,168 @@ export default function SettingsPage() {
     );
   };
 
+  const groupBannerStyle = {
+    borderRadius: "8px",
+    padding: "10px 14px",
+    margin: "24px 0 12px",
+    fontSize: "13px",
+    fontWeight: 600,
+  };
+
   return (
     <s-page heading="Astro Advice — Settings">
-      <s-section heading="Email sending (Gmail)">
+      <s-section heading="What's on this page">
         <s-paragraph>
-          The account the gem-recommendation email sends from. Needs a Gmail
-          App Password (Google account → Security → 2-Step Verification →
-          App Passwords), not the account's real password.
+          Controls how the gem-recommendation, order, and wishlist messages get sent — templates, timing, and the
+          accounts they send through. <s-text fontWeight="bold">Message behavior</s-text> below is safe to change
+          any time (template names, wait times, the order trigger tag). <s-text fontWeight="bold">Connect your
+          accounts</s-text>, further down, is one-time technical setup (API keys, email credentials) — only change
+          those if you know what you're updating them to.
         </s-paragraph>
-        <form onSubmit={submit}>
+      </s-section>
+
+      <form onSubmit={submit}>
+        <div style={{ ...groupBannerStyle, margin: "4px 0 12px", background: "#e3f5e9", color: "#0f5132" }}>
+          💬 Message behavior — safe to change any time
+        </div>
+
+        <s-section heading="Wishlist email timing">
+          <s-paragraph>
+            Hours to wait after a customer's <s-text>last</s-text> wishlist change before emailing them — each new
+            change pushes this out again, so someone actively adding items all day gets one email once they've gone
+            quiet, not one per add. See the <s-link href="/app/wishlist-leads">Wishlist Leads</s-link> page's "Send
+            Due Emails Now" button to run a check immediately instead of waiting.
+          </s-paragraph>
+          <label style={labelStyle} htmlFor="wishlistInterval">Wait time (hours)</label>
+          <input
+            id="wishlistInterval"
+            style={{ ...fieldStyle, maxWidth: "120px" }}
+            type="number"
+            min="0"
+            step="0.5"
+            value={wishlistInterval}
+            onChange={(e) => setWishlistInterval(e.target.value)}
+          />
+        </s-section>
+
+        <s-section heading="Order Processing (Interakt)">
+          <s-paragraph>
+            Sends automatically the first time an order is TAGGED with the trigger tag below — add that tag to an
+            order in Shopify Admin whenever you want the notification sent. (Not based on fulfillment status anymore
+            — Shopify's own status fields turned out to be unreliable for this store's orders; a tag is explicit and
+            fully in your control.) Requires a WhatsApp template named{" "}
+            <s-text>{interaktOrderTemplateName || data.defaultInteraktOrderTemplateName}</s-text> to exist and be
+            Meta-approved in Interakt. Sends at most once per order — later updates to the same order (e.g.
+            shipping) don't repeat it, even if the tag stays on.
+          </s-paragraph>
+
+          <label style={labelStyle} htmlFor="orderProcessingTriggerTag">Trigger tag</label>
+          <input
+            id="orderProcessingTriggerTag"
+            style={fieldStyle}
+            type="text"
+            value={orderProcessingTriggerTag}
+            onChange={(e) => setOrderProcessingTriggerTag(e.target.value)}
+            placeholder={`${data.defaultOrderProcessingTriggerTag} (default if left blank)`}
+          />
+          <p style={hintStyle}>
+            Add this exact tag (case-insensitive) to an order's Tags field in Shopify Admin to trigger the message.
+          </p>
+
+          <label style={labelStyle} htmlFor="interaktOrderTemplateName">Template name</label>
+          <input
+            id="interaktOrderTemplateName"
+            style={fieldStyle}
+            type="text"
+            value={interaktOrderTemplateName}
+            onChange={(e) => setInteraktOrderTemplateName(e.target.value)}
+            placeholder={`${data.defaultInteraktOrderTemplateName} (default if left blank)`}
+          />
+
+          <div style={{ marginTop: "8px", padding: "12px", background: "#f6f6f7", borderRadius: "8px" }}>
+            <label style={labelStyle} htmlFor="testOrderPhone">Send test WhatsApp message</label>
+            <p style={{ ...hintStyle, marginTop: "4px" }}>
+              Fires the real template (sample name "Test", order number "1001") — save your settings above first if
+              you just entered the API key. Only works once the template shows a green "Approved" dot in Interakt.
+            </p>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <input
+                id="testOrderPhone"
+                style={{ ...fieldStyle, marginBottom: 0, maxWidth: "220px" }}
+                type="tel"
+                value={testOrderPhone}
+                onChange={(e) => setTestOrderPhone(e.target.value)}
+                placeholder="9876543210 or +919876543210"
+              />
+              <s-button {...(isSendingOrderTest ? { loading: true } : {})} onClick={sendTestOrderWhatsapp}>
+                Send Test
+              </s-button>
+            </div>
+            {testOrderFetcher.data?.intent === "sendTestOrderWhatsapp" && (
+              <p style={{ ...hintStyle, marginTop: "8px", color: testOrderFetcher.data.ok ? "#008060" : "#d82c0d" }}>
+                {testOrderFetcher.data.status || testOrderFetcher.data.error}
+              </p>
+            )}
+          </div>
+        </s-section>
+
+        <s-section heading="Wishlist Reminder (Interakt)">
+          <s-paragraph>
+            Sends alongside the wishlist reminder email — same debounced/interval timing (Settings above), not per
+            wishlist-toggle. Requires a WhatsApp template named{" "}
+            <s-text>{interaktWishlistTemplateName || data.defaultInteraktWishlistTemplateName}</s-text> to exist and
+            be Meta-approved in Interakt. See <s-link href="/app/wishlist-leads">Wishlist Leads</s-link> for
+            per-lead status and a manual retry button.
+          </s-paragraph>
+
+          <label style={labelStyle} htmlFor="interaktWishlistTemplateName">Template name</label>
+          <input
+            id="interaktWishlistTemplateName"
+            style={fieldStyle}
+            type="text"
+            value={interaktWishlistTemplateName}
+            onChange={(e) => setInteraktWishlistTemplateName(e.target.value)}
+            placeholder={`${data.defaultInteraktWishlistTemplateName} (default if left blank)`}
+          />
+
+          <div style={{ marginTop: "8px", padding: "12px", background: "#f6f6f7", borderRadius: "8px" }}>
+            <label style={labelStyle} htmlFor="testWishlistPhone">Send test WhatsApp message</label>
+            <p style={{ ...hintStyle, marginTop: "4px" }}>
+              Fires the real template with two sample items (Ruby, Blue Sapphire) — save your settings above first
+              if you just entered the API key. Only works once the template shows a green "Approved" dot in
+              Interakt.
+            </p>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <input
+                id="testWishlistPhone"
+                style={{ ...fieldStyle, marginBottom: 0, maxWidth: "220px" }}
+                type="tel"
+                value={testWishlistPhone}
+                onChange={(e) => setTestWishlistPhone(e.target.value)}
+                placeholder="9876543210 or +919876543210"
+              />
+              <s-button {...(isSendingWishlistTest ? { loading: true } : {})} onClick={sendTestWishlistWhatsapp}>
+                Send Test
+              </s-button>
+            </div>
+            {testWishlistFetcher.data?.intent === "sendTestWishlistWhatsapp" && (
+              <p style={{ ...hintStyle, marginTop: "8px", color: testWishlistFetcher.data.ok ? "#008060" : "#d82c0d" }}>
+                {testWishlistFetcher.data.status || testWishlistFetcher.data.error}
+              </p>
+            )}
+          </div>
+        </s-section>
+
+        <div style={{ ...groupBannerStyle, background: "#fff4e5", color: "#8a5a00" }}>
+          🔑 Connect your accounts — one-time technical setup
+        </div>
+
+        <s-section heading="Email sending (Gmail)">
+          <s-paragraph>
+            The account the gem-recommendation email sends from. Needs a Gmail App Password (Google account →
+            Security → 2-Step Verification → App Passwords), not the account's real password.
+          </s-paragraph>
+
           <label style={labelStyle} htmlFor="gmailUser">Gmail address</label>
           <input
             id="gmailUser"
@@ -336,360 +489,229 @@ export default function SettingsPage() {
           {!data.gmailUser && data.envFallback.gmailUser && (
             <p style={hintStyle}>Currently falling back to the GMAIL_USER env var on Render.</p>
           )}
+        </s-section>
 
-          <s-section heading="Google Sheets mirror (optional)">
-            <s-paragraph>
-              Also mirrors every lead/email-event row into a Google Sheet, in
-              addition to this app's own database. Leave blank to skip —
-              nothing else depends on this.
-            </s-paragraph>
+        <s-section heading="Google Sheets mirror (optional)">
+          <s-paragraph>
+            Also mirrors every lead/email-event row into a Google Sheet, in addition to this app's own database.
+            Leave blank to skip — nothing else depends on this.
+          </s-paragraph>
 
-            <s-paragraph>
-              <s-text fontWeight="bold">Sheets relay (recommended)</s-text> — a
-              tiny Apps Script Web App deployed inside your own Sheet under
-              your own Google account. No service account or key needed at
-              all, which is why this is the way to go if you ever hit a
-              "service account key creation is disabled" error trying to set
-              up the fields below. Ask for the <s-text fontWeight="bold">sheets-relay.gs</s-text> file
-              and the 5-minute setup steps if you haven't deployed it yet.
-              If a Relay URL is set here, it's used instead of the
-              service-account fields below — no need to fill in both.
-            </s-paragraph>
+          <s-paragraph>
+            <s-text fontWeight="bold">Sheets relay (recommended)</s-text> — a tiny Apps Script Web App deployed
+            inside your own Sheet under your own Google account. No service account or key needed at all, which is
+            why this is the way to go if you ever hit a "service account key creation is disabled" error trying to
+            set up the fields below. Ask for the <s-text fontWeight="bold">sheets-relay.gs</s-text> file and the
+            5-minute setup steps if you haven't deployed it yet. If a Relay URL is set here, it's used instead of
+            the service-account fields below — no need to fill in both.
+          </s-paragraph>
 
-            <label style={labelStyle} htmlFor="sheetsRelayUrl">Sheets relay URL</label>
-            <input
-              id="sheetsRelayUrl"
-              style={fieldStyle}
-              type="text"
-              value={sheetsRelayUrl}
-              onChange={(e) => setSheetsRelayUrl(e.target.value)}
-              placeholder="https://script.google.com/macros/s/.../exec"
-            />
+          <label style={labelStyle} htmlFor="sheetsRelayUrl">Sheets relay URL</label>
+          <input
+            id="sheetsRelayUrl"
+            style={fieldStyle}
+            type="text"
+            value={sheetsRelayUrl}
+            onChange={(e) => setSheetsRelayUrl(e.target.value)}
+            placeholder="https://script.google.com/macros/s/.../exec"
+          />
 
-            <label style={labelStyle} htmlFor="sheetsRelaySecret">
-              Sheets relay secret{" "}
-              {data.sheetsRelaySecretSet ? "(●●●● already set — leave blank to keep it)" : "(not set yet)"}
-            </label>
-            <input
-              id="sheetsRelaySecret"
-              style={fieldStyle}
-              type="password"
-              autoComplete="new-password"
-              value={sheetsRelaySecret}
-              onChange={(e) => setSheetsRelaySecret(e.target.value)}
-              placeholder={data.sheetsRelaySecretSet ? "•••• already set ••••" : "must match SHARED_SECRET in the script"}
-            />
+          <label style={labelStyle} htmlFor="sheetsRelaySecret">
+            Sheets relay secret{" "}
+            {data.sheetsRelaySecretSet ? "(●●●● already set — leave blank to keep it)" : "(not set yet)"}
+          </label>
+          <input
+            id="sheetsRelaySecret"
+            style={fieldStyle}
+            type="password"
+            autoComplete="new-password"
+            value={sheetsRelaySecret}
+            onChange={(e) => setSheetsRelaySecret(e.target.value)}
+            placeholder={data.sheetsRelaySecretSet ? "•••• already set ••••" : "must match SHARED_SECRET in the script"}
+          />
 
-            <s-paragraph>
-              <s-text fontWeight="bold">Service account (fallback, needs no relay set above)</s-text>
-            </s-paragraph>
+          <s-paragraph>
+            <s-text fontWeight="bold">Service account (fallback, needs no relay set above)</s-text>
+          </s-paragraph>
 
-            <label style={labelStyle} htmlFor="gsaEmail">Service account email</label>
-            <input
-              id="gsaEmail"
-              style={fieldStyle}
-              type="email"
-              value={gsaEmail}
-              onChange={(e) => setGsaEmail(e.target.value)}
-              placeholder="xxxx@xxxx.iam.gserviceaccount.com"
-            />
+          <label style={labelStyle} htmlFor="gsaEmail">Service account email</label>
+          <input
+            id="gsaEmail"
+            style={fieldStyle}
+            type="email"
+            value={gsaEmail}
+            onChange={(e) => setGsaEmail(e.target.value)}
+            placeholder="xxxx@xxxx.iam.gserviceaccount.com"
+          />
 
-            <label style={labelStyle} htmlFor="gsaKey">
-              Service account private key{" "}
-              {data.googleServiceAccountPrivateKeySet ? "(●●●● already set — leave blank to keep it)" : "(not set yet)"}
-            </label>
-            <textarea
-              id="gsaKey"
-              style={{ ...fieldStyle, minHeight: "90px", fontFamily: "monospace", fontSize: "12px" }}
-              value={gsaKey}
-              onChange={(e) => setGsaKey(e.target.value)}
-              placeholder={
-                data.googleServiceAccountPrivateKeySet
-                  ? "•••• already set ••••"
-                  : "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
-              }
-            />
+          <label style={labelStyle} htmlFor="gsaKey">
+            Service account private key{" "}
+            {data.googleServiceAccountPrivateKeySet ? "(●●●● already set — leave blank to keep it)" : "(not set yet)"}
+          </label>
+          <textarea
+            id="gsaKey"
+            style={{ ...fieldStyle, minHeight: "90px", fontFamily: "monospace", fontSize: "12px" }}
+            value={gsaKey}
+            onChange={(e) => setGsaKey(e.target.value)}
+            placeholder={
+              data.googleServiceAccountPrivateKeySet
+                ? "•••• already set ••••"
+                : "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+            }
+          />
 
-            <label style={labelStyle} htmlFor="sheetId">Spreadsheet ID</label>
-            <input
-              id="sheetId"
-              style={fieldStyle}
-              type="text"
-              value={sheetId}
-              onChange={(e) => setSheetId(e.target.value)}
-              placeholder="the long ID in the Sheet's URL"
-            />
-          </s-section>
+          <label style={labelStyle} htmlFor="sheetId">Spreadsheet ID</label>
+          <input
+            id="sheetId"
+            style={fieldStyle}
+            type="text"
+            value={sheetId}
+            onChange={(e) => setSheetId(e.target.value)}
+            placeholder="the long ID in the Sheet's URL"
+          />
+        </s-section>
 
-          <s-section heading="Wishlist email timing">
-            <s-paragraph>
-              Hours to wait after a customer's <s-text>last</s-text> wishlist change before emailing them — each new
-              change pushes this out again, so someone actively adding items all day gets one email once they've
-              gone quiet, not one per add. See the <s-link href="/app/wishlist-leads">Wishlist Leads</s-link> page's
-              "Send Due Emails Now" button to run a check immediately instead of waiting.
-            </s-paragraph>
-            <label style={labelStyle} htmlFor="wishlistInterval">Wait time (hours)</label>
-            <input
-              id="wishlistInterval"
-              style={{ ...fieldStyle, maxWidth: "120px" }}
-              type="number"
-              min="0"
-              step="0.5"
-              value={wishlistInterval}
-              onChange={(e) => setWishlistInterval(e.target.value)}
-            />
-          </s-section>
+        <s-section heading="WhatsApp (Interakt)">
+          <s-paragraph>
+            Sends the gem-recommendation message directly via Interakt's Send Template API — our own backend
+            decides who/when, same as the email. Requires a WhatsApp template named{" "}
+            <s-text>{interaktTemplateName || data.defaultInteraktTemplateName}</s-text> to exist and be
+            Meta-approved in Interakt first (Catalog &amp; Templates → Templates Library). Only sent when a lead has
+            a phone number.
+          </s-paragraph>
 
-          <s-section heading="WhatsApp (Interakt)">
-            <s-paragraph>
-              Sends the gem-recommendation message directly via Interakt's Send Template API — our own backend
-              decides who/when, same as the email. Requires a WhatsApp template named{" "}
-              <s-text>{interaktTemplateName || data.defaultInteraktTemplateName}</s-text> to exist and be Meta-approved in
-              Interakt first (Catalog &amp; Templates → Templates Library). Only sent when a lead has a phone number.
-            </s-paragraph>
+          <label style={labelStyle} htmlFor="interaktApiKey">
+            Secret Key{" "}
+            {data.interaktApiKeySet ? "(●●●● already set — leave blank to keep it)" : "(not set yet)"}
+          </label>
+          <input
+            id="interaktApiKey"
+            style={fieldStyle}
+            type="password"
+            autoComplete="new-password"
+            value={interaktApiKey}
+            onChange={(e) => setInteraktApiKey(e.target.value)}
+            placeholder={data.interaktApiKeySet ? "•••• •••• •••• ••••" : "from Interakt → Settings → Developer Setting"}
+          />
+          {!data.interaktApiKeySet && data.envFallback.interaktApiKey && (
+            <p style={hintStyle}>Currently falling back to the INTERAKT_API_KEY env var on Render.</p>
+          )}
 
-            <label style={labelStyle} htmlFor="interaktApiKey">
-              Secret Key{" "}
-              {data.interaktApiKeySet ? "(●●●● already set — leave blank to keep it)" : "(not set yet)"}
-            </label>
-            <input
-              id="interaktApiKey"
-              style={fieldStyle}
-              type="password"
-              autoComplete="new-password"
-              value={interaktApiKey}
-              onChange={(e) => setInteraktApiKey(e.target.value)}
-              placeholder={data.interaktApiKeySet ? "•••• •••• •••• ••••" : "from Interakt → Settings → Developer Setting"}
-            />
-            {!data.interaktApiKeySet && data.envFallback.interaktApiKey && (
-              <p style={hintStyle}>Currently falling back to the INTERAKT_API_KEY env var on Render.</p>
-            )}
+          <label style={labelStyle} htmlFor="interaktTemplateName">Template name</label>
+          <input
+            id="interaktTemplateName"
+            style={fieldStyle}
+            type="text"
+            value={interaktTemplateName}
+            onChange={(e) => setInteraktTemplateName(e.target.value)}
+            placeholder={`${data.defaultInteraktTemplateName} (default if left blank)`}
+          />
 
-            <label style={labelStyle} htmlFor="interaktTemplateName">Template name</label>
-            <input
-              id="interaktTemplateName"
-              style={fieldStyle}
-              type="text"
-              value={interaktTemplateName}
-              onChange={(e) => setInteraktTemplateName(e.target.value)}
-              placeholder={`${data.defaultInteraktTemplateName} (default if left blank)`}
-            />
-
-            <div style={{ marginTop: "8px", padding: "12px", background: "#f6f6f7", borderRadius: "8px" }}>
-              <label style={labelStyle} htmlFor="testPhone">Send test WhatsApp message</label>
-              <p style={{ ...hintStyle, marginTop: "4px" }}>
-                Fires the real template (sample gem data) to this number via your saved Secret Key — save your
-                settings above first if you just entered the key. Only works once the template shows a green
-                "Approved" dot in Interakt.
-              </p>
-              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                <input
-                  id="testPhone"
-                  style={{ ...fieldStyle, marginBottom: 0, maxWidth: "220px" }}
-                  type="tel"
-                  value={testPhone}
-                  onChange={(e) => setTestPhone(e.target.value)}
-                  placeholder="9876543210 or +919876543210"
-                />
-                <s-button {...(isSendingTest ? { loading: true } : {})} onClick={sendTestWhatsapp}>
-                  Send Test
-                </s-button>
-              </div>
-              {testFetcher.data?.intent === "sendTestWhatsapp" && (
-                <>
-                  <p style={{ ...hintStyle, marginTop: "8px", color: testFetcher.data.ok ? "#008060" : "#d82c0d" }}>
-                    Message: {testFetcher.data.status || testFetcher.data.error}
-                  </p>
-                  {testFetcher.data.campaignStatus && (
-                    <p
-                      style={{
-                        ...hintStyle,
-                        marginTop: "2px",
-                        color: testFetcher.data.campaignStatus.startsWith("OK") ? "#008060" : "#d82c0d",
-                      }}
-                    >
-                      API Campaign: {testFetcher.data.campaignStatus}
-                    </p>
-                  )}
-                </>
-              )}
-            </div>
-
-            <div style={{ marginTop: "12px" }}>
-              <label style={labelStyle}>WhatsApp follow-up reminder</label>
-              <p style={{ ...hintStyle, marginTop: "4px" }}>
-                The first WhatsApp message always sends <s-text>instantly</s-text> the moment a lead submits — this
-                setting adds an optional SECOND message (the same template, resent as a reminder) sent once this
-                much time has passed since that first message, for any lead who has one. Set to <s-text>0</s-text>{" "}
-                to turn the follow-up off entirely — only the instant first message will send. Requires an external
-                scheduler pinging <s-text>/cron/whatsapp-queue?secret=…</s-text> at least as often as the delay
-                below to send follow-ups automatically (same setup as the wishlist email cron) — the{" "}
-                <s-link href="/app/astro-leads">Astro Leads</s-link> page also has a manual "Process Follow-ups Now"
-                button that works regardless.
-              </p>
-              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                <input
-                  style={{ ...fieldStyle, marginBottom: 0, maxWidth: "100px" }}
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={whatsappIntervalValue}
-                  onChange={(e) => setWhatsappIntervalValue(e.target.value)}
-                />
-                <select
-                  style={{ ...fieldStyle, marginBottom: 0, width: "auto", padding: "8px 10px" }}
-                  value={whatsappIntervalUnit}
-                  onChange={(e) => setWhatsappIntervalUnit(e.target.value)}
-                >
-                  <option value="minutes">Minutes</option>
-                  <option value="hours">Hours</option>
-                  <option value="days">Days</option>
-                </select>
-              </div>
-            </div>
-
-            <div style={{ marginTop: "12px" }}>
-              <label style={labelStyle}>Delivery/read tracking (webhook)</label>
-              <p style={{ ...hintStyle, marginTop: "4px" }}>
-                Interakt has no API to fetch campaign stats — the only way to see real sent/delivered/read status in
-                our own <s-link href="/app/whatsapp-events">WhatsApp Events</s-link> page is to receive their
-                webhook. In Interakt → Settings → Developer Setting → Webhooks, register this URL and pick any
-                secret (paste the same secret below — both sides must match):
-                <br />
-                <s-text>https://shubh-gems-customizer-app.onrender.com/public/interakt-webhook</s-text>
-              </p>
-              <label style={labelStyle} htmlFor="interaktWebhookSecret">
-                Webhook Secret{" "}
-                {data.interaktWebhookSecretSet ? "(●●●● already set — leave blank to keep it)" : "(not set yet)"}
-              </label>
-              <input
-                id="interaktWebhookSecret"
-                style={fieldStyle}
-                type="password"
-                autoComplete="new-password"
-                value={interaktWebhookSecret}
-                onChange={(e) => setInteraktWebhookSecret(e.target.value)}
-                placeholder={data.interaktWebhookSecretSet ? "•••• •••• •••• ••••" : "any secret string — pick one, match it in Interakt"}
-              />
-            </div>
-          </s-section>
-
-          <s-section heading="Order Processing (Interakt)">
-            <s-paragraph>
-              Sends automatically the first time an order is TAGGED with the trigger tag below — add that tag to an
-              order in Shopify Admin whenever you want the notification sent. (Not based on fulfillment status
-              anymore — Shopify's own status fields turned out to be unreliable for this store's orders; a tag is
-              explicit and fully in your control.) Requires a WhatsApp template named{" "}
-              <s-text>{interaktOrderTemplateName || data.defaultInteraktOrderTemplateName}</s-text> to exist and be
-              Meta-approved in Interakt. Sends at most once per order — later updates to the same order (e.g.
-              shipping) don't repeat it, even if the tag stays on.
-            </s-paragraph>
-
-            <label style={labelStyle} htmlFor="orderProcessingTriggerTag">Trigger tag</label>
-            <input
-              id="orderProcessingTriggerTag"
-              style={fieldStyle}
-              type="text"
-              value={orderProcessingTriggerTag}
-              onChange={(e) => setOrderProcessingTriggerTag(e.target.value)}
-              placeholder={`${data.defaultOrderProcessingTriggerTag} (default if left blank)`}
-            />
-            <p style={hintStyle}>
-              Add this exact tag (case-insensitive) to an order's Tags field in Shopify Admin to trigger the
-              message.
+          <div style={{ marginTop: "8px", padding: "12px", background: "#f6f6f7", borderRadius: "8px" }}>
+            <label style={labelStyle} htmlFor="testPhone">Send test WhatsApp message</label>
+            <p style={{ ...hintStyle, marginTop: "4px" }}>
+              Fires the real template (sample gem data) to this number via your saved Secret Key — save your
+              settings above first if you just entered the key. Only works once the template shows a green
+              "Approved" dot in Interakt.
             </p>
-
-            <label style={labelStyle} htmlFor="interaktOrderTemplateName">Template name</label>
-            <input
-              id="interaktOrderTemplateName"
-              style={fieldStyle}
-              type="text"
-              value={interaktOrderTemplateName}
-              onChange={(e) => setInteraktOrderTemplateName(e.target.value)}
-              placeholder={`${data.defaultInteraktOrderTemplateName} (default if left blank)`}
-            />
-
-            <div style={{ marginTop: "8px", padding: "12px", background: "#f6f6f7", borderRadius: "8px" }}>
-              <label style={labelStyle} htmlFor="testOrderPhone">Send test WhatsApp message</label>
-              <p style={{ ...hintStyle, marginTop: "4px" }}>
-                Fires the real template (sample name "Test", order number "1001") — save your settings above first
-                if you just entered the API key. Only works once the template shows a green "Approved" dot in
-                Interakt.
-              </p>
-              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                <input
-                  id="testOrderPhone"
-                  style={{ ...fieldStyle, marginBottom: 0, maxWidth: "220px" }}
-                  type="tel"
-                  value={testOrderPhone}
-                  onChange={(e) => setTestOrderPhone(e.target.value)}
-                  placeholder="9876543210 or +919876543210"
-                />
-                <s-button {...(isSendingOrderTest ? { loading: true } : {})} onClick={sendTestOrderWhatsapp}>
-                  Send Test
-                </s-button>
-              </div>
-              {testOrderFetcher.data?.intent === "sendTestOrderWhatsapp" && (
-                <p style={{ ...hintStyle, marginTop: "8px", color: testOrderFetcher.data.ok ? "#008060" : "#d82c0d" }}>
-                  {testOrderFetcher.data.status || testOrderFetcher.data.error}
-                </p>
-              )}
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <input
+                id="testPhone"
+                style={{ ...fieldStyle, marginBottom: 0, maxWidth: "220px" }}
+                type="tel"
+                value={testPhone}
+                onChange={(e) => setTestPhone(e.target.value)}
+                placeholder="9876543210 or +919876543210"
+              />
+              <s-button {...(isSendingTest ? { loading: true } : {})} onClick={sendTestWhatsapp}>
+                Send Test
+              </s-button>
             </div>
-          </s-section>
-
-          <s-section heading="Wishlist Reminder (Interakt)">
-            <s-paragraph>
-              Sends alongside the wishlist reminder email — same debounced/interval timing (Settings above), not
-              per wishlist-toggle. Requires a WhatsApp template named{" "}
-              <s-text>{interaktWishlistTemplateName || data.defaultInteraktWishlistTemplateName}</s-text> to exist
-              and be Meta-approved in Interakt. See{" "}
-              <s-link href="/app/wishlist-leads">Wishlist Leads</s-link> for per-lead status and a manual retry
-              button.
-            </s-paragraph>
-
-            <label style={labelStyle} htmlFor="interaktWishlistTemplateName">Template name</label>
-            <input
-              id="interaktWishlistTemplateName"
-              style={fieldStyle}
-              type="text"
-              value={interaktWishlistTemplateName}
-              onChange={(e) => setInteraktWishlistTemplateName(e.target.value)}
-              placeholder={`${data.defaultInteraktWishlistTemplateName} (default if left blank)`}
-            />
-
-            <div style={{ marginTop: "8px", padding: "12px", background: "#f6f6f7", borderRadius: "8px" }}>
-              <label style={labelStyle} htmlFor="testWishlistPhone">Send test WhatsApp message</label>
-              <p style={{ ...hintStyle, marginTop: "4px" }}>
-                Fires the real template with two sample items (Ruby, Blue Sapphire) — save your settings above
-                first if you just entered the API key. Only works once the template shows a green "Approved" dot
-                in Interakt.
-              </p>
-              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                <input
-                  id="testWishlistPhone"
-                  style={{ ...fieldStyle, marginBottom: 0, maxWidth: "220px" }}
-                  type="tel"
-                  value={testWishlistPhone}
-                  onChange={(e) => setTestWishlistPhone(e.target.value)}
-                  placeholder="9876543210 or +919876543210"
-                />
-                <s-button {...(isSendingWishlistTest ? { loading: true } : {})} onClick={sendTestWishlistWhatsapp}>
-                  Send Test
-                </s-button>
-              </div>
-              {testWishlistFetcher.data?.intent === "sendTestWishlistWhatsapp" && (
-                <p style={{ ...hintStyle, marginTop: "8px", color: testWishlistFetcher.data.ok ? "#008060" : "#d82c0d" }}>
-                  {testWishlistFetcher.data.status || testWishlistFetcher.data.error}
+            {testFetcher.data?.intent === "sendTestWhatsapp" && (
+              <>
+                <p style={{ ...hintStyle, marginTop: "8px", color: testFetcher.data.ok ? "#008060" : "#d82c0d" }}>
+                  Message: {testFetcher.data.status || testFetcher.data.error}
                 </p>
-              )}
-            </div>
-          </s-section>
+                {testFetcher.data.campaignStatus && (
+                  <p
+                    style={{
+                      ...hintStyle,
+                      marginTop: "2px",
+                      color: testFetcher.data.campaignStatus.startsWith("OK") ? "#008060" : "#d82c0d",
+                    }}
+                  >
+                    API Campaign: {testFetcher.data.campaignStatus}
+                  </p>
+                )}
+              </>
+            )}
+          </div>
 
+          <div style={{ marginTop: "12px" }}>
+            <label style={labelStyle}>WhatsApp follow-up reminder</label>
+            <p style={{ ...hintStyle, marginTop: "4px" }}>
+              The first WhatsApp message always sends <s-text>instantly</s-text> the moment a lead submits — this
+              setting adds an optional SECOND message (the same template, resent as a reminder) sent once this much
+              time has passed since that first message, for any lead who has one. Set to <s-text>0</s-text> to turn
+              the follow-up off entirely — only the instant first message will send. Requires an external scheduler
+              pinging <s-text>/cron/whatsapp-queue?secret=…</s-text> at least as often as the delay below to send
+              follow-ups automatically (same setup as the wishlist email cron) — the{" "}
+              <s-link href="/app/astro-leads">Astro Leads</s-link> page also has a manual "Process Follow-ups Now"
+              button that works regardless.
+            </p>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <input
+                style={{ ...fieldStyle, marginBottom: 0, maxWidth: "100px" }}
+                type="number"
+                min="0"
+                step="1"
+                value={whatsappIntervalValue}
+                onChange={(e) => setWhatsappIntervalValue(e.target.value)}
+              />
+              <select
+                style={{ ...fieldStyle, marginBottom: 0, width: "auto", padding: "8px 10px" }}
+                value={whatsappIntervalUnit}
+                onChange={(e) => setWhatsappIntervalUnit(e.target.value)}
+              >
+                <option value="minutes">Minutes</option>
+                <option value="hours">Hours</option>
+                <option value="days">Days</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{ marginTop: "12px" }}>
+            <label style={labelStyle}>Delivery/read tracking (webhook)</label>
+            <p style={{ ...hintStyle, marginTop: "4px" }}>
+              Interakt has no API to fetch campaign stats — the only way to see real sent/delivered/read status in
+              our own <s-link href="/app/whatsapp-events">WhatsApp Events</s-link> page is to receive their webhook.
+              In Interakt → Settings → Developer Setting → Webhooks, register this URL and pick any secret (paste
+              the same secret below — both sides must match):
+              <br />
+              <s-text>https://shubh-gems-customizer-app.onrender.com/public/interakt-webhook</s-text>
+            </p>
+            <label style={labelStyle} htmlFor="interaktWebhookSecret">
+              Webhook Secret{" "}
+              {data.interaktWebhookSecretSet ? "(●●●● already set — leave blank to keep it)" : "(not set yet)"}
+            </label>
+            <input
+              id="interaktWebhookSecret"
+              style={fieldStyle}
+              type="password"
+              autoComplete="new-password"
+              value={interaktWebhookSecret}
+              onChange={(e) => setInteraktWebhookSecret(e.target.value)}
+              placeholder={data.interaktWebhookSecretSet ? "•••• •••• •••• ••••" : "any secret string — pick one, match it in Interakt"}
+            />
+          </div>
+        </s-section>
+
+        <div style={{ margin: "24px 0" }}>
           <s-button {...(isSaving ? { loading: true } : {})} onClick={submit}>
             Save settings
           </s-button>
-        </form>
-      </s-section>
+        </div>
+      </form>
 
       <s-section slot="aside" heading="Where this data goes">
         <s-paragraph>
