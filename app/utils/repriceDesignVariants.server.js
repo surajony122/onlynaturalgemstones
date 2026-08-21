@@ -326,7 +326,14 @@ export async function findProductsMissingJewelrySetup(admin) {
       query ScanProductsForJewelrySetup($first: Int!, $after: String) {
         products(first: $first, after: $after) {
           pageInfo { hasNextPage endCursor }
-          nodes { id title handle status options { name } }
+          nodes {
+            id
+            title
+            handle
+            status
+            options { name }
+            collections(first: 10) { nodes { title } }
+          }
         }
       }`,
       { variables: { first: SCAN_PAGE_SIZE, after: cursor } },
@@ -344,6 +351,7 @@ export async function findProductsMissingJewelrySetup(admin) {
           title: p.title,
           handle: p.handle,
           status: p.status,
+          collections: (p.collections?.nodes || []).map((c) => c.title),
         });
       }
     }
@@ -367,12 +375,19 @@ export async function findProductsMissingJewelrySetup(admin) {
  * always-been-there "Reprice Design Variants" button and the legacy
  * admin.migrate-design-variants.jsx route — neither should suddenly
  * start targeting a different product).
+ *
+ * precomputedRates, if given, skips the theme-settings fetch entirely —
+ * setupJewelryVariantsForProducts uses this to fetch rates ONCE for a
+ * whole batch instead of once per product (was a real cause of the batch
+ * "Apply" silently timing out: 20 products each redundantly re-fetching
+ * the same theme settings, on top of everything else each one already
+ * needs).
  */
-export async function repriceDesignVariants(admin, productGid) {
+export async function repriceDesignVariants(admin, productGid, precomputedRates) {
   const targetGid = productGid || `gid://shopify/Product/${PRODUCT_ID_NUMERIC}`;
   const [{ price: stonePrice, designSet }, { rates, makingChargePerGram }] = await Promise.all([
     fetchStoneInfo(admin, targetGid),
-    fetchRatesFromTheme(admin),
+    precomputedRates ? Promise.resolve(precomputedRates) : fetchRatesFromTheme(admin),
   ]);
   const { variants, designValues } = await computeVariants(admin, targetGid, stonePrice, rates, makingChargePerGram, designSet);
 
@@ -419,11 +434,16 @@ export async function repriceDesignVariants(admin, productGid) {
 
 // One action call only ever processes this many products — keeps a single
 // "Apply" click well inside typical request-timeout budgets even though
-// each product needs several sequential GraphQL round trips (stone price,
-// 24 parallel design lookups, then the productSet write itself). The
-// caller (the app._index.jsx page) re-submits the remaining checked rows
-// on the next click rather than this function ever looping unbounded.
-export const SETUP_BATCH_SIZE = 20;
+// each product needs several sequential GraphQL round trips (stone info,
+// up to 24 parallel design lookups, then the productSet write itself).
+// Was 20 — confirmed live that a 20-product batch made the whole "Apply"
+// click silently time out with no error surfaced (500+ GraphQL calls in
+// one request). Dropped to 5, plus rates are now fetched once for the
+// whole batch (see below) instead of once per product, cutting per-batch
+// GraphQL calls roughly in proportion. The caller (app._index.jsx)
+// re-submits the remaining checked rows on the next click rather than
+// this function ever looping unbounded.
+export const SETUP_BATCH_SIZE = 5;
 
 /**
  * Runs repriceDesignVariants for each given product GID, sequentially
@@ -433,12 +453,19 @@ export const SETUP_BATCH_SIZE = 20;
  * results). Never throws for a single product's failure — collects a
  * per-product result instead, so one bad product (e.g. one with zero
  * variants somehow) doesn't stop the rest of the batch.
+ *
+ * Fetches the theme's metal rates ONCE up front and reuses them for
+ * every product in the batch (they're store-wide, not per-product) —
+ * repriceDesignVariants used to fetch this itself on every single call,
+ * meaning a batch of N products did N redundant identical theme-settings
+ * queries for no reason.
  */
 export async function setupJewelryVariantsForProducts(admin, productGids) {
+  const rates = await fetchRatesFromTheme(admin);
   const results = [];
   for (const gid of productGids.slice(0, SETUP_BATCH_SIZE)) {
     try {
-      const result = await repriceDesignVariants(admin, gid);
+      const result = await repriceDesignVariants(admin, gid, rates);
       results.push({ productGid: gid, ok: true, ...result });
     } catch (err) {
       results.push({ productGid: gid, ok: false, error: String(err.message || err) });

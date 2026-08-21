@@ -81,11 +81,15 @@ export default function Index() {
   // whenever a fresh scan comes back.
   const [missing, setMissing] = useState([]);
   const [checked, setChecked] = useState(() => new Set());
+  const [searchText, setSearchText] = useState("");
+  const [collectionFilter, setCollectionFilter] = useState("all");
 
   useEffect(() => {
     if (scanFetcher.data?.intent === "scanSetup" && scanFetcher.data.ok) {
       setMissing(scanFetcher.data.missing);
       setChecked(new Set());
+      setSearchText("");
+      setCollectionFilter("all");
     }
   }, [scanFetcher.data]);
 
@@ -138,7 +142,24 @@ export default function Index() {
       return next;
     });
   };
-  const checkAllMissing = () => setChecked(new Set(missing.map((p) => p.id)));
+
+  // Every distinct collection name across the current "missing" list,
+  // for the collection dropdown — derived, not stored, so it always
+  // reflects whatever's actually in the list right now.
+  const allCollections = [...new Set(missing.flatMap((p) => p.collections || []))].sort();
+
+  const filteredMissing = missing.filter((p) => {
+    const q = searchText.trim().toLowerCase();
+    const matchesSearch =
+      !q ||
+      p.title.toLowerCase().includes(q) ||
+      p.handle.toLowerCase().includes(q) ||
+      (p.collections || []).some((c) => c.toLowerCase().includes(q));
+    const matchesCollection = collectionFilter === "all" || (p.collections || []).includes(collectionFilter);
+    return matchesSearch && matchesCollection;
+  });
+
+  const checkAllMissing = () => setChecked(new Set(filteredMissing.map((p) => p.id)));
   const clearChecked = () => setChecked(new Set());
   const applySetup = () => {
     setupFetcher.submit(
@@ -229,12 +250,44 @@ export default function Index() {
             ) : (
               <>
                 <div style={{ display: "flex", gap: "10px", margin: "0 0 12px", alignItems: "center", flexWrap: "wrap" }}>
+                  <input
+                    type="text"
+                    value={searchText}
+                    onChange={(e) => setSearchText(e.target.value)}
+                    placeholder="Search title, handle, or collection…"
+                    style={{ padding: "6px 10px", borderRadius: "6px", border: "1px solid #c9cccf", fontSize: "13px", minWidth: "220px" }}
+                  />
+                  <select
+                    value={collectionFilter}
+                    onChange={(e) => setCollectionFilter(e.target.value)}
+                    style={{ padding: "6px 10px", borderRadius: "6px", border: "1px solid #c9cccf", fontSize: "13px" }}
+                  >
+                    <option value="all">All collections</option>
+                    {allCollections.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                  {(searchText || collectionFilter !== "all") && (
+                    <button
+                      type="button"
+                      onClick={() => { setSearchText(""); setCollectionFilter("all"); }}
+                      style={{ fontSize: "12px", padding: "6px 12px", borderRadius: "6px", border: "1px solid #c9cccf", background: "#fff", cursor: "pointer" }}
+                    >
+                      Clear filters
+                    </button>
+                  )}
+                  <span style={{ fontSize: "12px", color: "#6d7175" }}>
+                    Showing {filteredMissing.length} of {missing.length}
+                  </span>
+                </div>
+
+                <div style={{ display: "flex", gap: "10px", margin: "0 0 12px", alignItems: "center", flexWrap: "wrap" }}>
                   <button
                     type="button"
                     onClick={checkAllMissing}
                     style={{ fontSize: "12px", padding: "6px 12px", borderRadius: "6px", border: "1px solid #c9cccf", background: "#fff", cursor: "pointer" }}
                   >
-                    Check all missing ({missing.length})
+                    Check all shown ({filteredMissing.length})
                   </button>
                   <button
                     type="button"
@@ -260,11 +313,12 @@ export default function Index() {
                         <th style={thStyle}>Title</th>
                         <th style={thStyle}>Status</th>
                         <th style={thStyle}>Handle</th>
+                        <th style={thStyle}>Collections</th>
                         <th style={thStyle}>Last result</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {missing.map((p) => {
+                      {filteredMissing.map((p) => {
                         const result = resultByGid[p.id];
                         return (
                           <tr key={p.id} className="dt-row">
@@ -283,6 +337,9 @@ export default function Index() {
                             </td>
                             <td style={tdStyle}>{p.status}</td>
                             <td style={tdStyle}>{p.handle}</td>
+                            <td style={{ ...tdStyle, fontSize: "12px", color: "#6d7175" }}>
+                              {(p.collections || []).join(", ") || "—"}
+                            </td>
                             <td style={tdStyle}>
                               {result ? (
                                 result.ok ? (
