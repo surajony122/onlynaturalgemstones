@@ -185,17 +185,19 @@ export const action = async ({ request }) => {
 const fieldStyle = {
   display: "block",
   width: "100%",
-  padding: "8px 10px",
-  marginTop: "4px",
+  padding: "9px 11px",
+  marginTop: "5px",
   marginBottom: "16px",
-  border: "1px solid #c9cccf",
-  borderRadius: "6px",
-  fontSize: "14px",
+  border: "1px solid #E5E7EB",
+  borderRadius: "10px",
+  fontSize: "13px",
   fontFamily: "inherit",
+  color: "#374151",
+  background: "#fff",
   boxSizing: "border-box",
 };
-const labelStyle = { fontWeight: 600, fontSize: "13px" };
-const hintStyle = { fontSize: "12px", color: "#6d7175", marginTop: "-12px", marginBottom: "16px" };
+const labelStyle = { fontWeight: 500, fontSize: "12.5px", color: "#374151" };
+const hintStyle = { fontSize: "11.5px", color: "#6B7280", marginTop: "-12px", marginBottom: "16px" };
 
 export default function SettingsPage() {
   const data = useLoaderData();
@@ -302,11 +304,12 @@ export default function SettingsPage() {
   };
 
   const groupBannerStyle = {
-    borderRadius: "8px",
+    borderRadius: "10px",
     padding: "10px 14px",
     margin: "24px 0 12px",
-    fontSize: "13px",
-    fontWeight: 600,
+    fontSize: "12.5px",
+    fontWeight: 500,
+    border: "1px solid transparent",
   };
 
   return (
@@ -322,7 +325,7 @@ export default function SettingsPage() {
       </s-section>
 
       <form onSubmit={submit}>
-        <div style={{ ...groupBannerStyle, margin: "4px 0 12px", background: "#e3f5e9", color: "#0f5132" }}>
+        <div style={{ ...groupBannerStyle, margin: "4px 0 12px", background: "#EFF4FF", borderColor: "#DBEAFE", color: "#1E3A8A" }}>
           💬 Message behavior — safe to change any time
         </div>
 
@@ -379,7 +382,7 @@ export default function SettingsPage() {
             placeholder={`${data.defaultInteraktOrderTemplateName} (default if left blank)`}
           />
 
-          <div style={{ marginTop: "8px", padding: "12px", background: "#f6f6f7", borderRadius: "8px" }}>
+          <div style={{ marginTop: "8px", padding: "12px", background: "#F9FAFB", border: "1px solid #EDEEF1", borderRadius: "10px" }}>
             <label style={labelStyle} htmlFor="testOrderPhone">Send test WhatsApp message</label>
             <p style={{ ...hintStyle, marginTop: "4px" }}>
               Fires the real template (sample name "Test", order number "1001") — save your settings above first if
@@ -399,7 +402,7 @@ export default function SettingsPage() {
               </s-button>
             </div>
             {testOrderFetcher.data?.intent === "sendTestOrderWhatsapp" && (
-              <p style={{ ...hintStyle, marginTop: "8px", color: testOrderFetcher.data.ok ? "#008060" : "#d82c0d" }}>
+              <p style={{ ...hintStyle, marginTop: "8px", color: testOrderFetcher.data.ok ? "#16A34A" : "#DC2626" }}>
                 {testOrderFetcher.data.status || testOrderFetcher.data.error}
               </p>
             )}
@@ -425,7 +428,7 @@ export default function SettingsPage() {
             placeholder={`${data.defaultInteraktWishlistTemplateName} (default if left blank)`}
           />
 
-          <div style={{ marginTop: "8px", padding: "12px", background: "#f6f6f7", borderRadius: "8px" }}>
+          <div style={{ marginTop: "8px", padding: "12px", background: "#F9FAFB", border: "1px solid #EDEEF1", borderRadius: "10px" }}>
             <label style={labelStyle} htmlFor="testWishlistPhone">Send test WhatsApp message</label>
             <p style={{ ...hintStyle, marginTop: "4px" }}>
               Fires the real template with two sample items (Ruby, Blue Sapphire) — save your settings above first
@@ -446,14 +449,14 @@ export default function SettingsPage() {
               </s-button>
             </div>
             {testWishlistFetcher.data?.intent === "sendTestWishlistWhatsapp" && (
-              <p style={{ ...hintStyle, marginTop: "8px", color: testWishlistFetcher.data.ok ? "#008060" : "#d82c0d" }}>
+              <p style={{ ...hintStyle, marginTop: "8px", color: testWishlistFetcher.data.ok ? "#16A34A" : "#DC2626" }}>
                 {testWishlistFetcher.data.status || testWishlistFetcher.data.error}
               </p>
             )}
           </div>
         </s-section>
 
-        <div style={{ ...groupBannerStyle, background: "#fff4e5", color: "#8a5a00" }}>
+        <div style={{ ...groupBannerStyle, background: "#F9FAFB", borderColor: "#E5E7EB", color: "#374151" }}>
           🔑 Connect your accounts — one-time technical setup
         </div>
 
@@ -607,7 +610,7 @@ export default function SettingsPage() {
             placeholder={`${data.defaultInteraktTemplateName} (default if left blank)`}
           />
 
-          <div style={{ marginTop: "8px", padding: "12px", background: "#f6f6f7", borderRadius: "8px" }}>
+          <div style={{ marginTop: "8px", padding: "12px", background: "#F9FAFB", border: "1px solid #EDEEF1", borderRadius: "10px" }}>
             <label style={labelStyle} htmlFor="testPhone">Send test WhatsApp message</label>
             <p style={{ ...hintStyle, marginTop: "4px" }}>
               Fires the real template (sample gem data) to this number via your saved Secret Key — save your
@@ -629,7 +632,7 @@ export default function SettingsPage() {
             </div>
             {testFetcher.data?.intent === "sendTestWhatsapp" && (
               <>
-                <p style={{ ...hintStyle, marginTop: "8px", color: testFetcher.data.ok ? "#008060" : "#d82c0d" }}>
+                <p style={{ ...hintStyle, marginTop: "8px", color: testFetcher.data.ok ? "#16A34A" : "#DC2626" }}>
                   Message: {testFetcher.data.status || testFetcher.data.error}
                 </p>
                 {testFetcher.data.campaignStatus && (
@@ -637,7 +640,7 @@ export default function SettingsPage() {
                     style={{
                       ...hintStyle,
                       marginTop: "2px",
-                      color: testFetcher.data.campaignStatus.startsWith("OK") ? "#008060" : "#d82c0d",
+                      color: testFetcher.data.campaignStatus.startsWith("OK") ? "#16A34A" : "#DC2626",
                     }}
                   >
                     API Campaign: {testFetcher.data.campaignStatus}

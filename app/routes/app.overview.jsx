@@ -16,6 +16,7 @@ import { useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
+import { brand } from "../components/table-kit";
 
 export const loader = async ({ request }) => {
   await authenticate.admin(request);
@@ -57,24 +58,24 @@ export const loader = async ({ request }) => {
 
 function StatCard({ label, value }) {
   return (
-    <div style={{ background: "#f6f6f7", borderRadius: "10px", padding: "16px" }}>
-      <p style={{ fontSize: "13px", color: "#6d7175", margin: "0 0 4px" }}>{label}</p>
-      <p style={{ fontSize: "24px", fontWeight: 600, margin: 0, color: "#202223" }}>{value}</p>
+    <div style={{ background: "#fff", border: `1px solid ${brand.border}`, borderRadius: "12px", boxShadow: brand.shadow, padding: "16px 18px" }}>
+      <p style={{ fontSize: "12px", color: brand.body, margin: "0 0 8px" }}>{label}</p>
+      <p style={{ fontSize: "22px", fontWeight: 500, letterSpacing: "-0.02em", margin: 0, color: brand.heading }}>{value}</p>
     </div>
   );
 }
 
 function SectionCard({ icon, iconColor, title, description, links }) {
   return (
-    <div style={{ background: "#ffffff", border: "1px solid #e1e3e5", borderRadius: "12px", padding: "16px 20px" }}>
+    <div style={{ background: "#ffffff", border: `1px solid ${brand.border}`, borderRadius: "12px", boxShadow: brand.shadow, padding: "18px 20px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-        <span style={{ fontSize: "18px", color: iconColor, lineHeight: 1 }}>{icon}</span>
-        <p style={{ fontWeight: 600, fontSize: "15px", margin: 0 }}>{title}</p>
+        <span style={{ fontSize: "16px", color: iconColor, lineHeight: 1 }}>{icon}</span>
+        <p style={{ fontWeight: 500, fontSize: "14px", margin: 0, color: brand.heading }}>{title}</p>
       </div>
-      <p style={{ fontSize: "13px", color: "#6d7175", margin: "0 0 10px" }}>{description}</p>
+      <p style={{ fontSize: "12.5px", color: brand.muted, margin: "0 0 12px", lineHeight: 1.5 }}>{description}</p>
       <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
         {links.map((l) => (
-          <a key={l.href} href={l.href} style={{ fontSize: "13px", color: "#2c6ecb", textDecoration: "none" }}>
+          <a key={l.href} href={l.href} style={{ fontSize: "12.5px", fontWeight: 500, color: brand.accent, textDecoration: "none" }}>
             {l.label}
           </a>
         ))}
@@ -90,18 +91,19 @@ export default function OverviewPage() {
     <s-page heading="Overview">
       <s-section>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
-          <p style={{ fontSize: "13px", color: "#6d7175", margin: 0 }}>
+          <p style={{ fontSize: "12.5px", color: brand.muted, margin: 0 }}>
             Today's activity, and every part of this app in one place.
           </p>
           <a
             href="/app/server-health"
             style={{
-              fontSize: "12px",
+              fontSize: "11.5px",
+              fontWeight: 500,
               textDecoration: "none",
-              padding: "3px 12px",
-              borderRadius: "10px",
-              color: healthy ? "#008060" : "#d82c0d",
-              background: healthy ? "#e3f5e9" : "#fbe9e9",
+              padding: "5px 12px",
+              borderRadius: "20px",
+              color: healthy ? brand.success : brand.danger,
+              background: healthy ? "#E9F7EF" : "#FEF2F2",
             }}
           >
             {healthy ? "All systems OK" : "Needs attention — view details"}
@@ -118,7 +120,7 @@ export default function OverviewPage() {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "12px" }}>
           <SectionCard
             icon="👥"
-            iconColor="#2c6ecb"
+            iconColor={brand.accent}
             title="Leads"
             description="Everyone who filled the gem recommendation form or saved a wishlist item."
             links={[
@@ -128,28 +130,28 @@ export default function OverviewPage() {
           />
           <SectionCard
             icon="💬"
-            iconColor="#008060"
+            iconColor={brand.success}
             title="WhatsApp"
             description="Every message sent, and whether it was delivered or read."
             links={[{ href: "/app/whatsapp-events", label: "Message history" }]}
           />
           <SectionCard
             icon="📦"
-            iconColor="#b98900"
+            iconColor="#B45309"
             title="Orders"
             description="Orders tagged to trigger a processing notification."
             links={[{ href: "/app/server-health", label: "Order notifications (on Server page)" }]}
           />
           <SectionCard
             icon="⚙️"
-            iconColor="#6d7175"
+            iconColor={brand.muted}
             title="Settings"
             description="Email, WhatsApp templates, Google Sheets, order trigger tag."
             links={[{ href: "/app/settings", label: "Open settings" }]}
           />
           <SectionCard
             icon="🩺"
-            iconColor="#d82c0d"
+            iconColor={brand.danger}
             title="System health"
             description="Checks every connection this app depends on."
             links={[{ href: "/app/server-health", label: "View diagnostics" }]}

@@ -219,8 +219,8 @@ export const loader = async ({ request }) => {
 const smallBtn = {
   fontSize: "12px",
   padding: "6px 14px",
-  borderRadius: "6px",
-  border: "1px solid #c9cccf",
+  borderRadius: "8px",
+  border: "1px solid #E5E7EB",
   background: "#ffffff",
   cursor: "pointer",
   marginBottom: "10px",
@@ -228,9 +228,9 @@ const smallBtn = {
 
 function StatTile({ label, value, color }) {
   return (
-    <div style={{ background: "#fff", border: "1px solid #e1e3e5", borderRadius: "8px", padding: "14px 18px", minWidth: "120px" }}>
-      <div style={{ fontSize: "12px", color: "#6d7175", marginBottom: "4px" }}>{label}</div>
-      <div style={{ fontSize: "24px", fontWeight: 700, color: color || "#3a2408" }}>{value}</div>
+    <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: "12px", boxShadow: "0 1px 2px rgba(16,24,40,0.05)", padding: "14px 18px", minWidth: "120px" }}>
+      <div style={{ fontSize: "12px", color: "#374151", marginBottom: "8px" }}>{label}</div>
+      <div style={{ fontSize: "22px", fontWeight: 500, letterSpacing: "-0.02em", color: color || "#1E3A8A" }}>{value}</div>
     </div>
   );
 }
@@ -281,15 +281,15 @@ function MessageRow({ m }) {
       </td>
       <td style={tdStyle} title={m.failureReason || ""}>
         {m.failedAt ? (
-          <Pill label="Failed" active color="#d82c0d" />
+          <Pill label="Failed" active color="#DC2626" />
         ) : m.readAt ? (
           <Pill label="Read" active color="#6b5ce0" />
         ) : m.deliveredAt ? (
-          <Pill label="Delivered" active color="#008060" />
+          <Pill label="Delivered" active color="#16A34A" />
         ) : m.sentAt ? (
           <Pill label="Sent" active color="#8c7a4e" />
         ) : (
-          <Pill label="—" color="#8c9196" />
+          <Pill label="—" color="#6B7280" />
         )}
       </td>
       <td style={tdStyle}>{m.deliveredAt ? new Date(m.deliveredAt).toLocaleString() : "—"}</td>
@@ -304,7 +304,7 @@ function MessageRow({ m }) {
         {result && result.intent !== "delete" && (
           <div style={{ marginTop: "4px", maxWidth: "160px" }}>
             {result.ok ? (
-              <span style={{ fontSize: "10px", color: "#008060" }}>Resent</span>
+              <span style={{ fontSize: "10px", color: "#16A34A" }}>Resent</span>
             ) : (
               <FriendlyErrorInline message="Couldn't resend" detail={result.status || result.error} />
             )}
@@ -364,7 +364,7 @@ export default function WhatsAppEventsPage() {
         <button type="button" style={smallBtn} onClick={() => revalidator.revalidate()} disabled={isRefreshing}>
           {isRefreshing ? "Refreshing…" : "↻ Refresh"}
         </button>
-        <p style={{ margin: "0 0 14px", fontSize: "12px", color: "#6d7175" }}>
+        <p style={{ margin: "0 0 14px", fontSize: "12px", color: "#6B7280" }}>
           Real delivered/read status from Interakt's own webhook — Interakt has no API to fetch this, so nothing
           shows here until the webhook is registered (see{" "}
           <s-link href="/app/settings">Settings → Delivery/read tracking</s-link>) and a message has actually gone
@@ -373,9 +373,9 @@ export default function WhatsAppEventsPage() {
 
         <div style={{ display: "flex", gap: "12px", marginBottom: "20px", flexWrap: "wrap" }}>
           <StatTile label="Total messages" value={summary.total} />
-          <StatTile label="Delivered" value={summary.delivered} color="#008060" />
+          <StatTile label="Delivered" value={summary.delivered} color="#16A34A" />
           <StatTile label="Read" value={summary.read} color="#6b5ce0" />
-          <StatTile label="Failed" value={summary.failed} color="#d82c0d" />
+          <StatTile label="Failed" value={summary.failed} color="#DC2626" />
         </div>
 
         <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center", marginBottom: "14px" }}>
@@ -384,12 +384,12 @@ export default function WhatsAppEventsPage() {
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
             placeholder="Search phone, email, name, order #, item…"
-            style={{ padding: "6px 10px", borderRadius: "6px", border: "1px solid #c9cccf", fontSize: "13px", minWidth: "240px" }}
+            style={{ padding: "8px 12px", borderRadius: "10px", border: "1px solid #E5E7EB", fontSize: "12.5px", color: "#374151", minWidth: "240px" }}
           />
           <select
             value={kindFilter}
             onChange={(e) => setKindFilter(e.target.value)}
-            style={{ padding: "6px 10px", borderRadius: "6px", border: "1px solid #c9cccf", fontSize: "13px" }}
+            style={{ padding: "8px 12px", borderRadius: "10px", border: "1px solid #E5E7EB", fontSize: "12.5px", color: "#374151" }}
           >
             {KIND_OPTIONS.map((k) => (
               <option key={k} value={k}>{k}</option>
@@ -398,7 +398,7 @@ export default function WhatsAppEventsPage() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            style={{ padding: "6px 10px", borderRadius: "6px", border: "1px solid #c9cccf", fontSize: "13px" }}
+            style={{ padding: "8px 12px", borderRadius: "10px", border: "1px solid #E5E7EB", fontSize: "12.5px", color: "#374151" }}
           >
             {STATUS_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -413,7 +413,7 @@ export default function WhatsAppEventsPage() {
               Clear filters
             </button>
           )}
-          <span style={{ fontSize: "12px", color: "#6d7175" }}>
+          <span style={{ fontSize: "12px", color: "#6B7280" }}>
             Showing {filteredMessages.length} of {messages.length}
           </span>
         </div>

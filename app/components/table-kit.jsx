@@ -10,10 +10,32 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 // ---- Layout tokens -------------------------------------------------
 
+// ---- Shared brand tokens (matches the reference dashboard design) ---
+// Kept here since table-kit is the one file every data-list page already
+// imports — other pages pull individual tokens in rather than duplicate
+// the palette.
+export const brand = {
+  accent: "#2563EB",
+  accentHover: "#1D4ED8",
+  accentTint: "#EFF4FF",
+  heading: "#1E3A8A",
+  body: "#374151",
+  muted: "#6B7280",
+  faint: "#9CA3AF",
+  success: "#16A34A",
+  danger: "#DC2626",
+  border: "#E5E7EB",
+  divider: "#EDEEF1",
+  panel: "#F9FAFB",
+  page: "#F3F4F6",
+  shadow: "0 1px 2px rgba(16,24,40,0.05)",
+};
+
 export const tableWrapStyle = {
   overflowX: "auto",
-  border: "1px solid #e1e3e5",
+  border: `1px solid ${brand.border}`,
   borderRadius: "12px",
+  boxShadow: brand.shadow,
   width: "100%",
 };
 
@@ -21,21 +43,23 @@ export const tableStyle = { width: "100%", borderCollapse: "collapse", backgroun
 
 export const thStyle = {
   textAlign: "left",
-  padding: "11px 12px",
-  fontSize: "12px",
+  padding: "13px 14px",
+  fontSize: "10.5px",
   fontWeight: 600,
-  color: "#6d7175",
-  background: "#fafbfb",
-  borderBottom: "1px solid #e1e3e5",
+  letterSpacing: "0.06em",
+  textTransform: "uppercase",
+  color: brand.faint,
+  background: brand.panel,
+  borderBottom: `1px solid ${brand.border}`,
   whiteSpace: "nowrap",
 };
 
 export const tdStyle = {
-  padding: "12px",
-  fontSize: "13px",
-  borderBottom: "1px solid #f1f2f3",
+  padding: "13px 14px",
+  fontSize: "12.5px",
+  borderBottom: `1px solid ${brand.divider}`,
   verticalAlign: "top",
-  color: "#202223",
+  color: brand.body,
 };
 
 // One shared <style> block (hover state needs a real CSS rule, not an
@@ -45,9 +69,9 @@ export function TableGlobalStyles() {
   return (
     <style>{`
       .dt-row { transition: background 0.1s ease; }
-      .dt-row:hover { background: #fafbfb; }
+      .dt-row:hover { background: ${brand.panel}; }
       .dt-th-sort { cursor: pointer; user-select: none; }
-      .dt-th-sort:hover { color: #202223; }
+      .dt-th-sort:hover { color: ${brand.body}; }
     `}</style>
   );
 }
@@ -107,7 +131,7 @@ export function SortTh({ label, sortKey, activeKey, sortDir, onSort, style }) {
     >
       <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
         {label}
-        <span style={{ fontSize: "10px", color: active ? "#202223" : "#c9cccf", lineHeight: 1 }}>
+        <span style={{ fontSize: "10px", color: active ? brand.body : "#D1D5DB", lineHeight: 1 }}>
           {active ? (sortDir === "asc" ? "▲" : "▼") : "⇅"}
         </span>
       </span>
@@ -125,15 +149,15 @@ export function Pill({ label, active, color }) {
     <span
       style={{
         display: "inline-block",
-        padding: "3px 10px",
+        padding: "4px 10px",
         marginRight: "4px",
         marginBottom: "2px",
         borderRadius: "999px",
-        fontSize: "11px",
-        fontWeight: 600,
+        fontSize: "11.5px",
+        fontWeight: 500,
         whiteSpace: "nowrap",
-        background: active ? color + "22" : "#f1f2f3",
-        color: active ? color : "#8c9196",
+        background: active ? color + "22" : brand.panel,
+        color: active ? color : brand.muted,
       }}
     >
       {label}
@@ -160,7 +184,7 @@ export function RowMenu({ items }) {
   }, [open]);
 
   const visible = (items || []).filter(Boolean);
-  if (!visible.length) return <span style={{ color: "#c9cccf" }}>—</span>;
+  if (!visible.length) return <span style={{ color: "#D1D5DB" }}>—</span>;
 
   return (
     <div ref={ref} style={{ position: "relative", display: "inline-block" }}>
@@ -170,12 +194,12 @@ export function RowMenu({ items }) {
         aria-label="Row actions"
         style={{
           border: "1px solid transparent",
-          background: open ? "#f1f2f3" : "transparent",
+          background: open ? brand.panel : "transparent",
           cursor: "pointer",
           fontSize: "18px",
-          color: "#6d7175",
+          color: brand.muted,
           padding: "3px 9px",
-          borderRadius: "6px",
+          borderRadius: "8px",
           lineHeight: 1,
         }}
       >
@@ -190,9 +214,9 @@ export function RowMenu({ items }) {
             marginTop: "4px",
             zIndex: 30,
             background: "#fff",
-            border: "1px solid #e1e3e5",
-            borderRadius: "8px",
-            boxShadow: "0 4px 14px rgba(0,0,0,0.14)",
+            border: `1px solid ${brand.border}`,
+            borderRadius: "10px",
+            boxShadow: "0 4px 14px rgba(16,24,40,0.12)",
             minWidth: "170px",
             overflow: "hidden",
           }}
@@ -211,12 +235,13 @@ export function RowMenu({ items }) {
                 width: "100%",
                 textAlign: "left",
                 padding: "9px 12px",
-                fontSize: "13px",
+                fontSize: "12.5px",
+                fontWeight: 500,
                 border: "none",
-                borderBottom: i < visible.length - 1 ? "1px solid #f1f2f3" : "none",
+                borderBottom: i < visible.length - 1 ? `1px solid ${brand.divider}` : "none",
                 background: "transparent",
                 cursor: item.disabled ? "default" : "pointer",
-                color: item.tone === "danger" ? "#d82c0d" : "#202223",
+                color: item.tone === "danger" ? "#DC2626" : brand.body,
                 opacity: item.disabled ? 0.5 : 1,
               }}
             >

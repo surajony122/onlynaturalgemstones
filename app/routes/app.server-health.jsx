@@ -320,11 +320,11 @@ export const loader = async ({ request }) => {
   };
 };
 
-const statusColor = (ok) => (ok === true ? "#008060" : ok === null ? "#8c9196" : ok === "warn" ? "#8a6116" : "#d82c0d");
+const statusColor = (ok) => (ok === true ? "#16A34A" : ok === null ? "#6B7280" : ok === "warn" ? "#B45309" : "#DC2626");
 const statusLabel = (ok) => (ok === true ? "OK" : ok === null ? "Not configured" : ok === "warn" ? "WARNING (see detail)" : "FAILING");
 
-const th = { textAlign: "left", padding: "8px 10px", fontSize: "12px", color: "#6d7175", borderBottom: "1px solid #e1e3e5" };
-const td = { padding: "8px 10px", fontSize: "13px", borderBottom: "1px solid #f1f2f3", verticalAlign: "top" };
+const th = { textAlign: "left", padding: "8px 10px", fontSize: "12px", color: "#6B7280", borderBottom: "1px solid #E5E7EB" };
+const td = { padding: "8px 10px", fontSize: "13px", borderBottom: "1px solid #EDEEF1", verticalAlign: "top" };
 
 export default function ServerHealthPage() {
   const { checkedAt, checks, recentLeads, orderProcessingNotifications, registeredWebhooks, webhookReceipts } = useLoaderData();
@@ -353,7 +353,7 @@ export default function ServerHealthPage() {
                 <td style={td}>
                   <span style={{ color: statusColor(c.ok), fontWeight: "bold" }}>{statusLabel(c.ok)}</span>
                 </td>
-                <td style={{ ...td, color: "#5c4a3d", fontFamily: c.ok === false ? "monospace" : "inherit", fontSize: c.ok === false ? "11px" : "13px" }}>
+                <td style={{ ...td, color: "#374151", fontFamily: c.ok === false ? "monospace" : "inherit", fontSize: c.ok === false ? "11px" : "13px" }}>
                   {c.detail}
                 </td>
               </tr>
@@ -379,7 +379,7 @@ export default function ServerHealthPage() {
                 <tr key={issue.id}>
                   <td style={td}>{new Date(issue.when).toLocaleString()}</td>
                   <td style={td}>{issue.email || "—"}</td>
-                  <td style={{ ...td, color: "#d82c0d" }}>
+                  <td style={{ ...td, color: "#DC2626" }}>
                     {issue.problems.map((p, i) => (
                       <div key={i}>
                         • {p}
@@ -487,7 +487,7 @@ export default function ServerHealthPage() {
                   <td style={td}>{new Date(n.notifiedAt).toLocaleString()}</td>
                   <td style={td}>{n.orderName || n.orderId}</td>
                   <td style={td}>{n.phone || "—"}</td>
-                  <td style={{ ...td, color: n.status?.startsWith("OK") ? "#008060" : "#d82c0d" }}>{n.status || "—"}</td>
+                  <td style={{ ...td, color: n.status?.startsWith("OK") ? "#16A34A" : "#DC2626" }}>{n.status || "—"}</td>
                 </tr>
               ))}
             </tbody>

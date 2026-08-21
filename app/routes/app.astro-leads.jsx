@@ -135,8 +135,8 @@ export const loader = async ({ request }) => {
 const smallBtn = {
   fontSize: "11px",
   padding: "4px 10px",
-  borderRadius: "6px",
-  border: "1px solid #c9cccf",
+  borderRadius: "8px",
+  border: "1px solid #E5E7EB",
   background: "#ffffff",
   cursor: "pointer",
   marginRight: "4px",
@@ -178,19 +178,19 @@ function LeadRow({ lead }) {
       <td style={tdStyle}>{lead.phone || "—"}</td>
       <td style={tdStyle}>{lead.lifeStoneGem || "—"}</td>
       <td style={tdStyle}>
-        {lead.calculationOk ? <Pill label="OK" active color="#008060" /> : <Pill label="Failed" active color="#d82c0d" />}
+        {lead.calculationOk ? <Pill label="OK" active color="#16A34A" /> : <Pill label="Failed" active color="#DC2626" />}
       </td>
       <td style={tdStyle} title={lead.shopifySyncStatus || ""}>
         {(lead.shopifySyncStatus || "").startsWith("OK") ? (
-          <Pill label="Synced" active color="#008060" />
+          <Pill label="Synced" active color="#16A34A" />
         ) : lead.shopifySyncStatus ? (
-          <Pill label="Failed" active color="#d82c0d" />
+          <Pill label="Failed" active color="#DC2626" />
         ) : (
-          <Pill label="—" color="#8c9196" />
+          <Pill label="—" color="#6B7280" />
         )}
       </td>
       <td style={tdStyle} title={lead.emailSendStatus || ""}>
-        <Pill label="Sent" active={lead.emailStatus.sent > 0} color="#008060" />
+        <Pill label="Sent" active={lead.emailStatus.sent > 0} color="#16A34A" />
         <Pill
           label={"Opened" + (lead.emailStatus.opened > 1 ? ` ×${lead.emailStatus.opened}` : "")}
           active={lead.emailStatus.opened > 0}
@@ -199,20 +199,20 @@ function LeadRow({ lead }) {
         <Pill
           label={"Clicked" + (lead.emailStatus.clicked > 1 ? ` ×${lead.emailStatus.clicked}` : "")}
           active={lead.emailStatus.clicked > 0}
-          color="#2c6ecb"
+          color="#2563EB"
         />
       </td>
       <td style={tdStyle} title={lead.whatsappSendStatus || ""}>
         {lead.whatsappSendStatus?.startsWith("OK") ? (
           <Pill label="Sent" active color="#25d366" />
         ) : lead.whatsappSendStatus?.startsWith("queued") ? (
-          <Pill label="Queued" active color="#b98900" />
+          <Pill label="Queued" active color="#B45309" />
         ) : lead.whatsappSendStatus?.startsWith("skipped") ? (
-          <Pill label="Skipped" active color="#8c9196" />
+          <Pill label="Skipped" active color="#6B7280" />
         ) : lead.whatsappSendStatus ? (
-          <Pill label="Failed" active color="#d82c0d" />
+          <Pill label="Failed" active color="#DC2626" />
         ) : (
-          <Pill label="—" color="#8c9196" />
+          <Pill label="—" color="#6B7280" />
         )}
       </td>
       <td style={{ ...tdStyle, whiteSpace: "normal", minWidth: "180px" }}>
@@ -220,7 +220,7 @@ function LeadRow({ lead }) {
           ? lead.emailStatus.clickedLinks.map((link, i) => (
               <span
                 key={i}
-                style={{ display: "inline-block", fontSize: "11px", color: "#2c6ecb", background: "#eaf1fa", padding: "2px 7px", borderRadius: "8px", margin: "1px 3px 1px 0" }}
+                style={{ display: "inline-block", fontSize: "11px", color: "#2563EB", background: "#EFF4FF", padding: "2px 7px", borderRadius: "8px", margin: "1px 3px 1px 0" }}
               >
                 {link}
               </span>
@@ -235,7 +235,7 @@ function LeadRow({ lead }) {
             setDirty(true);
           }}
           placeholder="Internal note…"
-          style={{ width: "100%", minHeight: "50px", fontSize: "12px", padding: "5px", border: "1px solid #c9cccf", borderRadius: "5px", boxSizing: "border-box", resize: "vertical" }}
+          style={{ width: "100%", minHeight: "50px", fontSize: "12px", padding: "5px", border: "1px solid #E5E7EB", borderRadius: "8px", boxSizing: "border-box", resize: "vertical", color: "#374151" }}
         />
         {dirty && (
           <button type="button" style={{ ...smallBtn, marginTop: "4px" }} onClick={saveNotes} disabled={busy}>
@@ -254,7 +254,7 @@ function LeadRow({ lead }) {
         {lastActionResult && (
           <div style={{ marginTop: "4px", maxWidth: "160px" }}>
             {lastActionResult.ok ? (
-              <span style={{ fontSize: "10px", color: "#008060", whiteSpace: "normal" }}>
+              <span style={{ fontSize: "10px", color: "#16A34A", whiteSpace: "normal" }}>
                 {lastActionResult.intent === "sendNow" ? "Email sent" : "WhatsApp sent"}
               </span>
             ) : (
@@ -287,12 +287,12 @@ function WhatsAppQueueSection({ whatsappQueue }) {
             {whatsappQueue.pending.length === 1 ? "" : "s"} waiting)
             {whatsappQueue.nextDue ? ` · next due ~${new Date(whatsappQueue.nextDue).toLocaleString()}` : ""}
             {" · "}
-            <a href="/app/settings" style={{ color: "#2c6ecb" }}>change in Settings</a>
+            <a href="/app/settings" style={{ color: "#2563EB" }}>change in Settings</a>
           </>
         ) : (
           <>
             Follow-up reminder is <s-text>off</s-text>.{" "}
-            <a href="/app/settings" style={{ color: "#2c6ecb" }}>turn it on in Settings</a>
+            <a href="/app/settings" style={{ color: "#2563EB" }}>turn it on in Settings</a>
           </>
         )}
       </p>
@@ -301,7 +301,7 @@ function WhatsAppQueueSection({ whatsappQueue }) {
       </button>
       {result && (
         result.ok ? (
-          <p style={{ margin: "8px 0 0", fontSize: "12px", color: "#008060" }}>
+          <p style={{ margin: "8px 0 0", fontSize: "12px", color: "#16A34A" }}>
             {result.sent > 0
               ? `Sent ${result.sent} follow-up${result.sent === 1 ? "" : "s"}.`
               : result.note || "Nothing due right now."}
@@ -430,7 +430,7 @@ export default function AstroLeadsPage() {
         >
           {isRefreshing ? "Refreshing…" : "↻ Refresh"}
         </button>
-        <p style={{ margin: "0 0 14px", fontSize: "12px", color: "#6d7175" }}>
+        <p style={{ margin: "0 0 14px", fontSize: "12px", color: "#6B7280" }}>
           Most recent {PAGE_SIZE} leads · "Opened" is best-effort (some mail clients pre-fetch/block tracking
           images) · "Clicked" is reliable and shows which link on hover · No real "delivered" signal exists · Flow's
           own run history isn't readable via API —{" "}
@@ -438,7 +438,7 @@ export default function AstroLeadsPage() {
             href="https://admin.shopify.com/store/0f9yd0-jr/apps/flow"
             target="_blank"
             rel="noreferrer"
-            style={{ color: "#2c6ecb" }}
+            style={{ color: "#2563EB" }}
           >
             open Shopify Flow directly
           </a>
@@ -451,12 +451,12 @@ export default function AstroLeadsPage() {
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
             placeholder="Search name, email, phone, or stone…"
-            style={{ padding: "6px 10px", borderRadius: "6px", border: "1px solid #c9cccf", fontSize: "13px", minWidth: "220px" }}
+            style={{ padding: "8px 12px", borderRadius: "10px", border: "1px solid #E5E7EB", fontSize: "12.5px", color: "#374151", minWidth: "220px" }}
           />
           <select
             value={calcFilter}
             onChange={(e) => setCalcFilter(e.target.value)}
-            style={{ padding: "6px 10px", borderRadius: "6px", border: "1px solid #c9cccf", fontSize: "13px" }}
+            style={{ padding: "8px 12px", borderRadius: "10px", border: "1px solid #E5E7EB", fontSize: "12.5px", color: "#374151" }}
           >
             {CALC_STATUS_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -465,7 +465,7 @@ export default function AstroLeadsPage() {
           <select
             value={emailFilter}
             onChange={(e) => setEmailFilter(e.target.value)}
-            style={{ padding: "6px 10px", borderRadius: "6px", border: "1px solid #c9cccf", fontSize: "13px" }}
+            style={{ padding: "8px 12px", borderRadius: "10px", border: "1px solid #E5E7EB", fontSize: "12.5px", color: "#374151" }}
           >
             {EMAIL_STATUS_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -474,7 +474,7 @@ export default function AstroLeadsPage() {
           <select
             value={whatsappFilter}
             onChange={(e) => setWhatsappFilter(e.target.value)}
-            style={{ padding: "6px 10px", borderRadius: "6px", border: "1px solid #c9cccf", fontSize: "13px" }}
+            style={{ padding: "8px 12px", borderRadius: "10px", border: "1px solid #E5E7EB", fontSize: "12.5px", color: "#374151" }}
           >
             {WHATSAPP_STATUS_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -489,7 +489,7 @@ export default function AstroLeadsPage() {
               Clear filters
             </button>
           )}
-          <span style={{ fontSize: "12px", color: "#6d7175" }}>
+          <span style={{ fontSize: "12px", color: "#6B7280" }}>
             Showing {filteredLeads.length} of {leads.length}
           </span>
         </div>

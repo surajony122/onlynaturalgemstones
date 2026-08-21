@@ -10,7 +10,7 @@ import {
   SETUP_BATCH_SIZE,
   PRODUCT_ID_NUMERIC,
 } from "../utils/repriceDesignVariants.server";
-import { tableWrapStyle, tableStyle, thStyle, tdStyle, TableGlobalStyles, Pill } from "../components/table-kit";
+import { tableWrapStyle, tableStyle, thStyle, tdStyle, TableGlobalStyles, Pill, brand } from "../components/table-kit";
 import { FriendlyError, FriendlyErrorInline } from "../components/friendly-error";
 
 export const loader = async ({ request }) => {
@@ -247,7 +247,7 @@ export default function Index() {
 
         {scanFetcher.data?.intent === "scanSetup" && scanFetcher.data.ok && (
           <div style={{ marginTop: "12px" }}>
-            <p style={{ fontSize: "13px", color: "#6d7175", margin: "0 0 10px" }}>
+            <p style={{ fontSize: "12.5px", color: brand.muted, margin: "0 0 10px" }}>
               Scanned {scanFetcher.data.scanned} product{scanFetcher.data.scanned === 1 ? "" : "s"} ·{" "}
               {missing.length} missing setup
               {scanFetcher.data.truncated ? " · stopped early (catalog larger than the scan's safety cap — rerun to continue)" : ""}
@@ -262,12 +262,12 @@ export default function Index() {
                     value={searchText}
                     onChange={(e) => setSearchText(e.target.value)}
                     placeholder="Search title, handle, or collection…"
-                    style={{ padding: "6px 10px", borderRadius: "6px", border: "1px solid #c9cccf", fontSize: "13px", minWidth: "220px" }}
+                    style={{ padding: "8px 12px", borderRadius: "10px", border: `1px solid ${brand.border}`, fontSize: "12.5px", minWidth: "220px", color: brand.body }}
                   />
                   <select
                     value={collectionFilter}
                     onChange={(e) => setCollectionFilter(e.target.value)}
-                    style={{ padding: "6px 10px", borderRadius: "6px", border: "1px solid #c9cccf", fontSize: "13px" }}
+                    style={{ padding: "8px 12px", borderRadius: "10px", border: `1px solid ${brand.border}`, fontSize: "12.5px", color: brand.body, background: "#fff" }}
                   >
                     <option value="all">All collections</option>
                     {allCollections.map((c) => (
@@ -278,12 +278,12 @@ export default function Index() {
                     <button
                       type="button"
                       onClick={() => { setSearchText(""); setCollectionFilter("all"); }}
-                      style={{ fontSize: "12px", padding: "6px 12px", borderRadius: "6px", border: "1px solid #c9cccf", background: "#fff", cursor: "pointer" }}
+                      style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "10px", border: `1px solid ${brand.border}`, background: brand.panel, color: brand.body, cursor: "pointer" }}
                     >
                       Clear filters
                     </button>
                   )}
-                  <span style={{ fontSize: "12px", color: "#6d7175" }}>
+                  <span style={{ fontSize: "12px", color: brand.muted }}>
                     Showing {filteredMissing.length} of {missing.length}
                   </span>
                 </div>
@@ -292,21 +292,21 @@ export default function Index() {
                   <button
                     type="button"
                     onClick={checkAllMissing}
-                    style={{ fontSize: "12px", padding: "6px 12px", borderRadius: "6px", border: "1px solid #c9cccf", background: "#fff", cursor: "pointer" }}
+                    style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "10px", border: `1px solid ${brand.border}`, background: brand.panel, color: brand.body, cursor: "pointer" }}
                   >
                     Check all shown ({filteredMissing.length})
                   </button>
                   <button
                     type="button"
                     onClick={clearChecked}
-                    style={{ fontSize: "12px", padding: "6px 12px", borderRadius: "6px", border: "1px solid #c9cccf", background: "#fff", cursor: "pointer" }}
+                    style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "10px", border: `1px solid ${brand.border}`, background: brand.panel, color: brand.body, cursor: "pointer" }}
                   >
                     Clear selection
                   </button>
                   <s-button {...(isSettingUp ? { loading: true } : {})} onClick={applySetup}>
                     Apply setup to {checked.size} selected
                   </s-button>
-                  <span style={{ fontSize: "12px", color: "#6d7175" }}>
+                  <span style={{ fontSize: "12px", color: brand.muted }}>
                     Processes up to {setupBatchSize} per click — click Apply again for the rest of a larger
                     selection.
                   </span>
@@ -337,14 +337,14 @@ export default function Index() {
                                 href={`https://admin.shopify.com/store/${shopDomain}/products/${p.numericId}`}
                                 target="_blank"
                                 rel="noreferrer"
-                                style={{ color: "#2c6ecb" }}
+                                style={{ color: brand.accent, fontWeight: 500 }}
                               >
                                 {p.title}
                               </a>
                             </td>
                             <td style={tdStyle}>{p.status}</td>
                             <td style={tdStyle}>{p.handle}</td>
-                            <td style={{ ...tdStyle, fontSize: "12px", color: "#6d7175" }}>
+                            <td style={{ ...tdStyle, fontSize: "12px", color: brand.muted }}>
                               {(p.collections || []).join(", ") || "—"}
                             </td>
                             <td style={tdStyle}>
@@ -353,7 +353,7 @@ export default function Index() {
                                   <Pill
                                     label={`✓ ${result.variantCount} variants (${result.designSet})`}
                                     active
-                                    color="#008060"
+                                    color={brand.success}
                                   />
                                 ) : (
                                   <FriendlyErrorInline message="Couldn't set this one up" detail={result.error} />

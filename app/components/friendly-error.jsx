@@ -12,20 +12,25 @@
  */
 import { useState } from "react";
 
+const RED = "#DC2626";
+const RED_TINT = "#FEF2F2";
+const RED_BORDER = "#FBD5D5";
+
 export function FriendlyError({ message, detail }) {
   const [showDetail, setShowDetail] = useState(false);
 
   return (
     <div
       style={{
-        background: "#fbe9e9",
-        border: "1px solid #f1c4c4",
-        borderRadius: "8px",
-        padding: "12px 14px",
-        fontSize: "13px",
+        background: RED_TINT,
+        border: `1px solid ${RED_BORDER}`,
+        borderRadius: "12px",
+        padding: "13px 16px",
+        fontSize: "12.5px",
+        boxShadow: "0 1px 2px rgba(16,24,40,0.05)",
       }}
     >
-      <p style={{ margin: 0, color: "#8c2e21", fontWeight: 500 }}>{message}</p>
+      <p style={{ margin: 0, color: RED, fontWeight: 500 }}>{message}</p>
       {detail && (
         <>
           <button
@@ -33,8 +38,8 @@ export function FriendlyError({ message, detail }) {
             onClick={() => setShowDetail((v) => !v)}
             style={{
               marginTop: "6px",
-              fontSize: "12px",
-              color: "#8c2e21",
+              fontSize: "11.5px",
+              color: RED,
               background: "none",
               border: "none",
               padding: 0,
@@ -48,12 +53,12 @@ export function FriendlyError({ message, detail }) {
             <pre
               style={{
                 marginTop: "8px",
-                padding: "8px 10px",
+                padding: "9px 11px",
                 background: "#fff",
-                border: "1px solid #f1c4c4",
-                borderRadius: "6px",
+                border: `1px solid ${RED_BORDER}`,
+                borderRadius: "8px",
                 fontSize: "11px",
-                color: "#6d7175",
+                color: "#6B7280",
                 whiteSpace: "pre-wrap",
                 wordBreak: "break-word",
                 maxHeight: "160px",
@@ -75,7 +80,7 @@ export function FriendlyError({ message, detail }) {
  * (still reachable, still not shoved in the merchant's face). */
 export function FriendlyErrorInline({ message, detail }) {
   return (
-    <span style={{ color: "#d82c0d", fontSize: "12px" }} title={detail || undefined}>
+    <span style={{ color: RED, fontSize: "12px" }} title={detail || undefined}>
       {message}
     </span>
   );
