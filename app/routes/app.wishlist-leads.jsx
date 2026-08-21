@@ -14,6 +14,7 @@ import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { processDueWishlistEmails, resendWishlistLeadEmail, resendWishlistWhatsapp } from "../utils/wishlist.server";
 import { tableWrapStyle, tableStyle, thStyle, tdStyle, TableGlobalStyles, useSort, SortTh, Pill, RowMenu } from "../components/table-kit";
+import { FriendlyErrorInline } from "../components/friendly-error";
 
 const PAGE_SIZE = 100;
 
@@ -266,8 +267,17 @@ function LeadRow({ lead }) {
           ]}
         />
         {lastActionResult && (
-          <div style={{ fontSize: "10px", marginTop: "4px", color: lastActionResult.ok ? "#008060" : "#d82c0d", whiteSpace: "normal", maxWidth: "160px" }}>
-            {lastActionResult.status || lastActionResult.error}
+          <div style={{ marginTop: "4px", maxWidth: "160px" }}>
+            {lastActionResult.ok ? (
+              <span style={{ fontSize: "10px", color: "#008060", whiteSpace: "normal" }}>
+                {lastActionResult.intent === "sendNow" ? "Email sent" : "WhatsApp sent"}
+              </span>
+            ) : (
+              <FriendlyErrorInline
+                message={lastActionResult.intent === "sendNow" ? "Couldn't send the email" : "Couldn't send WhatsApp"}
+                detail={lastActionResult.status || lastActionResult.error}
+              />
+            )}
           </div>
         )}
       </td>
@@ -342,7 +352,7 @@ export default function WishlistLeadsPage() {
     if (fetcher.data.ok) {
       shopify.toast.show(`Checked ${fetcher.data.checked} customer(s), sent ${fetcher.data.sent} email(s)`);
     } else {
-      shopify.toast.show(fetcher.data.error || "Failed to send", { isError: true });
+      shopify.toast.show("Couldn't check for due emails — try again in a moment", { isError: true });
     }
   }, [fetcher.data, shopify]);
 

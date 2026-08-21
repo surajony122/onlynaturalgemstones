@@ -34,6 +34,7 @@ import { sendWhatsAppForLead } from "../utils/astroAdvice.server";
 import { sendOrderProcessingWhatsApp } from "../utils/interakt.server";
 import { resendWishlistWhatsapp } from "../utils/wishlist.server";
 import { tableWrapStyle, tableStyle, thStyle, tdStyle, TableGlobalStyles, useSort, SortTh, Pill, RowMenu } from "../components/table-kit";
+import { FriendlyErrorInline } from "../components/friendly-error";
 
 const PAGE_SIZE = 500;
 
@@ -301,8 +302,12 @@ function MessageRow({ m }) {
           ]}
         />
         {result && result.intent !== "delete" && (
-          <div style={{ fontSize: "10px", marginTop: "4px", color: result.ok ? "#008060" : "#d82c0d", maxWidth: "160px" }}>
-            {result.status || result.error}
+          <div style={{ marginTop: "4px", maxWidth: "160px" }}>
+            {result.ok ? (
+              <span style={{ fontSize: "10px", color: "#008060" }}>Resent</span>
+            ) : (
+              <FriendlyErrorInline message="Couldn't resend" detail={result.status || result.error} />
+            )}
           </div>
         )}
       </td>

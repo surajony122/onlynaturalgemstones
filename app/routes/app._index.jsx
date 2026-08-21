@@ -11,6 +11,7 @@ import {
   PRODUCT_ID_NUMERIC,
 } from "../utils/repriceDesignVariants.server";
 import { tableWrapStyle, tableStyle, thStyle, tdStyle, TableGlobalStyles, Pill } from "../components/table-kit";
+import { FriendlyError, FriendlyErrorInline } from "../components/friendly-error";
 
 export const loader = async ({ request }) => {
   const { session } = await authenticate.admin(request);
@@ -97,20 +98,25 @@ export default function Index() {
     if (fetcher.data?.ok) {
       shopify.toast.show(`Repriced ${fetcher.data.variantCount} variants`);
     } else if (fetcher.data && !fetcher.data.ok) {
-      shopify.toast.show(fetcher.data.error, { isError: true });
+      shopify.toast.show("Couldn't reprice the variants — see details below", { isError: true });
     }
   }, [fetcher.data, shopify]);
 
   useEffect(() => {
     if (scanFetcher.data?.intent === "scanSetup" && !scanFetcher.data.ok) {
-      shopify.toast.show(scanFetcher.data.error, { isError: true });
+      shopify.toast.show("Couldn't scan your products — try again in a moment", { isError: true });
     }
   }, [scanFetcher.data, shopify]);
 
   useEffect(() => {
     if (setupFetcher.data?.intent !== "setupSelected") return;
     if (!setupFetcher.data.ok) {
-      shopify.toast.show(setupFetcher.data.error, { isError: true });
+      shopify.toast.show(
+        setupFetcher.data.error === "Check at least one product first."
+          ? setupFetcher.data.error
+          : "Couldn't set up those products — try again in a moment",
+        { isError: true }
+      );
       return;
     }
     const succeededGids = new Set(
@@ -216,9 +222,10 @@ export default function Index() {
       )}
       {fetcher.data && !fetcher.data.ok && (
         <s-section heading="Last run failed">
-          <s-paragraph>
-            <s-text>{fetcher.data.error}</s-text>
-          </s-paragraph>
+          <FriendlyError
+            message="Couldn't reprice the test product's variants. Nothing was changed — your existing prices are untouched."
+            detail={fetcher.data.error}
+          />
         </s-section>
       )}
 
@@ -349,7 +356,7 @@ export default function Index() {
                                     color="#008060"
                                   />
                                 ) : (
-                                  <span style={{ color: "#d82c0d", fontSize: "12px" }}>{result.error}</span>
+                                  <FriendlyErrorInline message="Couldn't set this one up" detail={result.error} />
                                 )
                               ) : (
                                 "—"

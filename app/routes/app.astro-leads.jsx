@@ -14,6 +14,7 @@ import { resendAstroLeadEmail, sendWhatsAppForLead } from "../utils/astroAdvice.
 import { processWhatsAppQueue, getWhatsAppQueueSummary } from "../utils/whatsappQueue.server";
 import { getAppSettings } from "../utils/appSettings.server";
 import { tableWrapStyle, tableStyle, thStyle, tdStyle, TableGlobalStyles, useSort, SortTh, Pill, RowMenu } from "../components/table-kit";
+import { FriendlyErrorInline } from "../components/friendly-error";
 
 const PAGE_SIZE = 100;
 
@@ -251,8 +252,17 @@ function LeadRow({ lead }) {
           ]}
         />
         {lastActionResult && (
-          <div style={{ fontSize: "10px", marginTop: "4px", color: lastActionResult.ok ? "#008060" : "#d82c0d", whiteSpace: "normal", maxWidth: "160px" }}>
-            {lastActionResult.status || lastActionResult.error}
+          <div style={{ marginTop: "4px", maxWidth: "160px" }}>
+            {lastActionResult.ok ? (
+              <span style={{ fontSize: "10px", color: "#008060", whiteSpace: "normal" }}>
+                {lastActionResult.intent === "sendNow" ? "Email sent" : "WhatsApp sent"}
+              </span>
+            ) : (
+              <FriendlyErrorInline
+                message={lastActionResult.intent === "sendNow" ? "Couldn't send the email" : "Couldn't send WhatsApp"}
+                detail={lastActionResult.status || lastActionResult.error}
+              />
+            )}
           </div>
         )}
       </td>
@@ -290,13 +300,17 @@ function WhatsAppQueueSection({ whatsappQueue }) {
         {busy ? "Checking…" : "Process Follow-ups Now"}
       </button>
       {result && (
-        <p style={{ margin: "8px 0 0", fontSize: "12px", color: result.ok ? "#008060" : "#d82c0d" }}>
-          {result.ok
-            ? result.sent > 0
+        result.ok ? (
+          <p style={{ margin: "8px 0 0", fontSize: "12px", color: "#008060" }}>
+            {result.sent > 0
               ? `Sent ${result.sent} follow-up${result.sent === 1 ? "" : "s"}.`
-              : result.note || "Nothing due right now."
-            : result.error}
-        </p>
+              : result.note || "Nothing due right now."}
+          </p>
+        ) : (
+          <div style={{ marginTop: "8px" }}>
+            <FriendlyErrorInline message="Couldn't check for follow-ups due" detail={result.error} />
+          </div>
+        )
       )}
       {whatsappQueue.pending.length > 0 && (
         <div style={{ marginTop: "10px", overflowX: "auto" }}>
