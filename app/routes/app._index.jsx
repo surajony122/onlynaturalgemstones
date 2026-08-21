@@ -176,12 +176,18 @@ export default function Index() {
           <s-text>weight × (metal rate + making charge)</s-text> when no
           explicit price is set for that design.
         </s-paragraph>
+        <s-paragraph>
+          Which designs (and which Types) a product gets depends on its assigned template —{" "}
+          <s-text>product.pearl.json</s-text> gets the pearl design catalog, which only has Ring and Pendent (no
+          Bracelet at all — pearls just don't come as bracelets). Every other product uses the default catalog with
+          all three: Ring, Bracelet, Pendent.
+        </s-paragraph>
       </s-section>
 
       {fetcher.data?.ok && (
         <s-section heading="Last run">
           <s-paragraph>
-            Stone price used: ₹{fetcher.data.stonePrice} · Variants updated:{" "}
+            Stone price used: ₹{fetcher.data.stonePrice} · Design set: {fetcher.data.designSet} · Variants updated:{" "}
             {fetcher.data.variantCount} · Design values:{" "}
             {fetcher.data.designValueCount}
           </s-paragraph>
@@ -201,10 +207,11 @@ export default function Index() {
           flow (and this Reprice tool) needs — the same check{" "}
           <s-text>snippets/shubh-jewelry-flow.liquid</s-text> itself uses to decide whether to render at all.
           Products listed below don't have it set up yet. Check the ones you want, then Apply — each selected
-          product gets the same Ring/Bracelet/Pendant × Metal × Design matrix{" "}
-          <s-text>Reprice Design Variants</s-text> above builds for the "test" product, using{" "}
-          <s-text>that product's own current price</s-text> as the base stone price (its single existing variant if
-          it doesn't have a "Loose" one yet).
+          product gets the same Metal × Design matrix <s-text>Reprice Design Variants</s-text> above builds for the
+          "test" product, using <s-text>that product's own current price</s-text> as the base stone price (its
+          single existing variant if it doesn't have a "Loose" one yet). Products on the{" "}
+          <s-text>product.pearl.json</s-text> template automatically get Ring/Pendent only (no Bracelet); everything
+          else gets Ring/Bracelet/Pendent.
         </s-paragraph>
         <s-button {...(isScanning ? { loading: true } : {})} onClick={scanSetup}>
           Scan Products
@@ -279,7 +286,11 @@ export default function Index() {
                             <td style={tdStyle}>
                               {result ? (
                                 result.ok ? (
-                                  <Pill label={`✓ ${result.variantCount} variants`} active color="#008060" />
+                                  <Pill
+                                    label={`✓ ${result.variantCount} variants (${result.designSet})`}
+                                    active
+                                    color="#008060"
+                                  />
                                 ) : (
                                   <span style={{ color: "#d82c0d", fontSize: "12px" }}>{result.error}</span>
                                 )

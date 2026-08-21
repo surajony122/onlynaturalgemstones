@@ -43,7 +43,31 @@ async function fetchRatesFromTheme(admin) {
 }
 
 const LOOSE_METALS = ["Silver", "Panchdhatu", "Copper", "22k Yellow Gold", "18K Yellow Gold", "14K Yellow Gold", "18K White Gold", "14K White Gold"];
+// Every type EXCEPT pearl products — pearls don't come as bracelets at
+// all (GLOBAL_DESIGNS.pearl has no "bracelet" key, only ring/pendant —
+// see typesForDesignSet below, which is what actually decides this per
+// product, not this constant directly).
 const TYPES = ["Ring", "Bracelet", "Pendent"];
+
+// Which Customised(Type) values a product gets depends on its design set
+// (see designSetFor below) — pearls only ever come as Ring or Pendent,
+// never Bracelet, matching GLOBAL_DESIGNS.pearl having no "bracelet" key
+// at all (and the theme's own shubh-gems-global-designs.liquid, which
+// this data was ported from, has the identical restriction).
+function typesForDesignSet(designSet) {
+  return designSet === "pearl" ? ["Ring", "Pendent"] : TYPES;
+}
+
+// Same signal the theme itself uses (snippets/shubh-jewelry-flow.liquid
+// and shubh-gems-customizer.liquid both pass design_set: template.suffix
+// into shubh-gems-global-designs.liquid) — a product's assigned JSON
+// template suffix, not its title or tags. Pearl products use
+// templates/product.pearl.json (suffix "pearl"); everything else uses
+// the default product.json (no suffix), which maps to the "default"
+// design bucket.
+function designSetFor(templateSuffix) {
+  return templateSuffix === "pearl" ? "pearl" : "default";
+}
 
 /** Product-specific designs first (this gemstone's own ring_designs /
  * pandent_designs / bracelet_designs metaobject — same mechanism the old
@@ -52,8 +76,9 @@ const TYPES = ["Ring", "Bracelet", "Pendent"];
  * exactly the priority the old Liquid customizer used. No gemstone has
  * its own designs set today, so this currently always falls through to
  * the global catalog — but it's wired up correctly for whenever one
- * does. */
-async function resolveDesigns(admin, productGid, type, metal) {
+ * does. designSet picks which global bucket ("default" or "pearl") to
+ * fall back to — see designSetFor. */
+async function resolveDesigns(admin, productGid, type, metal, designSet) {
   const typeLower = type.toLowerCase();
   const metalLower = metal.toLowerCase();
   const productSpecific = await getProductDesigns(admin, productGid, typeLower, metalLower);
@@ -61,23 +86,25 @@ async function resolveDesigns(admin, productGid, type, metal) {
 
   const typeKey = typeLower.includes("ring") ? "ring" : typeLower.includes("bracelet") ? "bracelet" : "pendant";
   const metalKey = metalKeyFor(metal);
-  return GLOBAL_DESIGNS.default?.[typeKey]?.[metalKey] || [];
+  return GLOBAL_DESIGNS[designSet]?.[typeKey]?.[metalKey] || [];
 }
 
 
-async function computeVariants(admin, productGid, stonePrice, rates, makingChargePerGram) {
+async function computeVariants(admin, productGid, stonePrice, rates, makingChargePerGram, designSet) {
   const variants = [];
   const designValues = new Set(["N/A"]);
+  const types = typesForDesignSet(designSet);
 
   for (const metal of LOOSE_METALS) {
     variants.push({ options: ["Loose", metal, "N/A"], price: stonePrice.toFixed(2) });
   }
 
-  // One resolveDesigns() call per Type x Metal combo (3 x 8 = 24) — each
-  // checks this product's own metaobject designs first, falls back to
-  // the shared catalog. Run in parallel since they're independent reads.
-  const combos = TYPES.flatMap((type) => LOOSE_METALS.map((metal) => ({ type, metal })));
-  const results = await Promise.all(combos.map(({ type, metal }) => resolveDesigns(admin, productGid, type, metal)));
+  // One resolveDesigns() call per Type x Metal combo — each checks this
+  // product's own metaobject designs first, falls back to the shared
+  // catalog for this product's design set. Run in parallel since they're
+  // independent reads.
+  const combos = types.flatMap((type) => LOOSE_METALS.map((metal) => ({ type, metal })));
+  const results = await Promise.all(combos.map(({ type, metal }) => resolveDesigns(admin, productGid, type, metal, designSet)));
 
   combos.forEach(({ type, metal }, i) => {
     for (const entry of results[i]) {
@@ -102,11 +129,12 @@ async function computeVariants(admin, productGid, stonePrice, rates, makingCharg
   return { variants, designValues: [...designValues] };
 }
 
-async function fetchStonePrice(admin, productGid) {
+async function fetchStoneInfo(admin, productGid) {
   const res = await admin.graphql(
     `#graphql
-    query GetStonePrice($id: ID!) {
+    query GetStoneInfo($id: ID!) {
       product(id: $id) {
+        templateSuffix
         variants(first: 250) {
           nodes { price selectedOptions { name value } }
         }
@@ -115,20 +143,23 @@ async function fetchStonePrice(admin, productGid) {
     { variables: { id: productGid } },
   );
   const json = await res.json();
-  const nodes = json.data?.product?.variants?.nodes || [];
+  const product = json.data?.product;
+  const nodes = product?.variants?.nodes || [];
   if (!nodes.length) throw new Error("Product has no variants at all");
+
+  const designSet = designSetFor(product?.templateSuffix);
 
   const looseVariant = nodes.find((v) =>
     v.selectedOptions.some((o) => o.name === "Customised" && o.value === "Loose"),
   );
-  if (looseVariant) return parseFloat(looseVariant.price);
+  if (looseVariant) return { price: parseFloat(looseVariant.price), designSet };
 
   // No "Customised: Loose" variant yet — this is a plain, not-yet-set-up
   // product (the common case when setting up jewelry variants on the rest
   // of the catalog for the first time). Its single/default variant price
   // IS the stone's own price; use that as the base to build the full
-  // Ring/Bracelet/Pendant matrix on top of.
-  return parseFloat(nodes[0].price);
+  // Ring/Bracelet/Pendant (or Ring/Pendant, for pearls) matrix on top of.
+  return { price: parseFloat(nodes[0].price), designSet };
 }
 
 const CERT_UPGRADES = [
@@ -339,16 +370,16 @@ export async function findProductsMissingJewelrySetup(admin) {
  */
 export async function repriceDesignVariants(admin, productGid) {
   const targetGid = productGid || `gid://shopify/Product/${PRODUCT_ID_NUMERIC}`;
-  const [stonePrice, { rates, makingChargePerGram }] = await Promise.all([
-    fetchStonePrice(admin, targetGid),
+  const [{ price: stonePrice, designSet }, { rates, makingChargePerGram }] = await Promise.all([
+    fetchStoneInfo(admin, targetGid),
     fetchRatesFromTheme(admin),
   ]);
-  const { variants, designValues } = await computeVariants(admin, targetGid, stonePrice, rates, makingChargePerGram);
+  const { variants, designValues } = await computeVariants(admin, targetGid, stonePrice, rates, makingChargePerGram, designSet);
 
   const input = {
     id: targetGid,
     productOptions: [
-      { name: "Customised", position: 1, values: ["Loose", "Ring", "Bracelet", "Pendent"].map((v) => ({ name: v })) },
+      { name: "Customised", position: 1, values: ["Loose", ...typesForDesignSet(designSet)].map((v) => ({ name: v })) },
       { name: "Metals", position: 2, values: LOOSE_METALS.map((v) => ({ name: v })) },
       { name: "Design", position: 3, values: designValues.map((v) => ({ name: v })) },
     ],
@@ -378,6 +409,7 @@ export async function repriceDesignVariants(admin, productGid) {
 
   return {
     stonePrice,
+    designSet,
     variantCount: variants.length,
     designValueCount: designValues.length,
     ratesUsed: rates,
