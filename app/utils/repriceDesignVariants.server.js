@@ -116,11 +116,19 @@ async function fetchStonePrice(admin, productGid) {
   );
   const json = await res.json();
   const nodes = json.data?.product?.variants?.nodes || [];
+  if (!nodes.length) throw new Error("Product has no variants at all");
+
   const looseVariant = nodes.find((v) =>
     v.selectedOptions.some((o) => o.name === "Customised" && o.value === "Loose"),
   );
-  if (!looseVariant) throw new Error("Could not find a Loose variant to read the stone's own price from");
-  return parseFloat(looseVariant.price);
+  if (looseVariant) return parseFloat(looseVariant.price);
+
+  // No "Customised: Loose" variant yet — this is a plain, not-yet-set-up
+  // product (the common case when setting up jewelry variants on the rest
+  // of the catalog for the first time). Its single/default variant price
+  // IS the stone's own price; use that as the base to build the full
+  // Ring/Bracelet/Pendant matrix on top of.
+  return parseFloat(nodes[0].price);
 }
 
 const CERT_UPGRADES = [
@@ -317,16 +325,28 @@ export async function findProductsMissingJewelrySetup(admin) {
   return { scanned, missing, truncated: hasNextPage };
 }
 
-export async function repriceDesignVariants(admin) {
-  const productGid = `gid://shopify/Product/${PRODUCT_ID_NUMERIC}`;
+/**
+ * Builds and pushes the full Customised(Loose/Ring/Bracelet/Pendent) x
+ * Metals x Design variant matrix onto a single product via one
+ * synchronous productSet call. Originally hardcoded to the "test"
+ * product only (see PRODUCT_ID_NUMERIC below) — now takes any product
+ * GID, so the same logic can set up the rest of the catalog too (see
+ * setupJewelryVariantsForProducts). Callers that don't pass a productGid
+ * keep the original "test" product behavior (used by both the
+ * always-been-there "Reprice Design Variants" button and the legacy
+ * admin.migrate-design-variants.jsx route — neither should suddenly
+ * start targeting a different product).
+ */
+export async function repriceDesignVariants(admin, productGid) {
+  const targetGid = productGid || `gid://shopify/Product/${PRODUCT_ID_NUMERIC}`;
   const [stonePrice, { rates, makingChargePerGram }] = await Promise.all([
-    fetchStonePrice(admin, productGid),
+    fetchStonePrice(admin, targetGid),
     fetchRatesFromTheme(admin),
   ]);
-  const { variants, designValues } = await computeVariants(admin, productGid, stonePrice, rates, makingChargePerGram);
+  const { variants, designValues } = await computeVariants(admin, targetGid, stonePrice, rates, makingChargePerGram);
 
   const input = {
-    id: productGid,
+    id: targetGid,
     productOptions: [
       { name: "Customised", position: 1, values: ["Loose", "Ring", "Bracelet", "Pendent"].map((v) => ({ name: v })) },
       { name: "Metals", position: 2, values: LOOSE_METALS.map((v) => ({ name: v })) },
@@ -363,4 +383,34 @@ export async function repriceDesignVariants(admin) {
     ratesUsed: rates,
     makingChargePerGram,
   };
+}
+
+// One action call only ever processes this many products — keeps a single
+// "Apply" click well inside typical request-timeout budgets even though
+// each product needs several sequential GraphQL round trips (stone price,
+// 24 parallel design lookups, then the productSet write itself). The
+// caller (the app._index.jsx page) re-submits the remaining checked rows
+// on the next click rather than this function ever looping unbounded.
+export const SETUP_BATCH_SIZE = 20;
+
+/**
+ * Runs repriceDesignVariants for each given product GID, sequentially
+ * (not in parallel — these are real, live-price-affecting writes, and
+ * running them one at a time keeps GraphQL cost-throttling predictable
+ * and keeps a single bad product from racing ahead of good ones in the
+ * results). Never throws for a single product's failure — collects a
+ * per-product result instead, so one bad product (e.g. one with zero
+ * variants somehow) doesn't stop the rest of the batch.
+ */
+export async function setupJewelryVariantsForProducts(admin, productGids) {
+  const results = [];
+  for (const gid of productGids.slice(0, SETUP_BATCH_SIZE)) {
+    try {
+      const result = await repriceDesignVariants(admin, gid);
+      results.push({ productGid: gid, ok: true, ...result });
+    } catch (err) {
+      results.push({ productGid: gid, ok: false, error: String(err.message || err) });
+    }
+  }
+  return { results, processed: results.length, skipped: Math.max(0, productGids.length - SETUP_BATCH_SIZE) };
 }
