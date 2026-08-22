@@ -238,18 +238,34 @@ export default function Index() {
         <s-paragraph>
           Which designs (and which Types) a product gets depends on its assigned template —{" "}
           <s-text>product.pearl.json</s-text> gets the pearl design catalog, which only has Ring and Pendent (no
-          Bracelet at all — pearls just don't come as bracelets). Every other product uses the default catalog with
-          all three: Ring, Bracelet, Pendent.
+          Bracelet at all — pearls just don't come as bracelets), and only Silver/Gold metals (no Panchdhatu or
+          Copper — pearls don't come in those either). Every other product uses the default catalog with all three
+          Types and all 8 metals.
+        </s-paragraph>
+        <s-paragraph>
+          Every variant is set to track inventory and stop selling at 0 — a new design starts with{" "}
+          <s-text>1 in stock</s-text>, so the moment one order comes in for that exact Type/Metal/Design, it shows
+          "Sold out" on the storefront and in Admin automatically. If you actually have more than one of a specific
+          piece, bump that variant's quantity by hand in Admin — Reprice/Apply never resets a variant's stock once
+          it's already being tracked, only sets the starting "1" the first time. Every variant is also published to
+          the Online Store channel only — explicitly unpublished from Google, Meta/Facebook, and any other sales
+          channel, so nothing shows up there.
         </s-paragraph>
       </s-section>
 
       {fetcher.data?.ok && (
         <s-section heading="Last run">
           <s-paragraph>
-            Stone price used: ₹{fetcher.data.stonePrice} · Design set: {fetcher.data.designSet} · Variants updated:{" "}
-            {fetcher.data.variantCount} · Design values:{" "}
+            Stone price used: ₹{fetcher.data.stonePrice} · Design set: {fetcher.data.designSet} · Metals:{" "}
+            {fetcher.data.metals?.join(", ")} · Variants updated: {fetcher.data.variantCount} · Design values:{" "}
             {fetcher.data.designValueCount}
           </s-paragraph>
+          {fetcher.data.publishDiagnostic && !fetcher.data.publishDiagnostic.foundOnlineStore && (
+            <FriendlyErrorInline
+              message="Couldn't confirm the Online Store channel — variants may not be published correctly"
+              detail={JSON.stringify(fetcher.data.publishDiagnostic)}
+            />
+          )}
         </s-section>
       )}
       {fetcher.data && !fetcher.data.ok && (
@@ -404,7 +420,7 @@ export default function Index() {
                               {result ? (
                                 result.ok ? (
                                   <Pill
-                                    label={`✓ ${result.variantCount} variants — ${result.types.join("/")} (${result.designSet})`}
+                                    label={`✓ ${result.variantCount} variants — ${result.types.join("/")} · ${result.metals?.length || 0} metals (${result.designSet})`}
                                     active
                                     color={brand.success}
                                   />

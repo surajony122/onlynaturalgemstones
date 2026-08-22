@@ -42,7 +42,46 @@ async function fetchRatesFromTheme(admin) {
   };
 }
 
+// The primary/first active location — where the "1 in stock" quantity
+// below gets set. Almost every store only has one location; for a
+// multi-location store this picks the one actually used for online
+// fulfillment rather than an arbitrary warehouse.
+async function fetchPrimaryLocationId(admin) {
+  const res = await admin.graphql(`#graphql
+    query PrimaryLocationForInventory {
+      locations(first: 10) { nodes { id isActive fulfillsOnlineOrders } }
+    }`);
+  const json = await res.json();
+  const nodes = json.data?.locations?.nodes || [];
+  const best =
+    nodes.find((l) => l.isActive && l.fulfillsOnlineOrders) || nodes.find((l) => l.isActive) || nodes[0];
+  return best?.id || null;
+}
+
 const LOOSE_METALS = ["Silver", "Panchdhatu", "Copper", "22k Yellow Gold", "18K Yellow Gold", "14K Yellow Gold", "18K White Gold", "14K White Gold"];
+// title -> metalKeyFor() bucket, so metalsForDesignSet (below) can ask
+// "does this design set's catalog actually have anything for this metal"
+// without a second hardcoded list to drift out of sync with the first.
+const METAL_TITLE_TO_KEY = Object.fromEntries(LOOSE_METALS.map((title) => [title, metalKeyFor(title)]));
+
+// Which Metals option values a product gets depends on its design set,
+// same idea as typesForDesignSet below — pearls only ever come in Silver
+// or gold (no Panchdhatu/Copper at all), matching GLOBAL_DESIGNS.pearl
+// having no panchdhatu/copper keys under any of its types. Derived from
+// the actual catalog (the union of metal keys used across that design
+// set's ring/pendant/bracelet buckets) rather than a second hand-written
+// metal list, so this stays correct automatically if the catalog is ever
+// regenerated with different metal coverage.
+function metalsForDesignSet(designSet) {
+  const bucket = GLOBAL_DESIGNS[designSet] || {};
+  const availableKeys = new Set();
+  for (const typeBucket of Object.values(bucket)) {
+    for (const metalKey of Object.keys(typeBucket)) availableKeys.add(metalKey);
+  }
+  const filtered = LOOSE_METALS.filter((title) => availableKeys.has(METAL_TITLE_TO_KEY[title]));
+  return filtered.length ? filtered : LOOSE_METALS;
+}
+
 // Every type EXCEPT pearl products — pearls don't come as bracelets at
 // all (GLOBAL_DESIGNS.pearl has no "bracelet" key, only ring/pendant —
 // see typesForDesignSet below, which is what actually decides this per
@@ -93,8 +132,9 @@ async function resolveDesigns(admin, productGid, type, metal, designSet) {
 async function computeVariants(admin, productGid, stonePrice, rates, makingChargePerGram, designSet, types) {
   const variants = [];
   const designValues = new Set(["N/A"]);
+  const metals = metalsForDesignSet(designSet);
 
-  for (const metal of LOOSE_METALS) {
+  for (const metal of metals) {
     variants.push({ options: ["Loose", metal, "N/A"], price: stonePrice.toFixed(2) });
   }
 
@@ -102,7 +142,7 @@ async function computeVariants(admin, productGid, stonePrice, rates, makingCharg
   // product's own metaobject designs first, falls back to the shared
   // catalog for this product's design set. Run in parallel since they're
   // independent reads.
-  const combos = types.flatMap((type) => LOOSE_METALS.map((metal) => ({ type, metal })));
+  const combos = types.flatMap((type) => metals.map((metal) => ({ type, metal })));
   const results = await Promise.all(combos.map(({ type, metal }) => resolveDesigns(admin, productGid, type, metal, designSet)));
 
   combos.forEach(({ type, metal }, i) => {
@@ -128,6 +168,20 @@ async function computeVariants(admin, productGid, stonePrice, rates, makingCharg
   return { variants, designValues: [...designValues] };
 }
 
+// Combo key for matching a computed variant against one already on the
+// product — order-independent (looks up by option NAME, not position),
+// so it can't be fooled by Shopify returning selectedOptions in a
+// different order than we send them.
+function comboKeyFromSelectedOptions(selectedOptions) {
+  const get = (name) => selectedOptions.find((o) => o.name === name)?.value || "";
+  return `${get("Customised")}||${get("Metals")}||${get("Design")}`;
+}
+// options is ["Loose"|type, metal, design] in that fixed order (matches
+// how computeVariants builds each variant's `options` array).
+function comboKeyFromOptionsArray(options) {
+  return `${options[0]}||${options[1]}||${options[2]}`;
+}
+
 async function fetchStoneInfo(admin, productGid) {
   const res = await admin.graphql(
     `#graphql
@@ -135,7 +189,11 @@ async function fetchStoneInfo(admin, productGid) {
       product(id: $id) {
         templateSuffix
         variants(first: 250) {
-          nodes { price selectedOptions { name value } }
+          nodes {
+            price
+            selectedOptions { name value }
+            inventoryItem { tracked }
+          }
         }
       }
     }`,
@@ -148,17 +206,28 @@ async function fetchStoneInfo(admin, productGid) {
 
   const designSet = designSetFor(product?.templateSuffix);
 
+  // Existing variants keyed by their exact option combo, carrying only
+  // whether Shopify already tracks inventory for them — used to decide
+  // whether it's safe to set a "1 in stock" starting quantity (new
+  // variant, or an existing one that's never been tracked before) or
+  // whether that would silently blow away real stock/sales history on an
+  // already-tracked variant (never touch those — see repriceDesignVariants).
+  const existingByCombo = new Map();
+  for (const v of nodes) {
+    existingByCombo.set(comboKeyFromSelectedOptions(v.selectedOptions), { tracked: !!v.inventoryItem?.tracked });
+  }
+
   const looseVariant = nodes.find((v) =>
     v.selectedOptions.some((o) => o.name === "Customised" && o.value === "Loose"),
   );
-  if (looseVariant) return { price: parseFloat(looseVariant.price), designSet };
+  if (looseVariant) return { price: parseFloat(looseVariant.price), designSet, existingByCombo };
 
   // No "Customised: Loose" variant yet — this is a plain, not-yet-set-up
   // product (the common case when setting up jewelry variants on the rest
   // of the catalog for the first time). Its single/default variant price
   // IS the stone's own price; use that as the base to build the full
   // Ring/Bracelet/Pendant (or Ring/Pendant, for pearls) matrix on top of.
-  return { price: parseFloat(nodes[0].price), designSet };
+  return { price: parseFloat(nodes[0].price), designSet, existingByCombo };
 }
 
 const CERT_UPGRADES = [
@@ -167,24 +236,34 @@ const CERT_UPGRADES = [
   { key: "GIA", price: 3500 },
 ];
 
-/** Finds (or, on first use, creates) the shared "Certification Upgrade"
- * product — one real variant per paid upgrade (GJI/IGI/GIA), added to
- * cart as a second real line item only when a customer picks a paid
- * upgrade over their gemstone's free included certification. The free
- * cert never needs this — it's just a line-item property on the main
- * line, nothing to charge for. */
-async function ensurePublishedOnlineStore(admin, productId) {
+/** Publishes a product to the Online Store channel ONLY — explicitly
+ * unpublishes it from every other installed sales channel (Google &
+ * YouTube, Facebook & Instagram/Meta, Shop, etc.) rather than just
+ * leaving them alone, since several of those channels auto-publish new
+ * products by default; not touching them would mean a product could
+ * silently show up on Meta/Google without anyone choosing that. Runs on
+ * every repriceDesignVariants call (not just first-time setup), so a
+ * channel that gets auto-subscribed later still gets stripped back off
+ * the next time this product is repriced. Non-fatal either way — a
+ * missing write_publications scope degrades to "channels unchanged"
+ * rather than blocking the price/variant update itself, same reasoning
+ * as when this only handled the Certification Upgrade product. */
+async function ensureOnlineStoreOnly(admin, productId) {
   const diag = { attempted: true };
   try {
     const pubRes = await admin.graphql(`#graphql
-      query OnlineStorePublication { publications(first: 10) { nodes { id name } } }`);
+      query AllPublications { publications(first: 25) { nodes { id name } } }`);
     const pubJson = await pubRes.json();
     if (pubJson.errors) {
       diag.error = `publications query: ${JSON.stringify(pubJson.errors)}`;
       return diag;
     }
-    const onlineStore = pubJson.data?.publications?.nodes?.find((p) => p.name === "Online Store");
+    const allPubs = pubJson.data?.publications?.nodes || [];
+    const onlineStore = allPubs.find((p) => p.name === "Online Store");
+    const others = allPubs.filter((p) => p.id !== onlineStore?.id);
     diag.foundOnlineStore = !!onlineStore;
+    diag.otherChannels = others.map((p) => p.name);
+
     if (onlineStore) {
       const publishRes = await admin.graphql(
         `#graphql
@@ -194,12 +273,25 @@ async function ensurePublishedOnlineStore(admin, productId) {
         { variables: { id: productId, input: [{ publicationId: onlineStore.id }] } },
       );
       const publishJson = await publishRes.json();
-      diag.userErrors = publishJson.data?.publishablePublish?.userErrors || [];
-      diag.graphqlErrors = publishJson.errors || null;
+      diag.publishUserErrors = publishJson.data?.publishablePublish?.userErrors || [];
+      diag.publishGraphqlErrors = publishJson.errors || null;
+    }
+
+    if (others.length) {
+      const unpublishRes = await admin.graphql(
+        `#graphql
+        mutation UnpublishFromOtherChannels($id: ID!, $input: [PublicationInput!]!) {
+          publishableUnpublish(id: $id, input: $input) { userErrors { field message } }
+        }`,
+        { variables: { id: productId, input: others.map((p) => ({ publicationId: p.id })) } },
+      );
+      const unpublishJson = await unpublishRes.json();
+      diag.unpublishUserErrors = unpublishJson.data?.publishableUnpublish?.userErrors || [];
+      diag.unpublishGraphqlErrors = unpublishJson.errors || null;
     }
   } catch (err) {
     diag.error = String(err.message || err);
-    console.error("[ensurePublishedOnlineStore] failed (non-fatal):", err);
+    console.error("[ensureOnlineStoreOnly] failed (non-fatal):", err);
   }
   return diag;
 }
@@ -215,7 +307,7 @@ export async function getOrCreateCertProduct(admin) {
   const findJson = await findRes.json();
   const existing = findJson.data?.products?.nodes?.[0];
   if (existing) {
-    const publishDiagnostic = await ensurePublishedOnlineStore(admin, existing.id);
+    const publishDiagnostic = await ensureOnlineStoreOnly(admin, existing.id);
     return { productId: existing.id, publishDiagnostic };
   }
 
@@ -257,7 +349,7 @@ export async function getOrCreateCertProduct(admin) {
   // include write_publications yet, this fails without blocking getting
   // the variant IDs back — publish "Certification Upgrade" to Online
   // Store manually in Admin -> Products (one checkbox) until it lands.
-  const publishDiagnostic = await ensurePublishedOnlineStore(admin, productId);
+  const publishDiagnostic = await ensureOnlineStoreOnly(admin, productId);
   return { productId, publishDiagnostic };
 }
 
@@ -401,12 +493,29 @@ export async function findProductsMissingJewelrySetup(admin) {
  * a pearl product can never end up with a Bracelet option, no matter what
  * override is passed, since GLOBAL_DESIGNS.pearl has no bracelet key at
  * all) — falls back to the full default set if the intersection is empty.
+ *
+ * Inventory: every variant is DENY policy + tracked, so Shopify shows
+ * "Sold out" on the storefront and Admin the moment stock hits 0 instead
+ * of quietly overselling. New variants (and any existing one that's never
+ * been tracked before) start at 1 in stock — bump a specific design's
+ * quantity by hand in Admin for any piece you actually have more than one
+ * of. Critically, this NEVER touches the quantity of a variant that's
+ * ALREADY tracked: Shopify's productSet applies inventoryQuantities to
+ * existing variants too, so blindly resending "1" on every reprice (e.g.
+ * after a metal-rate change) would silently reset real stock/sold-out
+ * state back to 1 every time — this only sets a starting quantity once,
+ * the first time a variant is tracked, never again after that.
+ *
+ * Channels: after the variant write, the product is explicitly published
+ * to Online Store only and unpublished from every other channel (Google,
+ * Meta, etc.) — see ensureOnlineStoreOnly.
  */
-export async function repriceDesignVariants(admin, productGid, precomputedRates, typesOverride) {
+export async function repriceDesignVariants(admin, productGid, precomputedRates, typesOverride, precomputedLocationId) {
   const targetGid = productGid || `gid://shopify/Product/${PRODUCT_ID_NUMERIC}`;
-  const [{ price: stonePrice, designSet }, { rates, makingChargePerGram }] = await Promise.all([
+  const [{ price: stonePrice, designSet, existingByCombo }, { rates, makingChargePerGram }, locationId] = await Promise.all([
     fetchStoneInfo(admin, targetGid),
     precomputedRates ? Promise.resolve(precomputedRates) : fetchRatesFromTheme(admin),
+    precomputedLocationId ? Promise.resolve(precomputedLocationId) : fetchPrimaryLocationId(admin),
   ]);
   const available = typesForDesignSet(designSet);
   const types =
@@ -414,23 +523,36 @@ export async function repriceDesignVariants(admin, productGid, precomputedRates,
       ? available.filter((t) => typesOverride.includes(t))
       : available;
   const finalTypes = types.length ? types : available;
+  const finalMetals = metalsForDesignSet(designSet);
   const { variants, designValues } = await computeVariants(admin, targetGid, stonePrice, rates, makingChargePerGram, designSet, finalTypes);
 
   const input = {
     id: targetGid,
     productOptions: [
       { name: "Customised", position: 1, values: ["Loose", ...finalTypes].map((v) => ({ name: v })) },
-      { name: "Metals", position: 2, values: LOOSE_METALS.map((v) => ({ name: v })) },
+      { name: "Metals", position: 2, values: finalMetals.map((v) => ({ name: v })) },
       { name: "Design", position: 3, values: designValues.map((v) => ({ name: v })) },
     ],
-    variants: variants.map((v) => ({
-      optionValues: v.options.map((value, i) => ({
-        optionName: ["Customised", "Metals", "Design"][i],
-        name: value,
-      })),
-      price: v.price,
-      inventoryPolicy: "CONTINUE",
-    })),
+    variants: variants.map((v) => {
+      const existing = existingByCombo.get(comboKeyFromOptionsArray(v.options));
+      // Give a starting quantity only when there's no real stock number
+      // to clobber: the variant is brand new, or it exists but has never
+      // been tracked (this migration's first pass over it). An already-
+      // tracked variant keeps whatever quantity it currently has.
+      const needsStartingQuantity = !existing || !existing.tracked;
+      return {
+        optionValues: v.options.map((value, i) => ({
+          optionName: ["Customised", "Metals", "Design"][i],
+          name: value,
+        })),
+        price: v.price,
+        inventoryPolicy: "DENY",
+        inventoryItem: { tracked: true },
+        ...(needsStartingQuantity && locationId
+          ? { inventoryQuantities: [{ locationId, name: "available", quantity: 1 }] }
+          : {}),
+      };
+    }),
   };
 
   const res = await admin.graphql(
@@ -447,10 +569,14 @@ export async function repriceDesignVariants(admin, productGid, precomputedRates,
   const userErrors = json.data?.productSet?.userErrors || [];
   if (userErrors.length) throw new Error(`productSet failed: ${JSON.stringify(userErrors)}`);
 
+  const publishDiagnostic = await ensureOnlineStoreOnly(admin, targetGid);
+
   return {
     stonePrice,
     designSet,
     types: finalTypes,
+    metals: finalMetals,
+    publishDiagnostic,
     variantCount: variants.length,
     designValueCount: designValues.length,
     ratesUsed: rates,
@@ -488,19 +614,19 @@ export const SETUP_BATCH_SIZE = 5;
  * array) so a product's own type choice can never get misaligned with the
  * wrong GID if the two lists ever drifted.
  *
- * Fetches the theme's metal rates ONCE up front and reuses them for
- * every product in the batch (they're store-wide, not per-product) —
- * repriceDesignVariants used to fetch this itself on every single call,
- * meaning a batch of N products did N redundant identical theme-settings
- * queries for no reason.
+ * Fetches the theme's metal rates and the store's primary location ONCE
+ * up front and reuses them for every product in the batch (both are
+ * store-wide, not per-product) — repriceDesignVariants used to fetch
+ * rates itself on every single call, meaning a batch of N products did N
+ * redundant identical theme-settings queries for no reason.
  */
 export async function setupJewelryVariantsForProducts(admin, items) {
-  const rates = await fetchRatesFromTheme(admin);
+  const [rates, locationId] = await Promise.all([fetchRatesFromTheme(admin), fetchPrimaryLocationId(admin)]);
   const results = [];
   for (const item of items.slice(0, SETUP_BATCH_SIZE)) {
     const gid = item.productGid;
     try {
-      const result = await repriceDesignVariants(admin, gid, rates, item.types);
+      const result = await repriceDesignVariants(admin, gid, rates, item.types, locationId);
       results.push({ productGid: gid, ok: true, ...result });
     } catch (err) {
       results.push({ productGid: gid, ok: false, error: String(err.message || err) });
