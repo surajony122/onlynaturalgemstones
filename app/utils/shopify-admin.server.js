@@ -5,6 +5,7 @@
  * nothing in this file ever writes a product's own price.
  */
 import shopify from "../shopify.server";
+import { ensureOnlineStoreOnly } from "./channels.server";
 
 /** Gets an authenticated Admin GraphQL client for a shop using its stored
  * offline access token — no interactive login needed, this runs for
@@ -252,29 +253,22 @@ export async function getOrCreateCustomizationProduct(admin) {
   if (errs?.length) throw new Error(`Creating customization product failed: ${JSON.stringify(errs)}`);
   const productId = createJson.data?.productCreate?.product?.id;
 
-  // Publish explicitly to the Online Store channel — `published: true` on
-  // productCreate alone doesn't reliably do this on every API version, and
-  // an unpublished product's variants get rejected by /cart/add.js.
-  const pubRes = await admin.graphql(
-    `#graphql
-    query OnlineStorePublication {
-      publications(first: 10) {
-        nodes { id name }
-      }
-    }`,
-  );
-  const pubJson = await pubRes.json();
-  const onlineStore = pubJson.data?.publications?.nodes?.find((p) => p.name === "Online Store");
-  if (onlineStore) {
-    await admin.graphql(
-      `#graphql
-      mutation PublishToOnlineStore($id: ID!, $input: [PublicationInput!]!) {
-        publishablePublish(id: $id, input: $input) {
-          userErrors { field message }
-        }
-      }`,
-      { variables: { id: productId, input: [{ publicationId: onlineStore.id }] } },
-    );
+  // Publish to Online Store AND explicitly unpublish from every other
+  // channel (Google & YouTube, Meta/Facebook, Shop, etc.) — `published:
+  // true` on productCreate alone doesn't reliably do the former on every
+  // API version, and an unpublished product's variants get rejected by
+  // /cart/add.js, so the Online Store side is still required. The
+  // unpublish-from-others side matters even more here than on an
+  // ordinary product: this product accumulates one new one-off variant
+  // per completed customization forever (see createCustomizedVariant), so
+  // if it were ever left auto-subscribed to Google/Meta, every single one
+  // of those throwaway variants would pile up there too — same failure
+  // mode the native per-design variants had, just worse since this
+  // product never stops growing. Non-fatal — logged, not thrown, same as
+  // every other ensureOnlineStoreOnly call site.
+  const publishDiagnostic = await ensureOnlineStoreOnly(admin, productId);
+  if (!publishDiagnostic.foundOnlineStore || publishDiagnostic.error) {
+    console.error("[getOrCreateCustomizationProduct] channel setup incomplete:", JSON.stringify(publishDiagnostic));
   }
 
   // Also remove the auto-created default variant later once a real one

@@ -16,6 +16,7 @@
 
 import { getThemeSettings, getProductDesigns } from "./shopify-admin.server";
 import { GLOBAL_DESIGNS, metalKeyFor } from "../data/globalDesigns.server";
+import { ensureOnlineStoreOnly } from "./channels.server";
 
 export const PRODUCT_ID_NUMERIC = "10522275741995"; // "test" product
 const THEME_GID = "gid://shopify/OnlineStoreTheme/190151065899"; // "product" theme
@@ -256,66 +257,6 @@ const CERT_UPGRADES = [
   { key: "IGI", price: 1750 },
   { key: "GIA", price: 3500 },
 ];
-
-/** Publishes a product to the Online Store channel ONLY — explicitly
- * unpublishes it from every other installed sales channel (Google &
- * YouTube, Facebook & Instagram/Meta, Shop, etc.) rather than just
- * leaving them alone, since several of those channels auto-publish new
- * products by default; not touching them would mean a product could
- * silently show up on Meta/Google without anyone choosing that. Runs on
- * every repriceDesignVariants call (not just first-time setup), so a
- * channel that gets auto-subscribed later still gets stripped back off
- * the next time this product is repriced. Non-fatal either way — a
- * missing write_publications scope degrades to "channels unchanged"
- * rather than blocking the price/variant update itself, same reasoning
- * as when this only handled the Certification Upgrade product. */
-async function ensureOnlineStoreOnly(admin, productId) {
-  const diag = { attempted: true };
-  try {
-    const pubRes = await admin.graphql(`#graphql
-      query AllPublications { publications(first: 25) { nodes { id name } } }`);
-    const pubJson = await pubRes.json();
-    if (pubJson.errors) {
-      diag.error = `publications query: ${JSON.stringify(pubJson.errors)}`;
-      return diag;
-    }
-    const allPubs = pubJson.data?.publications?.nodes || [];
-    const onlineStore = allPubs.find((p) => p.name === "Online Store");
-    const others = allPubs.filter((p) => p.id !== onlineStore?.id);
-    diag.foundOnlineStore = !!onlineStore;
-    diag.otherChannels = others.map((p) => p.name);
-
-    if (onlineStore) {
-      const publishRes = await admin.graphql(
-        `#graphql
-        mutation PublishToOnlineStore($id: ID!, $input: [PublicationInput!]!) {
-          publishablePublish(id: $id, input: $input) { userErrors { field message } }
-        }`,
-        { variables: { id: productId, input: [{ publicationId: onlineStore.id }] } },
-      );
-      const publishJson = await publishRes.json();
-      diag.publishUserErrors = publishJson.data?.publishablePublish?.userErrors || [];
-      diag.publishGraphqlErrors = publishJson.errors || null;
-    }
-
-    if (others.length) {
-      const unpublishRes = await admin.graphql(
-        `#graphql
-        mutation UnpublishFromOtherChannels($id: ID!, $input: [PublicationInput!]!) {
-          publishableUnpublish(id: $id, input: $input) { userErrors { field message } }
-        }`,
-        { variables: { id: productId, input: others.map((p) => ({ publicationId: p.id })) } },
-      );
-      const unpublishJson = await unpublishRes.json();
-      diag.unpublishUserErrors = unpublishJson.data?.publishableUnpublish?.userErrors || [];
-      diag.unpublishGraphqlErrors = unpublishJson.errors || null;
-    }
-  } catch (err) {
-    diag.error = String(err.message || err);
-    console.error("[ensureOnlineStoreOnly] failed (non-fatal):", err);
-  }
-  return diag;
-}
 
 export async function getOrCreateCertProduct(admin) {
   const findRes = await admin.graphql(
@@ -805,14 +746,26 @@ export async function setInventoryForProducts(admin, productGids, quantity) {
  *
  * Does NOT touch sales channel publication — removing variants isn't a
  * publish/unpublish action, so whatever channels the product is on are
- * left as they are. The resulting single variant is left untracked
- * (inventoryItem.tracked: false, inventoryPolicy CONTINUE) — matches how a
- * plain, never-set-up product looks, so this is a true rollback rather
- * than a half state stuck between "set up" and "not set up". Running
- * Apply again on the product afterwards rebuilds the full matrix from
- * scratch, same as setting it up for the first time.
+ * left as they are.
+ *
+ * The resulting single variant IS set to track inventory (DENY policy,
+ * starting quantity 1 at the store's primary location) — this is the
+ * product-level version of the same "1 to start, sold out at 0" behavior
+ * the per-design native variants used to give, now living on the one
+ * variant each product has instead of on N design combos. Since this
+ * always replaces whatever variant(s) existed before with a brand-new
+ * "Title: Default Title" variant (a different option identity than
+ * whatever came before, whether that was the native Customised/Metals/
+ * Design matrix or a plain untouched product), Shopify always treats it
+ * as a new variant — so it's always safe to set the starting quantity
+ * here, unlike repriceDesignVariants's existing-variant caution. If the
+ * location lookup fails (e.g. the read_locations scope isn't granted
+ * yet), this degrades to leaving the variant tracked with no starting
+ * quantity set rather than failing the whole batch — same non-fatal
+ * pattern as everywhere else this app reads locations.
  */
 export async function removeJewelryVariantsForProducts(admin, productGids) {
+  const locationId = await fetchPrimaryLocationId(admin);
   const results = [];
   for (const gid of productGids.slice(0, BULK_BATCH_SIZE)) {
     try {
@@ -859,8 +812,9 @@ export async function removeJewelryVariantsForProducts(admin, productGids) {
                 {
                   optionValues: [{ optionName: "Title", name: "Default Title" }],
                   price: basePrice.toFixed(2),
-                  inventoryPolicy: "CONTINUE",
-                  inventoryItem: { tracked: false },
+                  inventoryPolicy: "DENY",
+                  inventoryItem: { tracked: true },
+                  ...(locationId ? { inventoryQuantities: [{ locationId, name: "available", quantity: 1 }] } : {}),
                 },
               ],
             },
@@ -871,7 +825,7 @@ export async function removeJewelryVariantsForProducts(admin, productGids) {
       const userErrors = setJson.data?.productSet?.userErrors || [];
       if (userErrors.length) throw new Error(`productSet failed: ${JSON.stringify(userErrors)}`);
 
-      results.push({ productGid: gid, ok: true, basePrice });
+      results.push({ productGid: gid, ok: true, basePrice, startingQuantitySet: !!locationId });
     } catch (err) {
       results.push({ productGid: gid, ok: false, error: String(err.message || err) });
     }
