@@ -479,9 +479,14 @@ export async function createCustomizedVariant(admin, productGid, { title, total,
   // (once, server-side, before the client ever tries to add to cart)
   // rather than have every customer's browser discover it via a failed
   // add-to-cart. Polling availableForSale confirms the write has become
-  // visible on Shopify's read path at all; the fixed floor below covers
-  // the extra storefront-cache hop that availableForSale alone doesn't
-  // account for.
+  // visible on Shopify's own read path at all; a fixed grace delay AFTER
+  // that confirmation covers the separate storefront-cache hop that
+  // availableForSale alone doesn't account for (confirmed live a second
+  // time: the original version of this wait — floor-before-first-check
+  // only, zero delay after confirming available — still let a real
+  // "already sold out" 422 through on /cart/add.js, meaning the
+  // storefront cache genuinely trails availableForSale becoming true, not
+  // just the initial write).
   await waitUntilAvailableForSale(admin, variant.id);
 
   return { variantGid: variant.id, numericId: variant.id.split("/").pop() };
@@ -489,7 +494,11 @@ export async function createCustomizedVariant(admin, productGid, { title, total,
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function waitUntilAvailableForSale(admin, variantGid, { attempts = 5, intervalMs = 350, floorMs = 900 } = {}) {
+async function waitUntilAvailableForSale(
+  admin,
+  variantGid,
+  { attempts = 8, intervalMs = 500, floorMs = 1200, postConfirmGraceMs = 900 } = {},
+) {
   for (let i = 0; i < attempts; i++) {
     await sleep(i === 0 ? floorMs : intervalMs);
     try {
@@ -501,7 +510,14 @@ async function waitUntilAvailableForSale(admin, variantGid, { attempts = 5, inte
         { variables: { id: variantGid } },
       );
       const json = await res.json();
-      if (json.data?.productVariant?.availableForSale) return;
+      if (json.data?.productVariant?.availableForSale) {
+        // Confirmed on Shopify's own read path — still wait a bit longer
+        // before telling the client to add to cart, since the storefront
+        // cache /cart/add.js reads from has its own separate, slightly
+        // longer lag (see the comment above this function's call site).
+        await sleep(postConfirmGraceMs);
+        return;
+      }
     } catch (err) {
       // Availability-check failures shouldn't block the purchase — the
       // floor delay above already happened, so fall through and let the
