@@ -85,13 +85,33 @@ export async function computeTrustedQuote(admin, selections) {
     throw new QuoteError(`Invalid certKey: ${certKey}`);
   }
 
-  const gemstone = await getVariantPrice(admin, gemstoneVariantGid);
-  const settings = await getThemeSettings(admin, themeGid);
-
+  // isLoose only depends on the raw selections, so it's known before any
+  // Shopify read — used below to decide whether metalVariant even needs
+  // fetching, so a "loose" quote doesn't pay for a fetch it never uses.
   const isLoose = type === "loose" || !metalVariantGid;
 
-  // --- Certification price ---
-  const freeCertType = await getFreeCertType(admin, gemstone.productId);
+  // Fetch everything that DOESN'T depend on another fetch's result in
+  // one round of parallel requests instead of five sequential ones —
+  // gemstone/settings/metalVariant are all independent reads. This was a
+  // real, measurable chunk of the delay between clicking Add to Cart and
+  // the price actually resolving (5 sequential Admin GraphQL round trips
+  // add up fast); getFreeCertType and getProductDesigns still have to
+  // wait for gemstone (and getProductDesigns for metalVariant too), so
+  // they're parallelized as a second round below instead.
+  const [gemstone, settings, metalVariant] = await Promise.all([
+    getVariantPrice(admin, gemstoneVariantGid),
+    getThemeSettings(admin, themeGid),
+    isLoose ? Promise.resolve(null) : getVariantPrice(admin, metalVariantGid),
+  ]);
+
+  const metalTitle = metalVariant?.variantTitle;
+  const metalTitleLower = metalTitle?.toLowerCase();
+
+  const [freeCertType, productMatches] = await Promise.all([
+    getFreeCertType(admin, gemstone.productId),
+    !isLoose && !isCustomDesign ? getProductDesigns(admin, gemstone.productId, type, metalTitleLower) : Promise.resolve([]),
+  ]);
+
   let certPrice = 0;
   let certName = "Included";
   if (certKey !== "free" && certKey !== freeCertType) {
@@ -117,9 +137,7 @@ export async function computeTrustedQuote(admin, selections) {
   }
 
   // --- Metal: read the REAL variant title, never trust a client-sent metal name ---
-  const metalVariant = await getVariantPrice(admin, metalVariantGid);
-  const metalTitle = metalVariant.variantTitle;
-  const metalTitleLower = metalTitle.toLowerCase();
+  // (metalVariant was already fetched above, in parallel with gemstone/settings)
   const metalKey = metalKeyFor(metalTitle);
   if (!metalKey) {
     throw new QuoteError(`Unrecognized metal: ${metalTitle}`);
@@ -131,11 +149,11 @@ export async function computeTrustedQuote(admin, selections) {
   // --- Design weight/price: product-specific override first, then the
   // ported global catalog, exactly like the Liquid template's fallback
   // order. A custom-uploaded design (no catalog entry by definition) skips
-  // straight to the flat-fallback branch below, same as the theme JS. ---
+  // straight to the flat-fallback branch below, same as the theme JS.
+  // (productMatches was already fetched above, in parallel with freeCertType) ---
   let designWeight = 0;
   let designPrice = 0;
   if (!isCustomDesign) {
-    const productMatches = await getProductDesigns(admin, gemstone.productId, type, metalTitleLower);
     let match = productMatches.find((d) => d.design.trim() === (designCode || "").trim());
     if (!match) {
       const designSet = selections.designSet === "pearl" ? "pearl" : "default";
