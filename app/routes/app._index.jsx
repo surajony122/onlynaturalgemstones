@@ -45,11 +45,11 @@ export const action = async ({ request }) => {
 
   if (intent === "setupSelected") {
     try {
-      const productGids = JSON.parse(formData.get("productGids") || "[]");
-      if (!Array.isArray(productGids) || !productGids.length) {
+      const items = JSON.parse(formData.get("items") || "[]");
+      if (!Array.isArray(items) || !items.length) {
         return { intent, ok: false, error: "Check at least one product first." };
       }
-      const result = await setupJewelryVariantsForProducts(admin, productGids);
+      const result = await setupJewelryVariantsForProducts(admin, items);
       return { intent, ok: true, ...result };
     } catch (err) {
       return { intent, ok: false, error: String(err.message || err) };
@@ -84,6 +84,11 @@ export default function Index() {
   const [checked, setChecked] = useState(() => new Set());
   const [searchText, setSearchText] = useState("");
   const [collectionFilter, setCollectionFilter] = useState("all");
+  // Per-product Type selection (Ring/Bracelet/Pendent subset) — keyed by
+  // product id, defaults to that product's full availableTypes (i.e.
+  // today's automatic behavior) the moment a scan loads, so nothing
+  // changes unless the merchant actually unchecks a type for a product.
+  const [selectedTypes, setSelectedTypes] = useState({});
 
   useEffect(() => {
     if (scanFetcher.data?.intent === "scanSetup" && scanFetcher.data.ok) {
@@ -91,6 +96,9 @@ export default function Index() {
       setChecked(new Set());
       setSearchText("");
       setCollectionFilter("all");
+      setSelectedTypes(
+        Object.fromEntries(scanFetcher.data.missing.map((p) => [p.id, [...p.availableTypes]]))
+      );
     }
   }, [scanFetcher.data]);
 
@@ -149,6 +157,14 @@ export default function Index() {
     });
   };
 
+  const toggleType = (id, type) => {
+    setSelectedTypes((prev) => {
+      const current = prev[id] || [];
+      const next = current.includes(type) ? current.filter((t) => t !== type) : [...current, type];
+      return { ...prev, [id]: next };
+    });
+  };
+
   // Every distinct collection name across the current "missing" list,
   // for the collection dropdown — derived, not stored, so it always
   // reflects whatever's actually in the list right now.
@@ -167,11 +183,27 @@ export default function Index() {
 
   const checkAllMissing = () => setChecked(new Set(filteredMissing.map((p) => p.id)));
   const clearChecked = () => setChecked(new Set());
+
+  // A row checked but left with zero Types ticked can't be set up (there'd
+  // be nothing to build) — skip those from the submission rather than
+  // sending an empty Customised option list, and let the merchant know
+  // via the toast so it's not a silent no-op.
   const applySetup = () => {
-    setupFetcher.submit(
-      { intent: "setupSelected", productGids: JSON.stringify([...checked]) },
-      { method: "POST" }
-    );
+    const items = [...checked]
+      .map((id) => ({ productGid: id, types: selectedTypes[id] || [] }))
+      .filter((item) => item.types.length > 0);
+    const skippedForNoTypes = checked.size - items.length;
+    if (!items.length) {
+      shopify.toast.show("Each selected product needs at least one Type checked first", { isError: true });
+      return;
+    }
+    if (skippedForNoTypes > 0) {
+      shopify.toast.show(
+        `${skippedForNoTypes} selected product${skippedForNoTypes === 1 ? " has" : "s have"} no Types checked — skipping ${skippedForNoTypes === 1 ? "it" : "them"} for now`,
+        { isError: true }
+      );
+    }
+    setupFetcher.submit({ intent: "setupSelected", items: JSON.stringify(items) }, { method: "POST" });
   };
 
   const resultByGid = Object.fromEntries(
@@ -234,12 +266,14 @@ export default function Index() {
           Scans every product in the store for the Type(Customised)/Metal option structure the jewelry customizer
           flow (and this Reprice tool) needs — the same check{" "}
           <s-text>snippets/shubh-jewelry-flow.liquid</s-text> itself uses to decide whether to render at all.
-          Products listed below don't have it set up yet. Check the ones you want, then Apply — each selected
-          product gets the same Metal × Design matrix <s-text>Reprice Design Variants</s-text> above builds for the
-          "test" product, using <s-text>that product's own current price</s-text> as the base stone price (its
-          single existing variant if it doesn't have a "Loose" one yet). Products on the{" "}
-          <s-text>product.pearl.json</s-text> template automatically get Ring/Pendent only (no Bracelet); everything
-          else gets Ring/Bracelet/Pendent.
+          Products listed below don't have it set up yet. Check the ones you want, pick which Types each one should
+          offer (a product doesn't have to offer all three — untick any that don't apply to it), then Apply. Each
+          selected product gets the same Metal × Design matrix <s-text>Reprice Design Variants</s-text> above builds
+          for the "test" product, using <s-text>that product's own current price</s-text> as the base stone price
+          (its single existing variant if it doesn't have a "Loose" one yet). Products on the{" "}
+          <s-text>product.pearl.json</s-text> template only ever offer Ring/Pendent — pearls have no Bracelet
+          designs in the catalog at all, so that checkbox won't even show for them; every other product can pick
+          any subset of Ring/Bracelet/Pendent, defaulting to all three checked.
         </s-paragraph>
         <s-button {...(isScanning ? { loading: true } : {})} onClick={scanSetup}>
           Scan Products
@@ -321,12 +355,14 @@ export default function Index() {
                         <th style={thStyle}>Status</th>
                         <th style={thStyle}>Handle</th>
                         <th style={thStyle}>Collections</th>
+                        <th style={thStyle}>Types to set up</th>
                         <th style={thStyle}>Last result</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredMissing.map((p) => {
                         const result = resultByGid[p.id];
+                        const types = selectedTypes[p.id] || [];
                         return (
                           <tr key={p.id} className="dt-row">
                             <td style={tdStyle}>
@@ -348,10 +384,27 @@ export default function Index() {
                               {(p.collections || []).join(", ") || "—"}
                             </td>
                             <td style={tdStyle}>
+                              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                                {(p.availableTypes || []).map((t) => (
+                                  <label
+                                    key={t}
+                                    style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "12px", color: brand.body, whiteSpace: "nowrap" }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={types.includes(t)}
+                                      onChange={() => toggleType(p.id, t)}
+                                    />
+                                    {t}
+                                  </label>
+                                ))}
+                              </div>
+                            </td>
+                            <td style={tdStyle}>
                               {result ? (
                                 result.ok ? (
                                   <Pill
-                                    label={`✓ ${result.variantCount} variants (${result.designSet})`}
+                                    label={`✓ ${result.variantCount} variants — ${result.types.join("/")} (${result.designSet})`}
                                     active
                                     color={brand.success}
                                   />

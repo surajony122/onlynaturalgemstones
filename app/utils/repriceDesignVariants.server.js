@@ -90,10 +90,9 @@ async function resolveDesigns(admin, productGid, type, metal, designSet) {
 }
 
 
-async function computeVariants(admin, productGid, stonePrice, rates, makingChargePerGram, designSet) {
+async function computeVariants(admin, productGid, stonePrice, rates, makingChargePerGram, designSet, types) {
   const variants = [];
   const designValues = new Set(["N/A"]);
-  const types = typesForDesignSet(designSet);
 
   for (const metal of LOOSE_METALS) {
     variants.push({ options: ["Loose", metal, "N/A"], price: stonePrice.toFixed(2) });
@@ -331,6 +330,7 @@ export async function findProductsMissingJewelrySetup(admin) {
             title
             handle
             status
+            templateSuffix
             options { name }
             collections(first: 10) { nodes { title } }
           }
@@ -345,6 +345,7 @@ export async function findProductsMissingJewelrySetup(admin) {
     for (const p of nodes) {
       scanned++;
       if (!hasJewelrySetup(p.options)) {
+        const designSet = designSetFor(p.templateSuffix);
         missing.push({
           id: p.id,
           numericId: p.id.split("/").pop(),
@@ -352,6 +353,13 @@ export async function findProductsMissingJewelrySetup(admin) {
           handle: p.handle,
           status: p.status,
           collections: (p.collections?.nodes || []).map((c) => c.title),
+          designSet,
+          // What this product's design set actually has catalog data for
+          // (pearl: Ring/Pendent only) — the page uses this to show only
+          // the Type checkboxes that could possibly work for this product,
+          // pre-checked, rather than offering an option that would silently
+          // build an empty Bracelet dropdown.
+          availableTypes: typesForDesignSet(designSet),
         });
       }
     }
@@ -382,19 +390,36 @@ export async function findProductsMissingJewelrySetup(admin) {
  * "Apply" silently timing out: 20 products each redundantly re-fetching
  * the same theme settings, on top of everything else each one already
  * needs).
+ *
+ * typesOverride, if given, restricts which Customised(Type) values get
+ * built for THIS product instead of the design set's full default list —
+ * e.g. a non-pearl product that should only ever offer Ring/Pendent, not
+ * Bracelet, even though the default design set has bracelet designs
+ * available. Silently intersected with the design set's actual available
+ * types (typesForDesignSet) so a bogus/stale override can never request a
+ * type this product's design set has no catalog data for (most concretely:
+ * a pearl product can never end up with a Bracelet option, no matter what
+ * override is passed, since GLOBAL_DESIGNS.pearl has no bracelet key at
+ * all) — falls back to the full default set if the intersection is empty.
  */
-export async function repriceDesignVariants(admin, productGid, precomputedRates) {
+export async function repriceDesignVariants(admin, productGid, precomputedRates, typesOverride) {
   const targetGid = productGid || `gid://shopify/Product/${PRODUCT_ID_NUMERIC}`;
   const [{ price: stonePrice, designSet }, { rates, makingChargePerGram }] = await Promise.all([
     fetchStoneInfo(admin, targetGid),
     precomputedRates ? Promise.resolve(precomputedRates) : fetchRatesFromTheme(admin),
   ]);
-  const { variants, designValues } = await computeVariants(admin, targetGid, stonePrice, rates, makingChargePerGram, designSet);
+  const available = typesForDesignSet(designSet);
+  const types =
+    Array.isArray(typesOverride) && typesOverride.length
+      ? available.filter((t) => typesOverride.includes(t))
+      : available;
+  const finalTypes = types.length ? types : available;
+  const { variants, designValues } = await computeVariants(admin, targetGid, stonePrice, rates, makingChargePerGram, designSet, finalTypes);
 
   const input = {
     id: targetGid,
     productOptions: [
-      { name: "Customised", position: 1, values: ["Loose", ...typesForDesignSet(designSet)].map((v) => ({ name: v })) },
+      { name: "Customised", position: 1, values: ["Loose", ...finalTypes].map((v) => ({ name: v })) },
       { name: "Metals", position: 2, values: LOOSE_METALS.map((v) => ({ name: v })) },
       { name: "Design", position: 3, values: designValues.map((v) => ({ name: v })) },
     ],
@@ -425,6 +450,7 @@ export async function repriceDesignVariants(admin, productGid, precomputedRates)
   return {
     stonePrice,
     designSet,
+    types: finalTypes,
     variantCount: variants.length,
     designValueCount: designValues.length,
     ratesUsed: rates,
@@ -446,13 +472,21 @@ export async function repriceDesignVariants(admin, productGid, precomputedRates)
 export const SETUP_BATCH_SIZE = 5;
 
 /**
- * Runs repriceDesignVariants for each given product GID, sequentially
- * (not in parallel — these are real, live-price-affecting writes, and
- * running them one at a time keeps GraphQL cost-throttling predictable
- * and keeps a single bad product from racing ahead of good ones in the
- * results). Never throws for a single product's failure — collects a
- * per-product result instead, so one bad product (e.g. one with zero
- * variants somehow) doesn't stop the rest of the batch.
+ * Runs repriceDesignVariants for each given product, sequentially (not in
+ * parallel — these are real, live-price-affecting writes, and running them
+ * one at a time keeps GraphQL cost-throttling predictable and keeps a
+ * single bad product from racing ahead of good ones in the results).
+ * Never throws for a single product's failure — collects a per-product
+ * result instead, so one bad product (e.g. one with zero variants somehow)
+ * doesn't stop the rest of the batch.
+ *
+ * `items` is [{ productGid, types? }] — types, when given, is the merchant's
+ * own chosen subset of Ring/Bracelet/Pendent for THAT product (see
+ * repriceDesignVariants's typesOverride); omitted means "use this
+ * product's design set's full default list", same as before this per-
+ * product override existed. Kept as a list of objects (not a parallel
+ * array) so a product's own type choice can never get misaligned with the
+ * wrong GID if the two lists ever drifted.
  *
  * Fetches the theme's metal rates ONCE up front and reuses them for
  * every product in the batch (they're store-wide, not per-product) —
@@ -460,16 +494,17 @@ export const SETUP_BATCH_SIZE = 5;
  * meaning a batch of N products did N redundant identical theme-settings
  * queries for no reason.
  */
-export async function setupJewelryVariantsForProducts(admin, productGids) {
+export async function setupJewelryVariantsForProducts(admin, items) {
   const rates = await fetchRatesFromTheme(admin);
   const results = [];
-  for (const gid of productGids.slice(0, SETUP_BATCH_SIZE)) {
+  for (const item of items.slice(0, SETUP_BATCH_SIZE)) {
+    const gid = item.productGid;
     try {
-      const result = await repriceDesignVariants(admin, gid, rates);
+      const result = await repriceDesignVariants(admin, gid, rates, item.types);
       results.push({ productGid: gid, ok: true, ...result });
     } catch (err) {
       results.push({ productGid: gid, ok: false, error: String(err.message || err) });
     }
   }
-  return { results, processed: results.length, skipped: Math.max(0, productGids.length - SETUP_BATCH_SIZE) };
+  return { results, processed: results.length, skipped: Math.max(0, items.length - SETUP_BATCH_SIZE) };
 }
