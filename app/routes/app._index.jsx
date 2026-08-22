@@ -7,6 +7,8 @@ import {
   repriceDesignVariants,
   findJewelryProducts,
   setupJewelryVariantsForProducts,
+  fixChannelsForProducts,
+  setInventoryForProducts,
   SETUP_BATCH_SIZE,
   PRODUCT_ID_NUMERIC,
 } from "../utils/repriceDesignVariants.server";
@@ -66,6 +68,38 @@ export const action = async ({ request }) => {
     }
   }
 
+  if (intent === "fixChannels") {
+    try {
+      const productGids = JSON.parse(formData.get("productGids") || "[]");
+      if (!Array.isArray(productGids) || !productGids.length) {
+        return { intent, ok: false, error: "Check at least one product first." };
+      }
+      const result = await fixChannelsForProducts(admin, productGids);
+      return { intent, ok: true, ...result };
+    } catch (err) {
+      console.error("[app._index] fixChannels failed:", err);
+      return { intent, ok: false, error: String(err.message || err) };
+    }
+  }
+
+  if (intent === "setInventory") {
+    try {
+      const productGids = JSON.parse(formData.get("productGids") || "[]");
+      const quantity = parseInt(formData.get("quantity"), 10);
+      if (!Array.isArray(productGids) || !productGids.length) {
+        return { intent, ok: false, error: "Check at least one product first." };
+      }
+      if (!Number.isInteger(quantity) || quantity < 0) {
+        return { intent, ok: false, error: "Enter a valid stock quantity (0 or more) first." };
+      }
+      const result = await setInventoryForProducts(admin, productGids, quantity);
+      return { intent, ok: true, quantity, ...result };
+    } catch (err) {
+      console.error("[app._index] setInventory failed:", err);
+      return { intent, ok: false, error: String(err.message || err) };
+    }
+  }
+
   try {
     const result = await repriceDesignVariants(admin);
     return { intent: "reprice", ok: true, ...result };
@@ -80,12 +114,17 @@ export default function Index() {
   const fetcher = useFetcher();
   const scanFetcher = useFetcher();
   const setupFetcher = useFetcher();
+  const channelFetcher = useFetcher();
+  const inventoryFetcher = useFetcher();
   const shopify = useAppBridge();
   const isLoading =
     ["loading", "submitting"].includes(fetcher.state) &&
     fetcher.formMethod === "POST";
   const isScanning = scanFetcher.state !== "idle";
   const isSettingUp = setupFetcher.state !== "idle";
+  const isFixingChannels = channelFetcher.state !== "idle";
+  const isSettingInventory = inventoryFetcher.state !== "idle";
+  const [bulkQuantity, setBulkQuantity] = useState("10");
 
   // Local copy of the scanned product list so a successful Apply can
   // optimistically update the rows it just touched, without forcing a
@@ -177,6 +216,63 @@ export default function Index() {
     );
   }, [setupFetcher.data, shopify]);
 
+  useEffect(() => {
+    if (channelFetcher.data?.intent !== "fixChannels") return;
+    if (!channelFetcher.data.ok) {
+      shopify.toast.show(
+        channelFetcher.data.error === "Check at least one product first."
+          ? channelFetcher.data.error
+          : "Couldn't fix channels for those products — try again in a moment",
+        { isError: true }
+      );
+      return;
+    }
+    const results = channelFetcher.data.results || [];
+    const resultByGid = Object.fromEntries(results.map((r) => [r.productGid, r]));
+    const succeededGids = new Set(results.filter((r) => r.ok).map((r) => r.productGid));
+    // A succeeded fix means the product is now published to Online Store
+    // only — update the count locally so the pill flips green immediately
+    // instead of waiting for a re-scan.
+    setProducts((prev) =>
+      prev.map((p) => (resultByGid[p.id]?.ok ? { ...p, publicationCount: 1 } : p))
+    );
+    const failCount = results.length - succeededGids.size;
+    shopify.toast.show(
+      `Fixed channels on ${succeededGids.size} product${succeededGids.size === 1 ? "" : "s"}` +
+        (failCount ? ` · ${failCount} failed` : "") +
+        (channelFetcher.data.skipped ? ` · ${channelFetcher.data.skipped} more selected — click again` : ""),
+      { isError: failCount > 0 && succeededGids.size === 0 }
+    );
+  }, [channelFetcher.data, shopify]);
+
+  useEffect(() => {
+    if (inventoryFetcher.data?.intent !== "setInventory") return;
+    if (!inventoryFetcher.data.ok) {
+      shopify.toast.show(inventoryFetcher.data.error || "Couldn't set inventory — try again in a moment", { isError: true });
+      return;
+    }
+    const results = inventoryFetcher.data.results || [];
+    const succeededGids = new Set(results.filter((r) => r.ok).map((r) => r.productGid));
+    // Every tracked variant on a succeeded product is now exactly this
+    // quantity — reflect that in the Stock column immediately (also
+    // flips hasOutOfStockVariants off, since every variant just got the
+    // same positive-or-zero number).
+    setProducts((prev) =>
+      prev.map((p) =>
+        succeededGids.has(p.id)
+          ? { ...p, totalInventory: inventoryFetcher.data.quantity, hasOutOfStockVariants: inventoryFetcher.data.quantity === 0 }
+          : p
+      )
+    );
+    const failCount = results.length - succeededGids.size;
+    shopify.toast.show(
+      `Set stock to ${inventoryFetcher.data.quantity} on ${succeededGids.size} product${succeededGids.size === 1 ? "" : "s"}` +
+        (failCount ? ` · ${failCount} failed (see table)` : "") +
+        (inventoryFetcher.data.skipped ? ` · ${inventoryFetcher.data.skipped} more selected — click again` : ""),
+      { isError: failCount > 0 && succeededGids.size === 0 }
+    );
+  }, [inventoryFetcher.data, shopify]);
+
   const reprice = () => fetcher.submit({}, { method: "POST" });
   const scanSetup = () => scanFetcher.submit({ intent: "scanSetup" }, { method: "POST" });
 
@@ -242,12 +338,34 @@ export default function Index() {
     setupFetcher.submit({ intent: "setupSelected", items: JSON.stringify(items) }, { method: "POST" });
   };
 
+  const fixChannels = () => {
+    channelFetcher.submit({ intent: "fixChannels", productGids: JSON.stringify([...checked]) }, { method: "POST" });
+  };
+
+  const setInventoryBulk = () => {
+    const quantity = parseInt(bulkQuantity, 10);
+    if (!Number.isInteger(quantity) || quantity < 0) {
+      shopify.toast.show("Enter a valid stock quantity (0 or more) first", { isError: true });
+      return;
+    }
+    inventoryFetcher.submit(
+      { intent: "setInventory", productGids: JSON.stringify([...checked]), quantity: String(quantity) },
+      { method: "POST" }
+    );
+  };
+
   const resultByGid = Object.fromEntries(
     (setupFetcher.data?.intent === "setupSelected" ? setupFetcher.data.results || [] : []).map((r) => [r.productGid, r])
   );
+  const channelResultByGid = Object.fromEntries(
+    (channelFetcher.data?.intent === "fixChannels" ? channelFetcher.data.results || [] : []).map((r) => [r.productGid, r])
+  );
+  const inventoryResultByGid = Object.fromEntries(
+    (inventoryFetcher.data?.intent === "setInventory" ? inventoryFetcher.data.results || [] : []).map((r) => [r.productGid, r])
+  );
 
   return (
-    <s-page heading="Shubh Gems — Jewelry Pricing">
+    <s-page heading="Shubh Gems — Jewelry Pricing" inlineSize="large">
       <s-button
         slot="primary-action"
         onClick={reprice}
@@ -256,37 +374,51 @@ export default function Index() {
         Reprice Design Variants
       </s-button>
 
-      <s-section heading="What this does">
-        <s-paragraph>
-          The "test" gemstone's Ring/Bracelet/Pendant × Metal × Design
-          variants each carry a real, baked-in price (stone price +
-          setting/design cost). Prices don't update themselves when metal
-          rates change in your theme settings — click the button above
-          whenever you update a rate, and every affected variant gets
-          recomputed and pushed to Shopify in one shot.
-        </s-paragraph>
-        <s-paragraph>
-          Price formula per variant: <s-text>stone's own price</s-text> +
-          either the design's explicit catalog price, or{" "}
-          <s-text>weight × (metal rate + making charge)</s-text> when no
-          explicit price is set for that design.
-        </s-paragraph>
-        <s-paragraph>
-          Which designs (and which Types) a product gets depends on its assigned template —{" "}
-          <s-text>product.pearl.json</s-text> gets the pearl design catalog, which only has Ring and Pendent (no
-          Bracelet at all — pearls just don't come as bracelets), and only Silver/Gold metals (no Panchdhatu or
-          Copper — pearls don't come in those either). Every other product uses the default catalog with all three
-          Types and all 8 metals.
-        </s-paragraph>
-        <s-paragraph>
-          Every variant is set to track inventory and stop selling at 0 — a new design starts with{" "}
-          <s-text>1 in stock</s-text>, so the moment one order comes in for that exact Type/Metal/Design, it shows
-          "Sold out" on the storefront and in Admin automatically. If you actually have more than one of a specific
-          piece, bump that variant's quantity by hand in Admin — Reprice/Apply never resets a variant's stock once
-          it's already being tracked, only sets the starting "1" the first time. Every variant is also published to
-          the Online Store channel only — explicitly unpublished from Google, Meta/Facebook, and any other sales
-          channel, so nothing shows up there.
-        </s-paragraph>
+      <s-section>
+        {/* Collapsed by default — the full explanation is useful once, not
+            every time the page loads. A native <details> keeps this a
+            dropdown with zero extra JS state. */}
+        <details>
+          <summary style={{ cursor: "pointer", fontSize: "13px", fontWeight: 500, color: brand.body }}>
+            What this does &amp; how pricing/inventory/channels work
+          </summary>
+          <div style={{ marginTop: "10px", display: "flex", flexDirection: "column", gap: "10px" }}>
+            <s-paragraph>
+              The "test" gemstone's Ring/Bracelet/Pendant × Metal × Design
+              variants each carry a real, baked-in price (stone price +
+              setting/design cost). Prices don't update themselves when metal
+              rates change in your theme settings — click the button above
+              whenever you update a rate, and every affected variant gets
+              recomputed and pushed to Shopify in one shot.
+            </s-paragraph>
+            <s-paragraph>
+              Price formula per variant: <s-text>stone's own price</s-text> +
+              either the design's explicit catalog price, or{" "}
+              <s-text>weight × (metal rate + making charge)</s-text> when no
+              explicit price is set for that design.
+            </s-paragraph>
+            <s-paragraph>
+              Which designs (and which Types) a product gets depends on its assigned template —{" "}
+              <s-text>product.pearl.json</s-text> gets the pearl design catalog, which only has Ring and Pendent (no
+              Bracelet at all — pearls just don't come as bracelets), and only Silver/Gold metals (no Panchdhatu or
+              Copper — pearls don't come in those either). Every other product uses the default catalog with all three
+              Types and all 8 metals.
+            </s-paragraph>
+            <s-paragraph>
+              Every variant is set to track inventory and stop selling at 0 — a new design starts with{" "}
+              <s-text>1 in stock</s-text>, so the moment one order comes in for that exact Type/Metal/Design, it shows
+              "Sold out" on the storefront and in Admin automatically. If you actually have more than one of a specific
+              piece, bump that variant's quantity by hand in Admin — Reprice/Apply never resets a variant's stock once
+              it's already being tracked, only sets the starting "1" the first time. Every variant is also published to
+              the Online Store channel only — explicitly unpublished from Google, Meta/Facebook, and any other sales
+              channel, so nothing shows up there. Use "Fix channels for N selected" below to clean that up on its own,
+              without needing to rebuild a product's whole variant matrix just to trigger it.
+            </s-paragraph>
+            <s-paragraph>
+              <s-text>Numeric ID of the "test" product: {productId}</s-text>
+            </s-paragraph>
+          </div>
+        </details>
       </s-section>
 
       {fetcher.data?.ok && (
@@ -315,19 +447,11 @@ export default function Index() {
 
       <s-section heading="Set up or change jewelry variants">
         <s-paragraph>
-          Scans every product in the store and shows its Type(Customised)/Metal setup — the same structure{" "}
-          <s-text>snippets/shubh-jewelry-flow.liquid</s-text> checks for to decide whether the customizer renders at
-          all. Works for both cases: a product with <s-text>no</s-text> setup yet (check it, pick Types, Apply
-          builds it for the first time) and a product that's <s-text>already</s-text> set up (its current Types come
-          pre-checked — untick one and Apply to remove it, tick one back on to add it). Each applied product gets
-          the same Metal × Design matrix <s-text>Reprice Design Variants</s-text> above builds for the "test"
-          product, using that product's own current price as the base stone price.
-        </s-paragraph>
-        <s-paragraph>
-          <s-text fontWeight="bold">Unticking a Type that's already live deletes those variants</s-text> — anyone
-          who already ordered that Type keeps their order, but it stops being offered on the product page and can't
-          be sold again unless you re-add it. Pearl products only ever show Ring/Pendent checkboxes (no Bracelet —
-          there's no catalog data for it, so it's not offered as an option at all).
+          Scans every product in the store and shows its Type(Customised)/Metal setup, sales channel status, and
+          stock. Check products, pick Types (for new or already-set-up products alike), then Apply — or just fix
+          sales channels in bulk without touching variants at all.{" "}
+          <s-text fontWeight="bold">Unticking a Type that's already live deletes those variants</s-text> (existing
+          orders are unaffected, but it stops being sellable until re-added).
         </s-paragraph>
         <s-button {...(isScanning ? { loading: true } : {})} onClick={scanSetup}>
           Scan Products
@@ -345,6 +469,30 @@ export default function Index() {
             />
           </div>
         )}
+        {channelFetcher.data?.intent === "fixChannels" && !channelFetcher.data.ok && (
+          <div style={{ marginTop: "12px" }}>
+            <FriendlyError
+              message={
+                channelFetcher.data.error === "Check at least one product first."
+                  ? channelFetcher.data.error
+                  : "Couldn't fix channels for those products."
+              }
+              detail={channelFetcher.data.error}
+            />
+          </div>
+        )}
+        {inventoryFetcher.data?.intent === "setInventory" && !inventoryFetcher.data.ok && (
+          <div style={{ marginTop: "12px" }}>
+            <FriendlyError
+              message={
+                inventoryFetcher.data.error?.startsWith("Check at least") || inventoryFetcher.data.error?.startsWith("Enter a valid")
+                  ? inventoryFetcher.data.error
+                  : "Couldn't set inventory for those products."
+              }
+              detail={inventoryFetcher.data.error}
+            />
+          </div>
+        )}
 
         {scanFetcher.data?.intent === "scanSetup" && scanFetcher.data.ok && (
           <div style={{ marginTop: "12px" }}>
@@ -357,9 +505,9 @@ export default function Index() {
               <s-paragraph>No products found.</s-paragraph>
             ) : (
               <>
-                {/* Sticky so the filters + Apply button stay reachable while
-                    scrolling a long product list — position:sticky against
-                    the page's own scroll container, with an opaque
+                {/* Sticky so the filters + action buttons stay reachable
+                    while scrolling a long product list — position:sticky
+                    against the page's own scroll container, with an opaque
                     background so table rows don't show through underneath. */}
                 <div style={{ position: "sticky", top: 0, zIndex: 5, background: "#fff", paddingTop: "4px", paddingBottom: "10px", marginBottom: "2px" }}>
                   <div style={{ display: "flex", gap: "10px", margin: "0 0 10px", alignItems: "center", flexWrap: "wrap" }}>
@@ -421,9 +569,25 @@ export default function Index() {
                     <s-button {...(isSettingUp ? { loading: true } : {})} onClick={applySetup}>
                       Apply to {checked.size} selected
                     </s-button>
+                    <s-button {...(isFixingChannels ? { loading: true } : {})} onClick={fixChannels}>
+                      Fix channels for {checked.size} selected
+                    </s-button>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "3px", background: brand.panel, borderRadius: "10px" }}>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={bulkQuantity}
+                        onChange={(e) => setBulkQuantity(e.target.value)}
+                        style={{ width: "60px", padding: "5px 8px", borderRadius: "8px", border: `1px solid ${brand.border}`, fontSize: "12.5px", color: brand.body }}
+                      />
+                      <s-button {...(isSettingInventory ? { loading: true } : {})} onClick={setInventoryBulk}>
+                        Set stock for {checked.size} selected
+                      </s-button>
+                    </div>
                     <span style={{ fontSize: "12px", color: brand.muted }}>
-                      Processes up to {setupBatchSize} per click — click Apply again for the rest of a larger
-                      selection.
+                      Processes up to {setupBatchSize} per click — click again for the rest of a larger selection.
+                      Setting stock only works on products already Applied (needs tracked variants).
                     </span>
                   </div>
                 </div>
@@ -446,6 +610,8 @@ export default function Index() {
                     <tbody>
                       {filteredProducts.map((p) => {
                         const result = resultByGid[p.id];
+                        const channelResult = channelResultByGid[p.id];
+                        const inventoryResult = inventoryResultByGid[p.id];
                         const types = selectedTypes[p.id] || [];
                         const currentTypes = p.currentTypes || [];
                         const changed =
@@ -474,35 +640,53 @@ export default function Index() {
                               />
                             </td>
                             <td style={tdStyle}>
-                              {p.publicationCount === null ? (
-                                <span style={{ fontSize: "12px", color: brand.muted }}>—</span>
-                              ) : (
-                                <Pill
-                                  label={
-                                    p.publicationCount === 0
-                                      ? "Not published anywhere"
-                                      : p.publicationCount === 1
-                                        ? "1 channel"
-                                        : `${p.publicationCount} channels`
-                                  }
-                                  active
-                                  color={p.publicationCount === 1 ? brand.success : p.publicationCount === 0 ? brand.danger : "#B45309"}
-                                />
-                              )}
+                              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                                {p.publicationCount === null ? (
+                                  <span style={{ fontSize: "12px", color: brand.muted }}>—</span>
+                                ) : (
+                                  <Pill
+                                    label={
+                                      p.publicationCount === 0
+                                        ? "Not published anywhere"
+                                        : p.publicationCount === 1
+                                          ? "1 channel"
+                                          : `${p.publicationCount} channels`
+                                    }
+                                    active
+                                    color={p.publicationCount === 1 ? brand.success : p.publicationCount === 0 ? brand.danger : "#B45309"}
+                                  />
+                                )}
+                                {channelResult && (
+                                  channelResult.ok ? (
+                                    <span style={{ fontSize: "11px", color: brand.success }}>✓ fixed</span>
+                                  ) : (
+                                    <FriendlyErrorInline message="Couldn't fix" detail={channelResult.error} />
+                                  )
+                                )}
+                              </div>
                             </td>
                             <td style={tdStyle}>
-                              {!p.tracksInventory ? (
-                                <span style={{ fontSize: "12px", color: brand.muted }}>Not tracked</span>
-                              ) : (
-                                <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-                                  <span style={{ fontSize: "12.5px", color: brand.body, fontWeight: 500 }}>
-                                    {p.totalInventory} in stock
-                                  </span>
-                                  {p.hasOutOfStockVariants && (
-                                    <span style={{ fontSize: "11px", color: brand.danger }}>some designs sold out</span>
-                                  )}
-                                </div>
-                              )}
+                              <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                                {!p.tracksInventory ? (
+                                  <span style={{ fontSize: "12px", color: brand.muted }}>Not tracked</span>
+                                ) : (
+                                  <>
+                                    <span style={{ fontSize: "12.5px", color: brand.body, fontWeight: 500 }}>
+                                      {p.totalInventory} in stock
+                                    </span>
+                                    {p.hasOutOfStockVariants && (
+                                      <span style={{ fontSize: "11px", color: brand.danger }}>some designs sold out</span>
+                                    )}
+                                  </>
+                                )}
+                                {inventoryResult && (
+                                  inventoryResult.ok ? (
+                                    <span style={{ fontSize: "11px", color: brand.success }}>✓ set</span>
+                                  ) : (
+                                    <FriendlyErrorInline message="Couldn't set" detail={inventoryResult.error} />
+                                  )
+                                )}
+                              </div>
                             </td>
                             <td style={tdStyle}>{p.handle}</td>
                             <td style={{ ...tdStyle, fontSize: "12px", color: brand.muted }}>
@@ -553,12 +737,6 @@ export default function Index() {
             )}
           </div>
         )}
-      </s-section>
-
-      <s-section slot="aside" heading="Product">
-        <s-paragraph>
-          Numeric ID: <s-text>{productId}</s-text>
-        </s-paragraph>
       </s-section>
     </s-page>
   );

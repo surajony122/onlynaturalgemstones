@@ -674,3 +674,108 @@ export async function setupJewelryVariantsForProducts(admin, items) {
   }
   return { results, processed: results.length, skipped: Math.max(0, items.length - SETUP_BATCH_SIZE) };
 }
+
+/**
+ * Bulk version of the Online-Store-only channel fix — lets the merchant
+ * clean up sales channel publication for a batch of products directly,
+ * without needing to rebuild that product's whole variant matrix through
+ * Reprice/Apply just to trigger ensureOnlineStoreOnly as a side effect.
+ * Same review-then-apply pattern and batch cap as setupJewelryVariants
+ * ForProducts — never lets one product's failure block the rest.
+ */
+export async function fixChannelsForProducts(admin, productGids) {
+  const results = [];
+  for (const gid of productGids.slice(0, SETUP_BATCH_SIZE)) {
+    try {
+      const diag = await ensureOnlineStoreOnly(admin, gid);
+      if (diag.error) throw new Error(diag.error);
+      if (!diag.foundOnlineStore) throw new Error("Could not find the Online Store channel on this shop");
+      results.push({ productGid: gid, ok: true, unpublishedFrom: diag.otherChannels || [] });
+    } catch (err) {
+      results.push({ productGid: gid, ok: false, error: String(err.message || err) });
+    }
+  }
+  return { results, processed: results.length, skipped: Math.max(0, productGids.length - SETUP_BATCH_SIZE) };
+}
+
+function chunk(arr, size) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+/**
+ * Bulk-sets every TRACKED variant of each given product to the same
+ * absolute stock quantity — an explicit, deliberate override (unlike
+ * repriceDesignVariants's "1 to start, never touch again" caution), for
+ * the case where a merchant genuinely wants to set/reset stock across a
+ * batch of products at once (e.g. "we just got 10 of everything back in
+ * stock"). Skips a product with no tracked variants yet (not run through
+ * Apply) rather than failing the whole batch — reported per product so
+ * it's obvious which ones need Apply first. inventorySetQuantities is
+ * chunked at 250 quantities per call (its own documented cap) since one
+ * product can have well over that many variants.
+ */
+export async function setInventoryForProducts(admin, productGids, quantity) {
+  const locationId = await fetchPrimaryLocationId(admin);
+  if (!locationId) {
+    throw new Error("Couldn't find a location to set inventory at (locations query failed or returned none).");
+  }
+  const results = [];
+  for (const gid of productGids.slice(0, SETUP_BATCH_SIZE)) {
+    try {
+      const res = await admin.graphql(
+        `#graphql
+        query ProductVariantsForInventory($id: ID!) {
+          product(id: $id) {
+            variants(first: 250) {
+              nodes { id inventoryItem { id tracked } }
+            }
+          }
+        }`,
+        { variables: { id: gid } },
+      );
+      const json = await res.json();
+      if (json.errors) throw new Error(`Variant lookup failed: ${JSON.stringify(json.errors).slice(0, 300)}`);
+      const variants = json.data?.product?.variants?.nodes || [];
+      const trackedVariants = variants.filter((v) => v.inventoryItem?.tracked);
+      if (!trackedVariants.length) {
+        results.push({ productGid: gid, ok: false, error: "No tracked variants yet — run Apply on this product first." });
+        continue;
+      }
+
+      const allQuantities = trackedVariants.map((v) => ({
+        inventoryItemId: v.inventoryItem.id,
+        locationId,
+        quantity,
+      }));
+      for (const batch of chunk(allQuantities, 250)) {
+        const setRes = await admin.graphql(
+          `#graphql
+          mutation SetInventoryQuantities($input: InventorySetQuantitiesInput!) {
+            inventorySetQuantities(input: $input) {
+              userErrors { field message }
+            }
+          }`,
+          {
+            variables: {
+              input: {
+                name: "available",
+                reason: "correction",
+                ignoreCompareQuantity: true,
+                quantities: batch,
+              },
+            },
+          },
+        );
+        const setJson = await setRes.json();
+        const userErrors = setJson.data?.inventorySetQuantities?.userErrors || [];
+        if (userErrors.length) throw new Error(`inventorySetQuantities failed: ${JSON.stringify(userErrors)}`);
+      }
+      results.push({ productGid: gid, ok: true, variantCount: trackedVariants.length });
+    } catch (err) {
+      results.push({ productGid: gid, ok: false, error: String(err.message || err) });
+    }
+  }
+  return { results, processed: results.length, skipped: Math.max(0, productGids.length - SETUP_BATCH_SIZE) };
+}
