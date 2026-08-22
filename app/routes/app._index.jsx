@@ -5,7 +5,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import {
   repriceDesignVariants,
-  findProductsMissingJewelrySetup,
+  findJewelryProducts,
   setupJewelryVariantsForProducts,
   SETUP_BATCH_SIZE,
   PRODUCT_ID_NUMERIC,
@@ -36,7 +36,7 @@ export const action = async ({ request }) => {
 
   if (intent === "scanSetup") {
     try {
-      const result = await findProductsMissingJewelrySetup(admin);
+      const result = await findJewelryProducts(admin);
       return { intent, ok: true, ...result };
     } catch (err) {
       return { intent, ok: false, error: String(err.message || err) };
@@ -76,28 +76,34 @@ export default function Index() {
   const isScanning = scanFetcher.state !== "idle";
   const isSettingUp = setupFetcher.state !== "idle";
 
-  // Local copy of the "missing setup" list so a successful batch can
-  // optimistically remove the products it just handled, without forcing a
+  // Local copy of the scanned product list so a successful Apply can
+  // optimistically update the rows it just touched, without forcing a
   // full re-scan to see progress — synced from scanFetcher's result
   // whenever a fresh scan comes back.
-  const [missing, setMissing] = useState([]);
+  const [products, setProducts] = useState([]);
   const [checked, setChecked] = useState(() => new Set());
   const [searchText, setSearchText] = useState("");
   const [collectionFilter, setCollectionFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all"); // all | missing | setup
   // Per-product Type selection (Ring/Bracelet/Pendent subset) — keyed by
-  // product id, defaults to that product's full availableTypes (i.e.
-  // today's automatic behavior) the moment a scan loads, so nothing
-  // changes unless the merchant actually unchecks a type for a product.
+  // product id. Defaults to the product's CURRENT Types if it's already
+  // set up (so re-scanning never silently proposes removing something),
+  // or its full availableTypes if it isn't set up yet (today's automatic
+  // behavior) — nothing changes for a product unless you touch its
+  // checkboxes yourself.
   const [selectedTypes, setSelectedTypes] = useState({});
 
   useEffect(() => {
     if (scanFetcher.data?.intent === "scanSetup" && scanFetcher.data.ok) {
-      setMissing(scanFetcher.data.missing);
+      setProducts(scanFetcher.data.products);
       setChecked(new Set());
       setSearchText("");
       setCollectionFilter("all");
+      setStatusFilter("all");
       setSelectedTypes(
-        Object.fromEntries(scanFetcher.data.missing.map((p) => [p.id, [...p.availableTypes]]))
+        Object.fromEntries(
+          scanFetcher.data.products.map((p) => [p.id, p.currentTypes.length ? [...p.currentTypes] : [...p.availableTypes]])
+        )
       );
     }
   }, [scanFetcher.data]);
@@ -122,15 +128,24 @@ export default function Index() {
       shopify.toast.show(
         setupFetcher.data.error === "Check at least one product first."
           ? setupFetcher.data.error
-          : "Couldn't set up those products — try again in a moment",
+          : "Couldn't apply those changes — try again in a moment",
         { isError: true }
       );
       return;
     }
-    const succeededGids = new Set(
-      setupFetcher.data.results.filter((r) => r.ok).map((r) => r.productGid)
+    const resultByGid = Object.fromEntries(setupFetcher.data.results.map((r) => [r.productGid, r]));
+    const succeededGids = new Set(setupFetcher.data.results.filter((r) => r.ok).map((r) => r.productGid));
+    // Update each succeeded row in place (now "set up" with its new
+    // Types) instead of removing it — it stays visible/editable, since
+    // this table is for changing selections too, not just first-time
+    // setup.
+    setProducts((prev) =>
+      prev.map((p) => {
+        const r = resultByGid[p.id];
+        if (!r?.ok) return p;
+        return { ...p, hasSetup: true, currentTypes: r.types };
+      })
     );
-    setMissing((prev) => prev.filter((p) => !succeededGids.has(p.id)));
     setChecked((prev) => {
       const next = new Set(prev);
       succeededGids.forEach((gid) => next.delete(gid));
@@ -138,7 +153,7 @@ export default function Index() {
     });
     const failCount = setupFetcher.data.results.length - succeededGids.size;
     shopify.toast.show(
-      `Set up ${succeededGids.size} product${succeededGids.size === 1 ? "" : "s"}` +
+      `Applied to ${succeededGids.size} product${succeededGids.size === 1 ? "" : "s"}` +
         (failCount ? ` · ${failCount} failed (see table)` : "") +
         (setupFetcher.data.skipped ? ` · ${setupFetcher.data.skipped} more selected — click Apply again` : ""),
       { isError: failCount > 0 && succeededGids.size === 0 }
@@ -165,12 +180,12 @@ export default function Index() {
     });
   };
 
-  // Every distinct collection name across the current "missing" list,
-  // for the collection dropdown — derived, not stored, so it always
-  // reflects whatever's actually in the list right now.
-  const allCollections = [...new Set(missing.flatMap((p) => p.collections || []))].sort();
+  // Every distinct collection name across the scanned list, for the
+  // collection dropdown — derived, not stored, so it always reflects
+  // whatever's actually in the list right now.
+  const allCollections = [...new Set(products.flatMap((p) => p.collections || []))].sort();
 
-  const filteredMissing = missing.filter((p) => {
+  const filteredProducts = products.filter((p) => {
     const q = searchText.trim().toLowerCase();
     const matchesSearch =
       !q ||
@@ -178,16 +193,20 @@ export default function Index() {
       p.handle.toLowerCase().includes(q) ||
       (p.collections || []).some((c) => c.toLowerCase().includes(q));
     const matchesCollection = collectionFilter === "all" || (p.collections || []).includes(collectionFilter);
-    return matchesSearch && matchesCollection;
+    const matchesStatus =
+      statusFilter === "all" || (statusFilter === "missing" ? !p.hasSetup : p.hasSetup);
+    return matchesSearch && matchesCollection && matchesStatus;
   });
 
-  const checkAllMissing = () => setChecked(new Set(filteredMissing.map((p) => p.id)));
+  const missingCount = products.filter((p) => !p.hasSetup).length;
+
+  const checkAllShown = () => setChecked(new Set(filteredProducts.map((p) => p.id)));
   const clearChecked = () => setChecked(new Set());
 
-  // A row checked but left with zero Types ticked can't be set up (there'd
-  // be nothing to build) — skip those from the submission rather than
-  // sending an empty Customised option list, and let the merchant know
-  // via the toast so it's not a silent no-op.
+  // A row checked but left with zero Types ticked can't be applied
+  // (there'd be nothing to build) — skip those from the submission
+  // rather than sending an empty Customised option list, and let the
+  // merchant know via the toast so it's not a silent no-op.
   const applySetup = () => {
     const items = [...checked]
       .map((id) => ({ productGid: id, types: selectedTypes[id] || [] }))
@@ -277,19 +296,21 @@ export default function Index() {
         </s-section>
       )}
 
-      <s-section heading="Products missing customizer setup">
+      <s-section heading="Set up or change jewelry variants">
         <s-paragraph>
-          Scans every product in the store for the Type(Customised)/Metal option structure the jewelry customizer
-          flow (and this Reprice tool) needs — the same check{" "}
-          <s-text>snippets/shubh-jewelry-flow.liquid</s-text> itself uses to decide whether to render at all.
-          Products listed below don't have it set up yet. Check the ones you want, pick which Types each one should
-          offer (a product doesn't have to offer all three — untick any that don't apply to it), then Apply. Each
-          selected product gets the same Metal × Design matrix <s-text>Reprice Design Variants</s-text> above builds
-          for the "test" product, using <s-text>that product's own current price</s-text> as the base stone price
-          (its single existing variant if it doesn't have a "Loose" one yet). Products on the{" "}
-          <s-text>product.pearl.json</s-text> template only ever offer Ring/Pendent — pearls have no Bracelet
-          designs in the catalog at all, so that checkbox won't even show for them; every other product can pick
-          any subset of Ring/Bracelet/Pendent, defaulting to all three checked.
+          Scans every product in the store and shows its Type(Customised)/Metal setup — the same structure{" "}
+          <s-text>snippets/shubh-jewelry-flow.liquid</s-text> checks for to decide whether the customizer renders at
+          all. Works for both cases: a product with <s-text>no</s-text> setup yet (check it, pick Types, Apply
+          builds it for the first time) and a product that's <s-text>already</s-text> set up (its current Types come
+          pre-checked — untick one and Apply to remove it, tick one back on to add it). Each applied product gets
+          the same Metal × Design matrix <s-text>Reprice Design Variants</s-text> above builds for the "test"
+          product, using that product's own current price as the base stone price.
+        </s-paragraph>
+        <s-paragraph>
+          <s-text fontWeight="bold">Unticking a Type that's already live deletes those variants</s-text> — anyone
+          who already ordered that Type keeps their order, but it stops being offered on the product page and can't
+          be sold again unless you re-add it. Pearl products only ever show Ring/Pendent checkboxes (no Bracelet —
+          there's no catalog data for it, so it's not offered as an option at all).
         </s-paragraph>
         <s-button {...(isScanning ? { loading: true } : {})} onClick={scanSetup}>
           Scan Products
@@ -299,11 +320,11 @@ export default function Index() {
           <div style={{ marginTop: "12px" }}>
             <p style={{ fontSize: "12.5px", color: brand.muted, margin: "0 0 10px" }}>
               Scanned {scanFetcher.data.scanned} product{scanFetcher.data.scanned === 1 ? "" : "s"} ·{" "}
-              {missing.length} missing setup
+              {missingCount} not set up yet
               {scanFetcher.data.truncated ? " · stopped early (catalog larger than the scan's safety cap — rerun to continue)" : ""}
             </p>
-            {missing.length === 0 ? (
-              <s-paragraph>Every product in the store has this set up. Nothing to do.</s-paragraph>
+            {products.length === 0 ? (
+              <s-paragraph>No products found.</s-paragraph>
             ) : (
               <>
                 <div style={{ display: "flex", gap: "10px", margin: "0 0 12px", alignItems: "center", flexWrap: "wrap" }}>
@@ -324,27 +345,36 @@ export default function Index() {
                       <option key={c} value={c}>{c}</option>
                     ))}
                   </select>
-                  {(searchText || collectionFilter !== "all") && (
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    style={{ padding: "8px 12px", borderRadius: "10px", border: `1px solid ${brand.border}`, fontSize: "12.5px", color: brand.body, background: "#fff" }}
+                  >
+                    <option value="all">Any status</option>
+                    <option value="missing">Not set up yet</option>
+                    <option value="setup">Already set up</option>
+                  </select>
+                  {(searchText || collectionFilter !== "all" || statusFilter !== "all") && (
                     <button
                       type="button"
-                      onClick={() => { setSearchText(""); setCollectionFilter("all"); }}
+                      onClick={() => { setSearchText(""); setCollectionFilter("all"); setStatusFilter("all"); }}
                       style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "10px", border: `1px solid ${brand.border}`, background: brand.panel, color: brand.body, cursor: "pointer" }}
                     >
                       Clear filters
                     </button>
                   )}
                   <span style={{ fontSize: "12px", color: brand.muted }}>
-                    Showing {filteredMissing.length} of {missing.length}
+                    Showing {filteredProducts.length} of {products.length}
                   </span>
                 </div>
 
                 <div style={{ display: "flex", gap: "10px", margin: "0 0 12px", alignItems: "center", flexWrap: "wrap" }}>
                   <button
                     type="button"
-                    onClick={checkAllMissing}
+                    onClick={checkAllShown}
                     style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "10px", border: `1px solid ${brand.border}`, background: brand.panel, color: brand.body, cursor: "pointer" }}
                   >
-                    Check all shown ({filteredMissing.length})
+                    Check all shown ({filteredProducts.length})
                   </button>
                   <button
                     type="button"
@@ -354,7 +384,7 @@ export default function Index() {
                     Clear selection
                   </button>
                   <s-button {...(isSettingUp ? { loading: true } : {})} onClick={applySetup}>
-                    Apply setup to {checked.size} selected
+                    Apply to {checked.size} selected
                   </s-button>
                   <span style={{ fontSize: "12px", color: brand.muted }}>
                     Processes up to {setupBatchSize} per click — click Apply again for the rest of a larger
@@ -368,17 +398,20 @@ export default function Index() {
                       <tr>
                         <th style={thStyle}></th>
                         <th style={thStyle}>Title</th>
-                        <th style={thStyle}>Status</th>
+                        <th style={thStyle}>Setup status</th>
                         <th style={thStyle}>Handle</th>
                         <th style={thStyle}>Collections</th>
-                        <th style={thStyle}>Types to set up</th>
+                        <th style={thStyle}>Types</th>
                         <th style={thStyle}>Last result</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredMissing.map((p) => {
+                      {filteredProducts.map((p) => {
                         const result = resultByGid[p.id];
                         const types = selectedTypes[p.id] || [];
+                        const changed =
+                          p.hasSetup &&
+                          (types.length !== p.currentTypes.length || types.some((t) => !p.currentTypes.includes(t)));
                         return (
                           <tr key={p.id} className="dt-row">
                             <td style={tdStyle}>
@@ -394,13 +427,19 @@ export default function Index() {
                                 {p.title}
                               </a>
                             </td>
-                            <td style={tdStyle}>{p.status}</td>
+                            <td style={tdStyle}>
+                              <Pill
+                                label={p.hasSetup ? `Set up (${p.currentTypes.join("/") || "—"})` : "Not set up"}
+                                active
+                                color={p.hasSetup ? brand.success : brand.muted}
+                              />
+                            </td>
                             <td style={tdStyle}>{p.handle}</td>
                             <td style={{ ...tdStyle, fontSize: "12px", color: brand.muted }}>
                               {(p.collections || []).join(", ") || "—"}
                             </td>
                             <td style={tdStyle}>
-                              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+                              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
                                 {(p.availableTypes || []).map((t) => (
                                   <label
                                     key={t}
@@ -414,6 +453,9 @@ export default function Index() {
                                     {t}
                                   </label>
                                 ))}
+                                {changed && (
+                                  <span style={{ fontSize: "11px", color: "#B45309", fontWeight: 500 }}>changed</span>
+                                )}
                               </div>
                             </td>
                             <td style={tdStyle}>
@@ -425,7 +467,7 @@ export default function Index() {
                                     color={brand.success}
                                   />
                                 ) : (
-                                  <FriendlyErrorInline message="Couldn't set this one up" detail={result.error} />
+                                  <FriendlyErrorInline message="Couldn't apply this one" detail={result.error} />
                                 )
                               ) : (
                                 "—"

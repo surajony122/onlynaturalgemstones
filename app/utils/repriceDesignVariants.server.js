@@ -398,14 +398,22 @@ const SCAN_PAGE_SIZE = 250;
 const SCAN_MAX_PAGES = 40; // up to 10,000 products
 
 /**
- * Pages through every product in the store (any status) and returns the
- * ones that DON'T have the Type(Customised)/Metal option structure the
- * jewelry customizer flow needs — i.e. products still needing setup
- * before repriceDesignVariants (or the storefront flow at all) can work
- * on them. Read-only, changes nothing.
+ * Pages through every product in the store (any status) and returns ALL
+ * of them — both products that still need the Type(Customised)/Metal
+ * option structure set up, AND ones that already have it — each carrying
+ * enough info for the page to either set one up for the first time or
+ * change an already-set-up one's Type selection (add/remove Ring/
+ * Bracelet/Pendent). Read-only, changes nothing.
+ *
+ * currentTypes is the ACTUAL Type values the product's Customised option
+ * has today (empty for a not-yet-set-up product) — the page defaults a
+ * product's checkboxes to this so re-scanning never silently proposes a
+ * change nobody asked for. availableTypes is what this product's design
+ * set could ever offer (pearl: Ring/Pendent only) — same as before, used
+ * to constrain which checkboxes even show.
  */
-export async function findProductsMissingJewelrySetup(admin) {
-  const missing = [];
+export async function findJewelryProducts(admin) {
+  const products = [];
   let scanned = 0;
   let cursor = null;
   let hasNextPage = true;
@@ -414,7 +422,7 @@ export async function findProductsMissingJewelrySetup(admin) {
   while (hasNextPage && pages < SCAN_MAX_PAGES) {
     const res = await admin.graphql(
       `#graphql
-      query ScanProductsForJewelrySetup($first: Int!, $after: String) {
+      query ScanJewelryProducts($first: Int!, $after: String) {
         products(first: $first, after: $after) {
           pageInfo { hasNextPage endCursor }
           nodes {
@@ -423,7 +431,7 @@ export async function findProductsMissingJewelrySetup(admin) {
             handle
             status
             templateSuffix
-            options { name }
+            options { name values }
             collections(first: 10) { nodes { title } }
           }
         }
@@ -436,24 +444,25 @@ export async function findProductsMissingJewelrySetup(admin) {
     const nodes = json.data?.products?.nodes || [];
     for (const p of nodes) {
       scanned++;
-      if (!hasJewelrySetup(p.options)) {
-        const designSet = designSetFor(p.templateSuffix);
-        missing.push({
-          id: p.id,
-          numericId: p.id.split("/").pop(),
-          title: p.title,
-          handle: p.handle,
-          status: p.status,
-          collections: (p.collections?.nodes || []).map((c) => c.title),
-          designSet,
-          // What this product's design set actually has catalog data for
-          // (pearl: Ring/Pendent only) — the page uses this to show only
-          // the Type checkboxes that could possibly work for this product,
-          // pre-checked, rather than offering an option that would silently
-          // build an empty Bracelet dropdown.
-          availableTypes: typesForDesignSet(designSet),
-        });
-      }
+      const hasSetup = hasJewelrySetup(p.options);
+      const designSet = designSetFor(p.templateSuffix);
+      const availableTypes = typesForDesignSet(designSet);
+      const customisedOption = (p.options || []).find((o) => (o.name || "").toLowerCase().includes("custom"));
+      const currentTypes = hasSetup
+        ? (customisedOption?.values || []).filter((v) => v !== "Loose" && availableTypes.includes(v))
+        : [];
+      products.push({
+        id: p.id,
+        numericId: p.id.split("/").pop(),
+        title: p.title,
+        handle: p.handle,
+        status: p.status,
+        collections: (p.collections?.nodes || []).map((c) => c.title),
+        designSet,
+        availableTypes,
+        hasSetup,
+        currentTypes,
+      });
     }
 
     hasNextPage = json.data?.products?.pageInfo?.hasNextPage || false;
@@ -461,7 +470,7 @@ export async function findProductsMissingJewelrySetup(admin) {
     pages++;
   }
 
-  return { scanned, missing, truncated: hasNextPage };
+  return { scanned, products, truncated: hasNextPage };
 }
 
 /**
