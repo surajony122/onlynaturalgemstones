@@ -14,6 +14,7 @@ import {
   BULK_BATCH_SIZE,
   PRODUCT_ID_NUMERIC,
 } from "../utils/repriceDesignVariants.server";
+import { findLiveThemeId, inspectThemeCustomizerFiles } from "../utils/shopify-admin.server";
 import { tableWrapStyle, tableStyle, thStyle, tdStyle, TableGlobalStyles, Pill, brand } from "../components/table-kit";
 import { FriendlyError, FriendlyErrorInline } from "../components/friendly-error";
 
@@ -103,6 +104,21 @@ export const action = async ({ request }) => {
     }
   }
 
+  if (intent === "inspectTheme") {
+    try {
+      const live = await findLiveThemeId(admin);
+      const result = await inspectThemeCustomizerFiles(admin, live.id);
+      console.log(
+        "[app._index] inspectTheme:",
+        JSON.stringify({ theme: live, totalFilesScanned: result.totalFilesScanned, candidates: result.candidates }),
+      );
+      return { intent, ok: true, theme: live, ...result };
+    } catch (err) {
+      console.error("[app._index] inspectTheme failed:", err);
+      return { intent, ok: false, error: String(err.message || err) };
+    }
+  }
+
   if (intent === "removeVariants") {
     try {
       const productGids = JSON.parse(formData.get("productGids") || "[]");
@@ -134,6 +150,7 @@ export default function Index() {
   const channelFetcher = useFetcher();
   const inventoryFetcher = useFetcher();
   const removeFetcher = useFetcher();
+  const themeFetcher = useFetcher();
   const shopify = useAppBridge();
   const isLoading =
     ["loading", "submitting"].includes(fetcher.state) &&
@@ -143,6 +160,7 @@ export default function Index() {
   const isFixingChannels = channelFetcher.state !== "idle";
   const isSettingInventory = inventoryFetcher.state !== "idle";
   const isRemoving = removeFetcher.state !== "idle";
+  const isInspectingTheme = themeFetcher.state !== "idle";
   const [bulkQuantity, setBulkQuantity] = useState("10");
 
   // Local copy of the scanned product list so a successful Apply can
@@ -333,6 +351,7 @@ export default function Index() {
 
   const reprice = () => fetcher.submit({}, { method: "POST" });
   const scanSetup = () => scanFetcher.submit({ intent: "scanSetup" }, { method: "POST" });
+  const inspectTheme = () => themeFetcher.submit({ intent: "inspectTheme" }, { method: "POST" });
 
   const toggle = (id) => {
     setChecked((prev) => {
@@ -493,6 +512,52 @@ export default function Index() {
             </s-paragraph>
           </div>
         </details>
+      </s-section>
+
+      <s-section heading="Inspect storefront customizer">
+        <s-paragraph>
+          Reads the live (published) theme's actual files and finds any whose path mentions "jewel", "custom", or
+          "design" — use this to check what's really driving (or not driving) the customization UI on a product page,
+          instead of guessing from screenshots.
+        </s-paragraph>
+        <s-button {...(isInspectingTheme ? { loading: true } : {})} onClick={inspectTheme}>
+          Inspect storefront customizer
+        </s-button>
+        {themeFetcher.data?.intent === "inspectTheme" && !themeFetcher.data.ok && (
+          <div style={{ marginTop: "12px" }}>
+            <FriendlyError message="Couldn't inspect the live theme's files." detail={themeFetcher.data.error} />
+          </div>
+        )}
+        {themeFetcher.data?.intent === "inspectTheme" && themeFetcher.data.ok && (
+          <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "10px" }}>
+            <p style={{ fontSize: "12.5px", color: brand.muted, margin: 0 }}>
+              Live theme: <s-text fontWeight="bold">{themeFetcher.data.theme?.name}</s-text> ·{" "}
+              {themeFetcher.data.totalFilesScanned} files scanned · {themeFetcher.data.candidateCount} matched
+            </p>
+            {themeFetcher.data.candidates?.length > 0 && (
+              <p style={{ fontSize: "12px", color: brand.body, margin: 0 }}>
+                Matching files: {themeFetcher.data.candidates.join(", ")}
+              </p>
+            )}
+            {themeFetcher.data.candidateCount === 0 && (
+              <FriendlyErrorInline message="No theme file matched 'jewel'/'custom'/'design' at all — the dynamic customizer may not be part of this theme." />
+            )}
+            {(themeFetcher.data.contents || []).map((f) => (
+              <div key={f.filename} style={{ border: `1px solid ${brand.border}`, borderRadius: "10px", padding: "10px" }}>
+                <p style={{ fontSize: "12.5px", fontWeight: 600, color: brand.body, margin: "0 0 6px" }}>
+                  {f.filename} ({f.length.toLocaleString()} chars{f.length > 3000 ? ", showing first 3,000" : ""})
+                </p>
+                {f.excerpt ? (
+                  <pre style={{ fontSize: "11px", whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: "260px", overflow: "auto", background: brand.panel, padding: "8px", borderRadius: "6px", margin: 0 }}>
+                    {f.excerpt}
+                  </pre>
+                ) : (
+                  <span style={{ fontSize: "12px", color: brand.muted }}>Could not read this file's content.</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </s-section>
 
       {fetcher.data?.ok && (

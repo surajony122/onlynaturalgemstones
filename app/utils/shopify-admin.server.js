@@ -110,6 +110,107 @@ export async function getFreeCertType(admin, productGid) {
   return "other";
 }
 
+/** Finds the currently-published (live/MAIN) theme's id — the one
+ * actually serving the storefront right now, as opposed to any
+ * unpublished "test" theme or the hardcoded THEME_GID some pricing code
+ * reads settings from. Used only by the diagnostic below, to make sure
+ * whatever we inspect matches what a real shopper sees. */
+export async function findLiveThemeId(admin) {
+  const res = await admin.graphql(`#graphql
+    query LiveTheme {
+      themes(first: 20, roles: [MAIN]) {
+        nodes { id name role }
+      }
+    }`);
+  const json = await res.json();
+  if (json.errors) throw new Error(`Theme lookup failed: ${JSON.stringify(json.errors).slice(0, 300)}`);
+  const nodes = json.data?.themes?.nodes || [];
+  const live = nodes.find((t) => t.role === "MAIN") || nodes[0];
+  if (!live) throw new Error("No published (MAIN) theme found on this shop");
+  return { id: live.id, name: live.name };
+}
+
+/** Diagnostic only (not used by any live pricing/checkout path): lists
+ * every theme file whose path looks related to the jewelry customizer
+ * (contains "jewel", "custom", or "design"), and returns the raw content
+ * of each match, truncated. Exists purely so this app can answer "is the
+ * dynamic design-set customizer actually wired up on the live theme"
+ * directly from real theme content instead of guessing from storefront
+ * screenshots — see app._index.jsx's "Inspect storefront customizer"
+ * button. Reading the full file list first (rather than guessing exact
+ * filenames like getThemeSettings does for the one settings_data.json it
+ * always needs) is deliberate: this app's own past comments reference
+ * snippet names like shubh-jewelry-flow.liquid /
+ * shubh-gems-global-designs.liquid, but those are notes from a previous
+ * session, not a guarantee the current live theme still uses those exact
+ * filenames. */
+export async function inspectThemeCustomizerFiles(admin, themeGid) {
+  const listRes = await admin.graphql(
+    `#graphql
+    query ListThemeFiles($id: ID!, $after: String) {
+      theme(id: $id) {
+        files(first: 250, after: $after) {
+          pageInfo { hasNextPage endCursor }
+          nodes { filename }
+        }
+      }
+    }`,
+    { variables: { id: themeGid, after: null } },
+  );
+  const listJson = await listRes.json();
+  if (listJson.errors) throw new Error(`Theme file list failed: ${JSON.stringify(listJson.errors).slice(0, 300)}`);
+  let allFiles = (listJson.data?.theme?.files?.nodes || []).map((f) => f.filename);
+  let hasNextPage = listJson.data?.theme?.files?.pageInfo?.hasNextPage || false;
+  let cursor = listJson.data?.theme?.files?.pageInfo?.endCursor || null;
+  // Themes can have thousands of files (images, locales, etc.) — cap how
+  // many pages we page through so this stays a quick diagnostic, not a
+  // full theme crawl. 5 pages x 250 = 1250 files, comfortably covers a
+  // normal theme's liquid/snippet/section file count.
+  let pages = 1;
+  while (hasNextPage && pages < 5) {
+    const res = await admin.graphql(
+      `#graphql
+      query ListThemeFilesPage($id: ID!, $after: String) {
+        theme(id: $id) {
+          files(first: 250, after: $after) {
+            pageInfo { hasNextPage endCursor }
+            nodes { filename }
+          }
+        }
+      }`,
+      { variables: { id: themeGid, after: cursor } },
+    );
+    const json = await res.json();
+    if (json.errors) break;
+    allFiles = allFiles.concat((json.data?.theme?.files?.nodes || []).map((f) => f.filename));
+    hasNextPage = json.data?.theme?.files?.pageInfo?.hasNextPage || false;
+    cursor = json.data?.theme?.files?.pageInfo?.endCursor || null;
+    pages++;
+  }
+
+  const candidates = allFiles.filter((f) => /jewel|custom|design/i.test(f));
+
+  const contents = [];
+  for (const filename of candidates.slice(0, 10)) {
+    const res = await admin.graphql(
+      `#graphql
+      query ThemeFileContent($id: ID!, $filenames: [String!]!) {
+        theme(id: $id) {
+          files(filenames: $filenames, first: 1) {
+            nodes { filename body { ... on OnlineStoreThemeFileBodyText { content } } }
+          }
+        }
+      }`,
+      { variables: { id: themeGid, filenames: [filename] } },
+    );
+    const json = await res.json();
+    const content = json.data?.theme?.files?.nodes?.[0]?.body?.content || null;
+    contents.push({ filename, length: content?.length ?? 0, excerpt: content ? content.slice(0, 3000) : null });
+  }
+
+  return { totalFilesScanned: allFiles.length, candidateCount: candidates.length, candidates, contents };
+}
+
 /** Reads the product's own ring_designs/pandent_designs/bracelet_designs
  * metaobject list (product-specific design overrides) and returns entries
  * matching the chosen metal — same substring matching the Liquid uses.
