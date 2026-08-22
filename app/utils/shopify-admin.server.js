@@ -188,7 +188,23 @@ export async function inspectThemeCustomizerFiles(admin, themeGid) {
     pages++;
   }
 
-  const candidates = allFiles.filter((f) => /jewel|custom|design/i.test(f));
+  // "custom" alone also matches Shopify's own templates/customers/*.json
+  // (built-in customer-account pages — "custom" is just a substring of
+  // "customers") and sections/custom-liquid.liquid (the generic "Custom
+  // Liquid" section every theme ships) — exclude those explicitly rather
+  // than widen the false-positive net further. "jewel"/"design" alone are
+  // specific enough already not to need the same treatment.
+  const candidates = allFiles.filter(
+    (f) => /jewel|design/i.test(f) || (/custom/i.test(f) && !/customers\/|customer\.|custom-liquid|custom-search/i.test(f)),
+  );
+  // Prioritize the files that actually matter (the shubh-* jewelry/design
+  // ones) to the front, so they're never crowded out of the 10-file
+  // content-fetch cap by something less relevant that merely happened to
+  // sort earlier.
+  candidates.sort((a, b) => {
+    const score = (f) => (/shubh-(jewelry|gems)/i.test(f) ? 0 : 1);
+    return score(a) - score(b);
+  });
 
   const contents = [];
   for (const filename of candidates.slice(0, 10)) {
