@@ -86,12 +86,20 @@ export const action = async ({ request }) => {
       title: variantTitle,
       total: quote.breakdown.total,
       gemstoneVariantGid: toGid("ProductVariant", gemstoneVariantId),
+      gemstoneProductGid: quote.gemstoneProductId,
+      gemstoneImageUrl: quote.gemstoneImageUrl,
     });
 
     return Response.json({
       variantId: numericId,
       total: quote.breakdown.total,
       breakdown: quote.breakdown,
+      // So the storefront can show the real gemstone's name as the cart
+      // line's display title instead of "Custom Jewelry Order" (the
+      // shared product every customization variant lives on) — see
+      // shubh-jewelry-customizer-v2.js's submitViaTrustedQuote and the
+      // cart template's _Gemstone Title property override.
+      gemstoneProductTitle: quote.gemstoneProductTitle,
     });
   } catch (err) {
     if (err instanceof QuoteError) {

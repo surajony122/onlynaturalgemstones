@@ -25,7 +25,7 @@ export async function getVariantPrice(admin, variantGid) {
         id
         title
         price
-        product { id title }
+        product { id title featuredImage { url } }
       }
     }`,
     { variables: { id: variantGid } },
@@ -39,6 +39,10 @@ export async function getVariantPrice(admin, variantGid) {
     price: parseFloat(v.price),
     productId: v.product.id,
     productTitle: v.product.title,
+    // Used to give the synthetic customization variant (see
+    // createCustomizedVariant) the real gemstone's own image, so the
+    // cart shows a real product photo instead of nothing.
+    imageUrl: v.product.featuredImage?.url || null,
   };
 }
 
@@ -417,7 +421,7 @@ export async function getOrCreateCustomizationProduct(admin) {
  * customization details for order visibility. This is the ONLY place a
  * price gets written — and it's always this module's own computed total,
  * never anything read from the incoming request body. */
-export async function createCustomizedVariant(admin, productGid, { title, total, gemstoneVariantGid }) {
+export async function createCustomizedVariant(admin, productGid, { title, total, gemstoneVariantGid, gemstoneProductGid, gemstoneImageUrl }) {
   const uniqueOptionValue = `${title} #${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   const res = await admin.graphql(
     `#graphql
@@ -487,9 +491,121 @@ export async function createCustomizedVariant(admin, productGid, { title, total,
   // "already sold out" 422 through on /cart/add.js, meaning the
   // storefront cache genuinely trails availableForSale becoming true, not
   // just the initial write).
-  await waitUntilAvailableForSale(admin, variant.id);
+  // Run the availability wait and the (best-effort, non-blocking-on-
+  // failure) image linking concurrently — they touch independent
+  // resources, no reason to make the customer wait for both in sequence.
+  await Promise.all([
+    waitUntilAvailableForSale(admin, variant.id),
+    attachGemstoneImage(admin, productGid, gemstoneProductGid, variant.id, gemstoneImageUrl),
+  ]);
 
   return { variantGid: variant.id, numericId: variant.id.split("/").pop() };
+}
+
+/** Best-effort: gives the newly created customization variant the real
+ * gemstone's own photo, so the cart/order show an actual product image
+ * instead of nothing — the shared "Custom Jewelry Order" product has no
+ * single representative image of its own, since it stands in for every
+ * gemstone's customizations.
+ *
+ * Caches the uploaded media's id on the GEMSTONE product itself
+ * (custom.customization_media_id metafield) so the same photo isn't
+ * re-uploaded onto "Custom Jewelry Order" every single time that
+ * gemstone gets ordered — reuses the cached media id instead. Without
+ * this, a popular gemstone's photo would get duplicated onto that shared
+ * product's media library once per order, indefinitely.
+ *
+ * Never throws: a product image is a nice-to-have, not something that
+ * should be able to block a purchase if anything here fails (missing
+ * gemstoneProductGid/gemstoneImageUrl, a GraphQL error, a stale cached
+ * media id that no longer exists — all just mean no image shows, same
+ * as before this existed). */
+async function attachGemstoneImage(admin, customizationProductGid, gemstoneProductGid, newVariantGid, gemstoneImageUrl) {
+  if (!gemstoneProductGid) return;
+  try {
+    const cacheRes = await admin.graphql(
+      `#graphql
+      query CachedCustomizationMedia($id: ID!) {
+        product(id: $id) {
+          metafield(namespace: "custom", key: "customization_media_id") { value }
+        }
+      }`,
+      { variables: { id: gemstoneProductGid } },
+    );
+    const cacheJson = await cacheRes.json();
+    let mediaId = cacheJson.data?.product?.metafield?.value || null;
+
+    if (!mediaId) {
+      if (!gemstoneImageUrl) return;
+      const createRes = await admin.graphql(
+        `#graphql
+        mutation CreateCustomizationMedia($productId: ID!, $media: [CreateMediaInput!]!) {
+          productCreateMedia(productId: $productId, media: $media) {
+            media { id }
+            mediaUserErrors { field message }
+          }
+        }`,
+        {
+          variables: {
+            productId: customizationProductGid,
+            media: [{ originalSource: gemstoneImageUrl, mediaContentType: "IMAGE" }],
+          },
+        },
+      );
+      const createJson = await createRes.json();
+      const mediaErrs = createJson.data?.productCreateMedia?.mediaUserErrors;
+      if (mediaErrs?.length) {
+        console.error("[attachGemstoneImage] productCreateMedia failed:", JSON.stringify(mediaErrs));
+        return;
+      }
+      mediaId = createJson.data?.productCreateMedia?.media?.[0]?.id;
+      if (!mediaId) return;
+
+      // Cache it on the gemstone product for next time — non-fatal if
+      // this write fails, just means the next order re-uploads.
+      await admin.graphql(
+        `#graphql
+        mutation CacheCustomizationMediaId($metafields: [MetafieldsSetInput!]!) {
+          metafieldsSet(metafields: $metafields) { userErrors { field message } }
+        }`,
+        {
+          variables: {
+            metafields: [
+              {
+                ownerId: gemstoneProductGid,
+                namespace: "custom",
+                key: "customization_media_id",
+                type: "single_line_text_field",
+                value: mediaId,
+              },
+            ],
+          },
+        },
+      );
+    }
+
+    const appendRes = await admin.graphql(
+      `#graphql
+      mutation AppendCustomizationVariantMedia($productId: ID!, $variantMedia: [ProductVariantAppendMediaInput!]!) {
+        productVariantAppendMedia(productId: $productId, variantMedia: $variantMedia) {
+          userErrors { field message }
+        }
+      }`,
+      {
+        variables: {
+          productId: customizationProductGid,
+          variantMedia: [{ variantId: newVariantGid, mediaIds: [mediaId] }],
+        },
+      },
+    );
+    const appendJson = await appendRes.json();
+    const appendErrs = appendJson.data?.productVariantAppendMedia?.userErrors;
+    if (appendErrs?.length) {
+      console.error("[attachGemstoneImage] productVariantAppendMedia failed:", JSON.stringify(appendErrs));
+    }
+  } catch (err) {
+    console.error("[attachGemstoneImage] failed (non-fatal):", err);
+  }
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));

@@ -112,6 +112,7 @@ export async function computeTrustedQuote(admin, selections) {
       },
       gemstoneProductId: gemstone.productId,
       gemstoneProductTitle: gemstone.productTitle,
+      gemstoneImageUrl: gemstone.imageUrl,
     };
   }
 
@@ -173,6 +174,7 @@ export async function computeTrustedQuote(admin, selections) {
     },
     gemstoneProductId: gemstone.productId,
     gemstoneProductTitle: gemstone.productTitle,
+    gemstoneImageUrl: gemstone.imageUrl,
     metalVariantId: metalVariant.variantId,
   };
 }
