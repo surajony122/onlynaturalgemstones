@@ -119,6 +119,39 @@ function typesForDesignSet(designSet) {
   return designSet === "pearl" ? ["Ring", "Pendent"] : TYPES;
 }
 
+// Display Type name -> the lowercase bucket key GLOBAL_DESIGNS actually
+// uses ("Pendent" is a typo carried over from the theme/catalog itself —
+// its own bucket key is spelled correctly as "pendant").
+const TYPE_KEY_FOR = { Ring: "ring", Bracelet: "bracelet", Pendent: "pendant" };
+
+/**
+ * Checks whether the GLOBAL_DESIGNS fallback catalog actually has at
+ * least one design entry for every Type x Metal combination a product
+ * could offer — i.e. whether the storefront's dynamic customizer (the
+ * coded design-set flow, not native variants) will always have something
+ * to show that product's shopper, even if the product has no
+ * product-specific ring_designs/pandent_designs/bracelet_designs
+ * metaobject overrides of its own (those are optional extras layered on
+ * top; the global catalog is the guaranteed floor). Pure computation, no
+ * extra GraphQL calls — reuses the exact same typesForDesignSet/
+ * metalsForDesignSet a product's own Type/Metal option values are derived
+ * from, so "available" here always matches what the product would
+ * actually offer.
+ */
+function designCoverageFor(designSet, availableTypes, metals) {
+  const bucket = GLOBAL_DESIGNS[designSet] || {};
+  const missing = [];
+  for (const type of availableTypes) {
+    const typeKey = TYPE_KEY_FOR[type];
+    for (const metal of metals) {
+      const metalKey = METAL_TITLE_TO_KEY[metal];
+      const list = bucket[typeKey]?.[metalKey];
+      if (!list || !list.length) missing.push(`${type}/${metal}`);
+    }
+  }
+  return { complete: missing.length === 0, missing };
+}
+
 // Same signal the theme itself uses (snippets/shubh-jewelry-flow.liquid
 // and shubh-gems-customizer.liquid both pass design_set: template.suffix
 // into shubh-gems-global-designs.liquid) — a product's assigned JSON
@@ -417,6 +450,13 @@ export async function findJewelryProducts(admin) {
       const currentTypes = hasSetup
         ? (customisedOption?.values || []).filter((v) => v !== "Loose" && availableTypes.includes(v))
         : [];
+      // Does the global fallback design catalog actually have something
+      // to show for every Type/Metal this product could offer — i.e. will
+      // the storefront's dynamic (coded design-set) customizer always
+      // have designs to display for this product, independent of whether
+      // it has native variants or its own metaobject overrides. See
+      // designCoverageFor.
+      const designCoverage = designCoverageFor(designSet, availableTypes, metalsForDesignSet(designSet));
       products.push({
         id: p.id,
         numericId: p.id.split("/").pop(),
@@ -428,6 +468,7 @@ export async function findJewelryProducts(admin) {
         availableTypes,
         hasSetup,
         currentTypes,
+        designCoverage,
         // Channel/quantity status, for the page's Channels/Stock columns —
         // read straight off the product, no extra per-product query needed.
         totalInventory: p.totalInventory ?? 0,

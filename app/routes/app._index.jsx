@@ -154,6 +154,7 @@ export default function Index() {
   const [searchText, setSearchText] = useState("");
   const [collectionFilter, setCollectionFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all"); // all | missing | setup
+  const [designFilter, setDesignFilter] = useState("all"); // all | incomplete
   // Per-product Type selection (Ring/Bracelet/Pendent subset) — keyed by
   // product id. Defaults to the product's CURRENT Types if it's already
   // set up (so re-scanning never silently proposes removing something),
@@ -365,10 +366,12 @@ export default function Index() {
     const matchesCollection = collectionFilter === "all" || (p.collections || []).includes(collectionFilter);
     const matchesStatus =
       statusFilter === "all" || (statusFilter === "missing" ? !p.hasSetup : p.hasSetup);
-    return matchesSearch && matchesCollection && matchesStatus;
+    const matchesDesign = designFilter === "all" || !p.designCoverage?.complete;
+    return matchesSearch && matchesCollection && matchesStatus && matchesDesign;
   });
 
   const missingCount = products.filter((p) => !p.hasSetup).length;
+  const designIncompleteCount = products.filter((p) => p.designCoverage && !p.designCoverage.complete).length;
 
   const checkAllShown = () => setChecked(new Set(filteredProducts.map((p) => p.id)));
   const clearChecked = () => setChecked(new Set());
@@ -518,9 +521,12 @@ export default function Index() {
 
       <s-section heading="Set up or change jewelry variants">
         <s-paragraph>
-          Scans every product in the store and shows its Type(Customised)/Metal setup, sales channel status, and
-          stock. Check products, pick Types (for new or already-set-up products alike), then Apply — or just fix
-          sales channels in bulk without touching variants at all.{" "}
+          Scans every product in the store and shows its Type(Customised)/Metal setup, sales channel status, stock,
+          and whether the global design catalog actually has designs to show for it (the "Design set" column — this
+          is what the storefront's dynamic customizer falls back to for any product that doesn't have native
+          variants, so a red "missing" pill here means that product's shopper could see an empty design picker).
+          Check products, pick Types (for new or already-set-up products alike), then Apply — or just fix sales
+          channels or stock in bulk without touching variants at all.{" "}
           <s-text fontWeight="bold">Unticking a Type that's already live deletes those variants</s-text> (existing
           orders are unaffected, but it stops being sellable until re-added).
         </s-paragraph>
@@ -581,7 +587,7 @@ export default function Index() {
           <div style={{ marginTop: "12px" }}>
             <p style={{ fontSize: "12.5px", color: brand.muted, margin: "0 0 10px" }}>
               Scanned {scanFetcher.data.scanned} product{scanFetcher.data.scanned === 1 ? "" : "s"} ·{" "}
-              {missingCount} not set up yet
+              {missingCount} not set up yet · {designIncompleteCount} missing global designs for some Type/Metal
               {scanFetcher.data.truncated ? " · stopped early (catalog larger than the scan's safety cap — rerun to continue)" : ""}
             </p>
             {products.length === 0 ? (
@@ -620,10 +626,18 @@ export default function Index() {
                       <option value="missing">Not set up yet</option>
                       <option value="setup">Already set up</option>
                     </select>
-                    {(searchText || collectionFilter !== "all" || statusFilter !== "all") && (
+                    <select
+                      value={designFilter}
+                      onChange={(e) => setDesignFilter(e.target.value)}
+                      style={{ padding: "8px 12px", borderRadius: "10px", border: `1px solid ${brand.border}`, fontSize: "12.5px", color: brand.body, background: "#fff" }}
+                    >
+                      <option value="all">Any design coverage</option>
+                      <option value="incomplete">Missing global designs</option>
+                    </select>
+                    {(searchText || collectionFilter !== "all" || statusFilter !== "all" || designFilter !== "all") && (
                       <button
                         type="button"
-                        onClick={() => { setSearchText(""); setCollectionFilter("all"); setStatusFilter("all"); }}
+                        onClick={() => { setSearchText(""); setCollectionFilter("all"); setStatusFilter("all"); setDesignFilter("all"); }}
                         style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "10px", border: `1px solid ${brand.border}`, background: brand.panel, color: brand.body, cursor: "pointer" }}
                       >
                         Clear filters
@@ -690,6 +704,7 @@ export default function Index() {
                         <th style={thStyle}>Stock</th>
                         <th style={thStyle}>Handle</th>
                         <th style={thStyle}>Collections</th>
+                        <th style={thStyle}>Design set</th>
                         <th style={thStyle}>Types</th>
                         <th style={thStyle}>Last result</th>
                       </tr>
@@ -787,6 +802,24 @@ export default function Index() {
                             <td style={tdStyle}>{p.handle}</td>
                             <td style={{ ...tdStyle, fontSize: "12px", color: brand.muted }}>
                               {(p.collections || []).join(", ") || "—"}
+                            </td>
+                            <td style={tdStyle}>
+                              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                                <span style={{ fontSize: "12px", color: brand.muted }}>{p.designSet || "—"}</span>
+                                {p.designCoverage && (
+                                  p.designCoverage.complete ? (
+                                    <Pill label="✓ designs ready" active color={brand.success} />
+                                  ) : (
+                                    <span title={`Global catalog has no designs for: ${p.designCoverage.missing.join(", ")}`}>
+                                      <Pill
+                                        label={`⚠ missing ${p.designCoverage.missing.length}`}
+                                        active
+                                        color={brand.danger}
+                                      />
+                                    </span>
+                                  )
+                                )}
+                              </div>
                             </td>
                             <td style={tdStyle}>
                               <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
