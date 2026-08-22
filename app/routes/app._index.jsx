@@ -39,6 +39,7 @@ export const action = async ({ request }) => {
       const result = await findJewelryProducts(admin);
       return { intent, ok: true, ...result };
     } catch (err) {
+      console.error("[app._index] scanSetup failed:", err);
       return { intent, ok: false, error: String(err.message || err) };
     }
   }
@@ -49,9 +50,18 @@ export const action = async ({ request }) => {
       if (!Array.isArray(items) || !items.length) {
         return { intent, ok: false, error: "Check at least one product first." };
       }
+      console.log("[app._index] setupSelected items:", JSON.stringify(items));
       const result = await setupJewelryVariantsForProducts(admin, items);
       return { intent, ok: true, ...result };
     } catch (err) {
+      // Logged with the full stack (not just err.message) — this is the
+      // ONE place a real Shopify/GraphQL failure from this button lands,
+      // and the UI's friendly-error card only shows err.message, which is
+      // sometimes too short to actually diagnose from (e.g. a bare
+      // "productSet failed: [...]" with truncated userErrors). Render's
+      // Logs tab is the fallback when a screenshot of the UI card isn't
+      // getting the detail across.
+      console.error("[app._index] setupSelected failed:", err);
       return { intent, ok: false, error: String(err.message || err) };
     }
   }
@@ -60,6 +70,7 @@ export const action = async ({ request }) => {
     const result = await repriceDesignVariants(admin);
     return { intent: "reprice", ok: true, ...result };
   } catch (err) {
+    console.error("[app._index] reprice failed:", err);
     return { intent: "reprice", ok: false, error: String(err.message || err) };
   }
 };

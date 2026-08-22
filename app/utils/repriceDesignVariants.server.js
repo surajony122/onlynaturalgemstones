@@ -52,6 +52,14 @@ async function fetchPrimaryLocationId(admin) {
       locations(first: 10) { nodes { id isActive fulfillsOnlineOrders } }
     }`);
   const json = await res.json();
+  // Logged, not thrown — a scope/permission issue here shouldn't block
+  // the whole reprice/setup; it should just mean new variants don't get
+  // a starting quantity (repriceDesignVariants already treats a null
+  // locationId that way). But a silent [] here was exactly why a real
+  // failure upstream of this had nothing to go on in the logs.
+  if (json.errors) {
+    console.error("[fetchPrimaryLocationId] GraphQL errors:", JSON.stringify(json.errors));
+  }
   const nodes = json.data?.locations?.nodes || [];
   const best =
     nodes.find((l) => l.isActive && l.fulfillsOnlineOrders) || nodes.find((l) => l.isActive) || nodes[0];
