@@ -48,6 +48,28 @@ const METAL_RATE_DEFAULTS = {
   "14k-white": 8514,
 };
 
+/** Reads the live per-gram metal rate for one metal key out of a theme
+ * settings object — shared by computeTrustedQuote and
+ * settingsMatrix.server.js's batch price-matrix builder so both always
+ * use the exact same rate for the exact same metal, never two separately
+ * hand-copied lookups that could drift out of sync. */
+export function resolveMetalRate(settings, metalKey) {
+  return parseFloat(settings[METAL_RATE_SETTINGS_KEY[metalKey]]) || METAL_RATE_DEFAULTS[metalKey];
+}
+
+/** The metal/design cost formula itself (mirrors the theme's own
+ * updatePrice() exactly) — pulled out to its own exported function so
+ * settingsMatrix.server.js's batch matrix builder computes prices with
+ * the IDENTICAL formula computeTrustedQuote uses per-order, rather than
+ * a second hand-copied version that could quietly drift out of sync with
+ * this one. */
+export function computeMetalCost({ isGoldOrSilver, designWeight, designPrice, metalRate }) {
+  if (isGoldOrSilver) {
+    return designWeight > 0 ? Math.max(designWeight, 1) * metalRate : designPrice || 2000;
+  }
+  return designPrice > 0 ? designPrice : designWeight > 0 ? Math.max(designWeight, 1) * metalRate : 2000;
+}
+
 class QuoteError extends Error {
   constructor(message) {
     super(message);

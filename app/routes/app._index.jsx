@@ -15,6 +15,7 @@ import {
   PRODUCT_ID_NUMERIC,
 } from "../utils/repriceDesignVariants.server";
 import { findLiveThemeId, inspectThemeCustomizerFiles, listThemes } from "../utils/shopify-admin.server";
+import { buildSettingsDesignMatrix } from "../utils/settingsMatrix.server";
 import { tableWrapStyle, tableStyle, thStyle, tdStyle, TableGlobalStyles, Pill, brand } from "../components/table-kit";
 import { FriendlyError, FriendlyErrorInline } from "../components/friendly-error";
 
@@ -104,6 +105,17 @@ export const action = async ({ request }) => {
     }
   }
 
+  if (intent === "buildSettingsMatrix") {
+    try {
+      const result = await buildSettingsDesignMatrix(admin);
+      console.log("[app._index] buildSettingsMatrix:", JSON.stringify(result.results.map((r) => ({ type: r.type, ok: r.ok, variantCount: r.variantCount, error: r.error }))));
+      return { intent, ok: true, ...result };
+    } catch (err) {
+      console.error("[app._index] buildSettingsMatrix failed:", err);
+      return { intent, ok: false, error: String(err.message || err) };
+    }
+  }
+
   if (intent === "listThemes") {
     try {
       const themes = await listThemes(admin);
@@ -164,6 +176,7 @@ export default function Index() {
   const removeFetcher = useFetcher();
   const themeFetcher = useFetcher();
   const themeListFetcher = useFetcher();
+  const settingsMatrixFetcher = useFetcher();
   const shopify = useAppBridge();
   const isLoading =
     ["loading", "submitting"].includes(fetcher.state) &&
@@ -175,6 +188,7 @@ export default function Index() {
   const isRemoving = removeFetcher.state !== "idle";
   const isInspectingTheme = themeFetcher.state !== "idle";
   const isListingThemes = themeListFetcher.state !== "idle";
+  const isBuildingSettingsMatrix = settingsMatrixFetcher.state !== "idle";
   const [selectedThemeId, setSelectedThemeId] = useState("");
   const [bulkQuantity, setBulkQuantity] = useState("10");
 
@@ -366,6 +380,13 @@ export default function Index() {
 
   const reprice = () => fetcher.submit({}, { method: "POST" });
   const scanSetup = () => scanFetcher.submit({ intent: "scanSetup" }, { method: "POST" });
+  const buildSettingsMatrix = () => {
+    const ok = window.confirm(
+      "Rebuild the Metal x Design price matrix on Ring/Pendant/Bracelet Settings? This replaces those 3 products' current variants — nothing on your 373 gemstone products is touched."
+    );
+    if (!ok) return;
+    settingsMatrixFetcher.submit({ intent: "buildSettingsMatrix" }, { method: "POST" });
+  };
   const listThemesForInspector = () => themeListFetcher.submit({ intent: "listThemes" }, { method: "POST" });
   const inspectTheme = () => {
     const selected = (themeListFetcher.data?.themes || []).find((t) => t.id === selectedThemeId);
@@ -600,6 +621,37 @@ export default function Index() {
                   </pre>
                 ) : (
                   <span style={{ fontSize: "12px", color: brand.muted }}>Could not read this file's content.</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </s-section>
+
+      <s-section heading="Settings design price matrix (fast checkout rebuild)">
+        <s-paragraph>
+          Builds a real, pre-priced Metal × Design (× Size for bracelets) variant matrix on the shared "Ring
+          Settings"/"Pendant Settings"/"Bracelet Settings" products — combining both the pearl and default design
+          catalogs (confirmed zero code collisions between them). This is what lets checkout add an already-priced,
+          already-existing variant instead of creating a fresh one and waiting for it to become purchasable. Doesn't
+          touch any of your 373 gemstone products. Re-run this whenever a design or metal rate changes.
+        </s-paragraph>
+        <s-button tone="critical" {...(isBuildingSettingsMatrix ? { loading: true } : {})} onClick={buildSettingsMatrix}>
+          Rebuild settings design matrix
+        </s-button>
+        {settingsMatrixFetcher.data?.intent === "buildSettingsMatrix" && !settingsMatrixFetcher.data.ok && (
+          <div style={{ marginTop: "12px" }}>
+            <FriendlyError message="Couldn't rebuild the settings design matrix." detail={settingsMatrixFetcher.data.error} />
+          </div>
+        )}
+        {settingsMatrixFetcher.data?.intent === "buildSettingsMatrix" && settingsMatrixFetcher.data.ok && (
+          <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "8px" }}>
+            {(settingsMatrixFetcher.data.results || []).map((r) => (
+              <div key={r.type} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                {r.ok ? (
+                  <Pill label={`✓ ${r.title}: ${r.variantCount} variants`} active color={brand.success} />
+                ) : (
+                  <FriendlyErrorInline message={`${r.title} failed`} detail={r.error} />
                 )}
               </div>
             ))}
