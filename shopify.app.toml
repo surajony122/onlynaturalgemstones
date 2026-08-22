@@ -36,7 +36,14 @@ embedded = true
 #   confirmed via a live "Access denied for fulfillmentOrders field"
 #   error the first time this was tried without it. Adding it back
 #   requires the merchant to re-approve the app's permissions once.
-scopes = "write_products,read_products,read_themes,write_inventory,read_orders,write_metaobjects,write_metaobject_definitions,write_publications,write_customers,read_customers,read_merchant_managed_fulfillment_orders"
+# read_locations: needed by fetchPrimaryLocationId() (repriceDesignVariants.
+#   server.js) to find where to set a new variant's starting "1 in stock"
+#   quantity — confirmed via a live "Access denied for isActive field.
+#   Required access: `read_locations` access scope" error on every Apply/
+#   Reprice click without it (the whole call failed, not just the
+#   location lookup, since GraphqlQueryError throws rather than returning
+#   a field-level error). Requires the merchant to re-approve once too.
+scopes = "write_products,read_products,read_themes,write_inventory,read_orders,write_metaobjects,write_metaobject_definitions,write_publications,write_customers,read_customers,read_merchant_managed_fulfillment_orders,read_locations"
 
 # Lets the theme call https://<store-domain>/apps/customize , which Shopify
 # signs and proxies to this app's /proxy route — see app/routes/proxy.jsx.

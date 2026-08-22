@@ -46,24 +46,37 @@ async function fetchRatesFromTheme(admin) {
 // below gets set. Almost every store only has one location; for a
 // multi-location store this picks the one actually used for online
 // fulfillment rather than an arbitrary warehouse.
+//
+// Wrapped in try/catch and never throws: admin.graphql() throws a real
+// GraphqlQueryError for a field-level access-denied response (confirmed
+// live — "Access denied for isActive field. Required access:
+// `read_locations` access scope" took down the ENTIRE Apply/Reprice
+// call, not just the location lookup, before this existed and before
+// read_locations was added to shopify.app.toml). Setting a starting
+// quantity is a nice-to-have, not something that should be able to
+// block the whole price/variant write if it ever breaks again (a scope
+// getting revoked, a future API version renaming a field, etc.) — on
+// any failure here this just returns null, and repriceDesignVariants
+// already treats a null locationId as "skip the starting quantity".
 async function fetchPrimaryLocationId(admin) {
-  const res = await admin.graphql(`#graphql
-    query PrimaryLocationForInventory {
-      locations(first: 10) { nodes { id isActive fulfillsOnlineOrders } }
-    }`);
-  const json = await res.json();
-  // Logged, not thrown — a scope/permission issue here shouldn't block
-  // the whole reprice/setup; it should just mean new variants don't get
-  // a starting quantity (repriceDesignVariants already treats a null
-  // locationId that way). But a silent [] here was exactly why a real
-  // failure upstream of this had nothing to go on in the logs.
-  if (json.errors) {
-    console.error("[fetchPrimaryLocationId] GraphQL errors:", JSON.stringify(json.errors));
+  try {
+    const res = await admin.graphql(`#graphql
+      query PrimaryLocationForInventory {
+        locations(first: 10) { nodes { id isActive fulfillsOnlineOrders } }
+      }`);
+    const json = await res.json();
+    if (json.errors) {
+      console.error("[fetchPrimaryLocationId] GraphQL errors:", JSON.stringify(json.errors));
+      return null;
+    }
+    const nodes = json.data?.locations?.nodes || [];
+    const best =
+      nodes.find((l) => l.isActive && l.fulfillsOnlineOrders) || nodes.find((l) => l.isActive) || nodes[0];
+    return best?.id || null;
+  } catch (err) {
+    console.error("[fetchPrimaryLocationId] failed (non-fatal, no starting quantity will be set):", err);
+    return null;
   }
-  const nodes = json.data?.locations?.nodes || [];
-  const best =
-    nodes.find((l) => l.isActive && l.fulfillsOnlineOrders) || nodes.find((l) => l.isActive) || nodes[0];
-  return best?.id || null;
 }
 
 const LOOSE_METALS = ["Silver", "Panchdhatu", "Copper", "22k Yellow Gold", "18K Yellow Gold", "14K Yellow Gold", "18K White Gold", "14K White Gold"];
