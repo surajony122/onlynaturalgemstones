@@ -322,6 +322,19 @@ export default function Index() {
           Scan Products
         </s-button>
 
+        {setupFetcher.data?.intent === "setupSelected" && !setupFetcher.data.ok && (
+          <div style={{ marginTop: "12px" }}>
+            <FriendlyError
+              message={
+                setupFetcher.data.error === "Check at least one product first."
+                  ? setupFetcher.data.error
+                  : "Couldn't apply those changes. Nothing was changed — existing variants/prices are untouched."
+              }
+              detail={setupFetcher.data.error}
+            />
+          </div>
+        )}
+
         {scanFetcher.data?.intent === "scanSetup" && scanFetcher.data.ok && (
           <div style={{ marginTop: "12px" }}>
             <p style={{ fontSize: "12.5px", color: brand.muted, margin: "0 0 10px" }}>
@@ -333,69 +346,75 @@ export default function Index() {
               <s-paragraph>No products found.</s-paragraph>
             ) : (
               <>
-                <div style={{ display: "flex", gap: "10px", margin: "0 0 12px", alignItems: "center", flexWrap: "wrap" }}>
-                  <input
-                    type="text"
-                    value={searchText}
-                    onChange={(e) => setSearchText(e.target.value)}
-                    placeholder="Search title, handle, or collection…"
-                    style={{ padding: "8px 12px", borderRadius: "10px", border: `1px solid ${brand.border}`, fontSize: "12.5px", minWidth: "220px", color: brand.body }}
-                  />
-                  <select
-                    value={collectionFilter}
-                    onChange={(e) => setCollectionFilter(e.target.value)}
-                    style={{ padding: "8px 12px", borderRadius: "10px", border: `1px solid ${brand.border}`, fontSize: "12.5px", color: brand.body, background: "#fff" }}
-                  >
-                    <option value="all">All collections</option>
-                    {allCollections.map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                  <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                    style={{ padding: "8px 12px", borderRadius: "10px", border: `1px solid ${brand.border}`, fontSize: "12.5px", color: brand.body, background: "#fff" }}
-                  >
-                    <option value="all">Any status</option>
-                    <option value="missing">Not set up yet</option>
-                    <option value="setup">Already set up</option>
-                  </select>
-                  {(searchText || collectionFilter !== "all" || statusFilter !== "all") && (
+                {/* Sticky so the filters + Apply button stay reachable while
+                    scrolling a long product list — position:sticky against
+                    the page's own scroll container, with an opaque
+                    background so table rows don't show through underneath. */}
+                <div style={{ position: "sticky", top: 0, zIndex: 5, background: "#fff", paddingTop: "4px", paddingBottom: "10px", marginBottom: "2px" }}>
+                  <div style={{ display: "flex", gap: "10px", margin: "0 0 10px", alignItems: "center", flexWrap: "wrap" }}>
+                    <input
+                      type="text"
+                      value={searchText}
+                      onChange={(e) => setSearchText(e.target.value)}
+                      placeholder="Search title, handle, or collection…"
+                      style={{ padding: "8px 12px", borderRadius: "10px", border: `1px solid ${brand.border}`, fontSize: "12.5px", minWidth: "220px", color: brand.body }}
+                    />
+                    <select
+                      value={collectionFilter}
+                      onChange={(e) => setCollectionFilter(e.target.value)}
+                      style={{ padding: "8px 12px", borderRadius: "10px", border: `1px solid ${brand.border}`, fontSize: "12.5px", color: brand.body, background: "#fff" }}
+                    >
+                      <option value="all">All collections</option>
+                      {allCollections.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                    <select
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value)}
+                      style={{ padding: "8px 12px", borderRadius: "10px", border: `1px solid ${brand.border}`, fontSize: "12.5px", color: brand.body, background: "#fff" }}
+                    >
+                      <option value="all">Any status</option>
+                      <option value="missing">Not set up yet</option>
+                      <option value="setup">Already set up</option>
+                    </select>
+                    {(searchText || collectionFilter !== "all" || statusFilter !== "all") && (
+                      <button
+                        type="button"
+                        onClick={() => { setSearchText(""); setCollectionFilter("all"); setStatusFilter("all"); }}
+                        style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "10px", border: `1px solid ${brand.border}`, background: brand.panel, color: brand.body, cursor: "pointer" }}
+                      >
+                        Clear filters
+                      </button>
+                    )}
+                    <span style={{ fontSize: "12px", color: brand.muted }}>
+                      Showing {filteredProducts.length} of {products.length}
+                    </span>
+                  </div>
+
+                  <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap", paddingBottom: "10px", borderBottom: `1px solid ${brand.border}` }}>
                     <button
                       type="button"
-                      onClick={() => { setSearchText(""); setCollectionFilter("all"); setStatusFilter("all"); }}
+                      onClick={checkAllShown}
                       style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "10px", border: `1px solid ${brand.border}`, background: brand.panel, color: brand.body, cursor: "pointer" }}
                     >
-                      Clear filters
+                      Check all shown ({filteredProducts.length})
                     </button>
-                  )}
-                  <span style={{ fontSize: "12px", color: brand.muted }}>
-                    Showing {filteredProducts.length} of {products.length}
-                  </span>
-                </div>
-
-                <div style={{ display: "flex", gap: "10px", margin: "0 0 12px", alignItems: "center", flexWrap: "wrap" }}>
-                  <button
-                    type="button"
-                    onClick={checkAllShown}
-                    style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "10px", border: `1px solid ${brand.border}`, background: brand.panel, color: brand.body, cursor: "pointer" }}
-                  >
-                    Check all shown ({filteredProducts.length})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={clearChecked}
-                    style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "10px", border: `1px solid ${brand.border}`, background: brand.panel, color: brand.body, cursor: "pointer" }}
-                  >
-                    Clear selection
-                  </button>
-                  <s-button {...(isSettingUp ? { loading: true } : {})} onClick={applySetup}>
-                    Apply to {checked.size} selected
-                  </s-button>
-                  <span style={{ fontSize: "12px", color: brand.muted }}>
-                    Processes up to {setupBatchSize} per click — click Apply again for the rest of a larger
-                    selection.
-                  </span>
+                    <button
+                      type="button"
+                      onClick={clearChecked}
+                      style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "10px", border: `1px solid ${brand.border}`, background: brand.panel, color: brand.body, cursor: "pointer" }}
+                    >
+                      Clear selection
+                    </button>
+                    <s-button {...(isSettingUp ? { loading: true } : {})} onClick={applySetup}>
+                      Apply to {checked.size} selected
+                    </s-button>
+                    <span style={{ fontSize: "12px", color: brand.muted }}>
+                      Processes up to {setupBatchSize} per click — click Apply again for the rest of a larger
+                      selection.
+                    </span>
+                  </div>
                 </div>
                 <TableGlobalStyles />
                 <div style={tableWrapStyle}>
