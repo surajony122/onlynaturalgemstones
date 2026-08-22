@@ -110,6 +110,22 @@ export async function getFreeCertType(admin, productGid) {
   return "other";
 }
 
+/** Lists every theme on the shop (any role — live, unpublished, backups
+ * kept around under names like "backup 29-7", etc.), for the app's theme
+ * inspector to let you pick a specific one instead of always reading
+ * whatever's currently published. Read-only. */
+export async function listThemes(admin) {
+  const res = await admin.graphql(`#graphql
+    query AllThemes {
+      themes(first: 50) {
+        nodes { id name role }
+      }
+    }`);
+  const json = await res.json();
+  if (json.errors) throw new Error(`Theme list failed: ${JSON.stringify(json.errors).slice(0, 300)}`);
+  return json.data?.themes?.nodes || [];
+}
+
 /** Finds the currently-published (live/MAIN) theme's id — the one
  * actually serving the storefront right now, as opposed to any
  * unpublished "test" theme or the hardcoded THEME_GID some pricing code

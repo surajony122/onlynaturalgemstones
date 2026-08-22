@@ -14,7 +14,7 @@ import {
   BULK_BATCH_SIZE,
   PRODUCT_ID_NUMERIC,
 } from "../utils/repriceDesignVariants.server";
-import { findLiveThemeId, inspectThemeCustomizerFiles } from "../utils/shopify-admin.server";
+import { findLiveThemeId, inspectThemeCustomizerFiles, listThemes } from "../utils/shopify-admin.server";
 import { tableWrapStyle, tableStyle, thStyle, tdStyle, TableGlobalStyles, Pill, brand } from "../components/table-kit";
 import { FriendlyError, FriendlyErrorInline } from "../components/friendly-error";
 
@@ -104,15 +104,27 @@ export const action = async ({ request }) => {
     }
   }
 
+  if (intent === "listThemes") {
+    try {
+      const themes = await listThemes(admin);
+      return { intent, ok: true, themes };
+    } catch (err) {
+      console.error("[app._index] listThemes failed:", err);
+      return { intent, ok: false, error: String(err.message || err) };
+    }
+  }
+
   if (intent === "inspectTheme") {
     try {
-      const live = await findLiveThemeId(admin);
-      const result = await inspectThemeCustomizerFiles(admin, live.id);
+      const themeId = formData.get("themeId");
+      const themeName = formData.get("themeName");
+      const theme = themeId ? { id: themeId, name: themeName || themeId } : await findLiveThemeId(admin);
+      const result = await inspectThemeCustomizerFiles(admin, theme.id);
       console.log(
         "[app._index] inspectTheme:",
-        JSON.stringify({ theme: live, totalFilesScanned: result.totalFilesScanned, candidates: result.candidates }),
+        JSON.stringify({ theme, totalFilesScanned: result.totalFilesScanned, candidates: result.candidates }),
       );
-      return { intent, ok: true, theme: live, ...result };
+      return { intent, ok: true, theme, ...result };
     } catch (err) {
       console.error("[app._index] inspectTheme failed:", err);
       return { intent, ok: false, error: String(err.message || err) };
@@ -151,6 +163,7 @@ export default function Index() {
   const inventoryFetcher = useFetcher();
   const removeFetcher = useFetcher();
   const themeFetcher = useFetcher();
+  const themeListFetcher = useFetcher();
   const shopify = useAppBridge();
   const isLoading =
     ["loading", "submitting"].includes(fetcher.state) &&
@@ -161,6 +174,8 @@ export default function Index() {
   const isSettingInventory = inventoryFetcher.state !== "idle";
   const isRemoving = removeFetcher.state !== "idle";
   const isInspectingTheme = themeFetcher.state !== "idle";
+  const isListingThemes = themeListFetcher.state !== "idle";
+  const [selectedThemeId, setSelectedThemeId] = useState("");
   const [bulkQuantity, setBulkQuantity] = useState("10");
 
   // Local copy of the scanned product list so a successful Apply can
@@ -351,7 +366,14 @@ export default function Index() {
 
   const reprice = () => fetcher.submit({}, { method: "POST" });
   const scanSetup = () => scanFetcher.submit({ intent: "scanSetup" }, { method: "POST" });
-  const inspectTheme = () => themeFetcher.submit({ intent: "inspectTheme" }, { method: "POST" });
+  const listThemesForInspector = () => themeListFetcher.submit({ intent: "listThemes" }, { method: "POST" });
+  const inspectTheme = () => {
+    const selected = (themeListFetcher.data?.themes || []).find((t) => t.id === selectedThemeId);
+    themeFetcher.submit(
+      selected ? { intent: "inspectTheme", themeId: selected.id, themeName: selected.name } : { intent: "inspectTheme" },
+      { method: "POST" }
+    );
+  };
 
   const toggle = (id) => {
     setChecked((prev) => {
@@ -516,13 +538,38 @@ export default function Index() {
 
       <s-section heading="Inspect storefront customizer">
         <s-paragraph>
-          Reads the live (published) theme's actual files and finds any whose path mentions "jewel", "custom", or
-          "design" — use this to check what's really driving (or not driving) the customization UI on a product page,
-          instead of guessing from screenshots.
+          Reads a theme's actual files and finds any whose path mentions "jewel", "custom", or "design" — use this to
+          check what's really driving (or not driving) the customization UI on a product page, instead of guessing
+          from screenshots. Defaults to your live theme; use "List themes" to pick a different one (e.g. an older
+          backup theme) to compare against.
         </s-paragraph>
-        <s-button {...(isInspectingTheme ? { loading: true } : {})} onClick={inspectTheme}>
-          Inspect storefront customizer
-        </s-button>
+        <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+          <s-button {...(isListingThemes ? { loading: true } : {})} onClick={listThemesForInspector}>
+            List themes
+          </s-button>
+          {themeListFetcher.data?.intent === "listThemes" && themeListFetcher.data.ok && (
+            <select
+              value={selectedThemeId}
+              onChange={(e) => setSelectedThemeId(e.target.value)}
+              style={{ padding: "8px 12px", borderRadius: "10px", border: `1px solid ${brand.border}`, fontSize: "12.5px", color: brand.body, background: "#fff" }}
+            >
+              <option value="">Live theme (default)</option>
+              {themeListFetcher.data.themes.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name} {t.role === "MAIN" ? "(live)" : `(${t.role.toLowerCase()})`}
+                </option>
+              ))}
+            </select>
+          )}
+          <s-button {...(isInspectingTheme ? { loading: true } : {})} onClick={inspectTheme}>
+            Inspect {selectedThemeId ? "selected theme" : "storefront customizer"}
+          </s-button>
+        </div>
+        {themeListFetcher.data?.intent === "listThemes" && !themeListFetcher.data.ok && (
+          <div style={{ marginTop: "12px" }}>
+            <FriendlyError message="Couldn't list themes." detail={themeListFetcher.data.error} />
+          </div>
+        )}
         {themeFetcher.data?.intent === "inspectTheme" && !themeFetcher.data.ok && (
           <div style={{ marginTop: "12px" }}>
             <FriendlyError message="Couldn't inspect the live theme's files." detail={themeFetcher.data.error} />
