@@ -433,6 +433,10 @@ export async function findJewelryProducts(admin) {
             templateSuffix
             options { name values }
             collections(first: 10) { nodes { title } }
+            totalInventory
+            hasOutOfStockVariants
+            tracksInventory
+            resourcePublicationsCount { count }
           }
         }
       }`,
@@ -462,6 +466,12 @@ export async function findJewelryProducts(admin) {
         availableTypes,
         hasSetup,
         currentTypes,
+        // Channel/quantity status, for the page's Channels/Stock columns —
+        // read straight off the product, no extra per-product query needed.
+        totalInventory: p.totalInventory ?? 0,
+        hasOutOfStockVariants: !!p.hasOutOfStockVariants,
+        tracksInventory: !!p.tracksInventory,
+        publicationCount: p.resourcePublicationsCount?.count ?? null,
       });
     }
 

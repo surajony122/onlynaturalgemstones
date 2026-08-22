@@ -95,14 +95,19 @@ export default function Index() {
 
   useEffect(() => {
     if (scanFetcher.data?.intent === "scanSetup" && scanFetcher.data.ok) {
-      setProducts(scanFetcher.data.products);
+      const scanned = scanFetcher.data.products || [];
+      setProducts(scanned);
       setChecked(new Set());
       setSearchText("");
       setCollectionFilter("all");
       setStatusFilter("all");
       setSelectedTypes(
         Object.fromEntries(
-          scanFetcher.data.products.map((p) => [p.id, p.currentTypes.length ? [...p.currentTypes] : [...p.availableTypes]])
+          scanned.map((p) => {
+            const current = p.currentTypes || [];
+            const available = p.availableTypes || [];
+            return [p.id, current.length ? [...current] : [...available]];
+          })
         )
       );
     }
@@ -133,8 +138,9 @@ export default function Index() {
       );
       return;
     }
-    const resultByGid = Object.fromEntries(setupFetcher.data.results.map((r) => [r.productGid, r]));
-    const succeededGids = new Set(setupFetcher.data.results.filter((r) => r.ok).map((r) => r.productGid));
+    const results = setupFetcher.data.results || [];
+    const resultByGid = Object.fromEntries(results.map((r) => [r.productGid, r]));
+    const succeededGids = new Set(results.filter((r) => r.ok).map((r) => r.productGid));
     // Update each succeeded row in place (now "set up" with its new
     // Types) instead of removing it — it stays visible/editable, since
     // this table is for changing selections too, not just first-time
@@ -143,7 +149,7 @@ export default function Index() {
       prev.map((p) => {
         const r = resultByGid[p.id];
         if (!r?.ok) return p;
-        return { ...p, hasSetup: true, currentTypes: r.types };
+        return { ...p, hasSetup: true, currentTypes: r.types || [] };
       })
     );
     setChecked((prev) => {
@@ -151,7 +157,7 @@ export default function Index() {
       succeededGids.forEach((gid) => next.delete(gid));
       return next;
     });
-    const failCount = setupFetcher.data.results.length - succeededGids.size;
+    const failCount = results.length - succeededGids.size;
     shopify.toast.show(
       `Applied to ${succeededGids.size} product${succeededGids.size === 1 ? "" : "s"}` +
         (failCount ? ` · ${failCount} failed (see table)` : "") +
@@ -226,7 +232,7 @@ export default function Index() {
   };
 
   const resultByGid = Object.fromEntries(
-    (setupFetcher.data?.intent === "setupSelected" ? setupFetcher.data.results : []).map((r) => [r.productGid, r])
+    (setupFetcher.data?.intent === "setupSelected" ? setupFetcher.data.results || [] : []).map((r) => [r.productGid, r])
   );
 
   return (
@@ -399,6 +405,8 @@ export default function Index() {
                         <th style={thStyle}></th>
                         <th style={thStyle}>Title</th>
                         <th style={thStyle}>Setup status</th>
+                        <th style={thStyle}>Channels</th>
+                        <th style={thStyle}>Stock</th>
                         <th style={thStyle}>Handle</th>
                         <th style={thStyle}>Collections</th>
                         <th style={thStyle}>Types</th>
@@ -409,9 +417,10 @@ export default function Index() {
                       {filteredProducts.map((p) => {
                         const result = resultByGid[p.id];
                         const types = selectedTypes[p.id] || [];
+                        const currentTypes = p.currentTypes || [];
                         const changed =
                           p.hasSetup &&
-                          (types.length !== p.currentTypes.length || types.some((t) => !p.currentTypes.includes(t)));
+                          (types.length !== currentTypes.length || types.some((t) => !currentTypes.includes(t)));
                         return (
                           <tr key={p.id} className="dt-row">
                             <td style={tdStyle}>
@@ -429,10 +438,41 @@ export default function Index() {
                             </td>
                             <td style={tdStyle}>
                               <Pill
-                                label={p.hasSetup ? `Set up (${p.currentTypes.join("/") || "—"})` : "Not set up"}
+                                label={p.hasSetup ? `Set up (${currentTypes.join("/") || "—"})` : "Not set up"}
                                 active
                                 color={p.hasSetup ? brand.success : brand.muted}
                               />
+                            </td>
+                            <td style={tdStyle}>
+                              {p.publicationCount === null ? (
+                                <span style={{ fontSize: "12px", color: brand.muted }}>—</span>
+                              ) : (
+                                <Pill
+                                  label={
+                                    p.publicationCount === 0
+                                      ? "Not published anywhere"
+                                      : p.publicationCount === 1
+                                        ? "1 channel"
+                                        : `${p.publicationCount} channels`
+                                  }
+                                  active
+                                  color={p.publicationCount === 1 ? brand.success : p.publicationCount === 0 ? brand.danger : "#B45309"}
+                                />
+                              )}
+                            </td>
+                            <td style={tdStyle}>
+                              {!p.tracksInventory ? (
+                                <span style={{ fontSize: "12px", color: brand.muted }}>Not tracked</span>
+                              ) : (
+                                <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                                  <span style={{ fontSize: "12.5px", color: brand.body, fontWeight: 500 }}>
+                                    {p.totalInventory} in stock
+                                  </span>
+                                  {p.hasOutOfStockVariants && (
+                                    <span style={{ fontSize: "11px", color: brand.danger }}>some designs sold out</span>
+                                  )}
+                                </div>
+                              )}
                             </td>
                             <td style={tdStyle}>{p.handle}</td>
                             <td style={{ ...tdStyle, fontSize: "12px", color: brand.muted }}>
@@ -462,7 +502,7 @@ export default function Index() {
                               {result ? (
                                 result.ok ? (
                                   <Pill
-                                    label={`✓ ${result.variantCount} variants — ${result.types.join("/")} · ${result.metals?.length || 0} metals (${result.designSet})`}
+                                    label={`✓ ${result.variantCount} variants — ${(result.types || []).join("/")} · ${result.metals?.length || 0} metals (${result.designSet})`}
                                     active
                                     color={brand.success}
                                   />
