@@ -9,7 +9,9 @@ import {
   setupJewelryVariantsForProducts,
   fixChannelsForProducts,
   setInventoryForProducts,
+  removeJewelryVariantsForProducts,
   SETUP_BATCH_SIZE,
+  BULK_BATCH_SIZE,
   PRODUCT_ID_NUMERIC,
 } from "../utils/repriceDesignVariants.server";
 import { tableWrapStyle, tableStyle, thStyle, tdStyle, TableGlobalStyles, Pill, brand } from "../components/table-kit";
@@ -25,6 +27,7 @@ export const loader = async ({ request }) => {
   return {
     productId: PRODUCT_ID_NUMERIC,
     setupBatchSize: SETUP_BATCH_SIZE,
+    bulkBatchSize: BULK_BATCH_SIZE,
     // .myshopify.com domain minus the suffix — matches the path segment
     // admin.shopify.com/store/<this> uses for deep links to a product.
     shopDomain: (session.shop || "").replace(".myshopify.com", ""),
@@ -100,6 +103,20 @@ export const action = async ({ request }) => {
     }
   }
 
+  if (intent === "removeVariants") {
+    try {
+      const productGids = JSON.parse(formData.get("productGids") || "[]");
+      if (!Array.isArray(productGids) || !productGids.length) {
+        return { intent, ok: false, error: "Check at least one product first." };
+      }
+      const result = await removeJewelryVariantsForProducts(admin, productGids);
+      return { intent, ok: true, ...result };
+    } catch (err) {
+      console.error("[app._index] removeVariants failed:", err);
+      return { intent, ok: false, error: String(err.message || err) };
+    }
+  }
+
   try {
     const result = await repriceDesignVariants(admin);
     return { intent: "reprice", ok: true, ...result };
@@ -110,12 +127,13 @@ export const action = async ({ request }) => {
 };
 
 export default function Index() {
-  const { productId, shopDomain, setupBatchSize } = useLoaderData();
+  const { productId, shopDomain, setupBatchSize, bulkBatchSize } = useLoaderData();
   const fetcher = useFetcher();
   const scanFetcher = useFetcher();
   const setupFetcher = useFetcher();
   const channelFetcher = useFetcher();
   const inventoryFetcher = useFetcher();
+  const removeFetcher = useFetcher();
   const shopify = useAppBridge();
   const isLoading =
     ["loading", "submitting"].includes(fetcher.state) &&
@@ -124,6 +142,7 @@ export default function Index() {
   const isSettingUp = setupFetcher.state !== "idle";
   const isFixingChannels = channelFetcher.state !== "idle";
   const isSettingInventory = inventoryFetcher.state !== "idle";
+  const isRemoving = removeFetcher.state !== "idle";
   const [bulkQuantity, setBulkQuantity] = useState("10");
 
   // Local copy of the scanned product list so a successful Apply can
@@ -246,6 +265,44 @@ export default function Index() {
   }, [channelFetcher.data, shopify]);
 
   useEffect(() => {
+    if (removeFetcher.data?.intent !== "removeVariants") return;
+    if (!removeFetcher.data.ok) {
+      shopify.toast.show(
+        removeFetcher.data.error === "Check at least one product first."
+          ? removeFetcher.data.error
+          : "Couldn't remove variants for those products — try again in a moment",
+        { isError: true }
+      );
+      return;
+    }
+    const results = removeFetcher.data.results || [];
+    const resultByGid = Object.fromEntries(results.map((r) => [r.productGid, r]));
+    const succeededGids = new Set(results.filter((r) => r.ok).map((r) => r.productGid));
+    // A succeeded removal collapses the product back to a single
+    // untracked default variant — reflect that immediately: no longer
+    // "set up", no Types, no tracked stock.
+    setProducts((prev) =>
+      prev.map((p) =>
+        resultByGid[p.id]?.ok
+          ? { ...p, hasSetup: false, currentTypes: [], tracksInventory: false, totalInventory: 0, hasOutOfStockVariants: false }
+          : p
+      )
+    );
+    setSelectedTypes((prev) => {
+      const next = { ...prev };
+      succeededGids.forEach((gid) => { next[gid] = []; });
+      return next;
+    });
+    const failCount = results.length - succeededGids.size;
+    shopify.toast.show(
+      `Removed variants on ${succeededGids.size} product${succeededGids.size === 1 ? "" : "s"}` +
+        (failCount ? ` · ${failCount} failed (see table)` : "") +
+        (removeFetcher.data.skipped ? ` · ${removeFetcher.data.skipped} more selected — click again` : ""),
+      { isError: failCount > 0 && succeededGids.size === 0 }
+    );
+  }, [removeFetcher.data, shopify]);
+
+  useEffect(() => {
     if (inventoryFetcher.data?.intent !== "setInventory") return;
     if (!inventoryFetcher.data.ok) {
       shopify.toast.show(inventoryFetcher.data.error || "Couldn't set inventory — try again in a moment", { isError: true });
@@ -342,6 +399,17 @@ export default function Index() {
     channelFetcher.submit({ intent: "fixChannels", productGids: JSON.stringify([...checked]) }, { method: "POST" });
   };
 
+  const removeVariants = () => {
+    if (!checked.size) return;
+    const ok = window.confirm(
+      `Remove the jewelry variant set from ${checked.size} product${checked.size === 1 ? "" : "s"}? ` +
+        `This deletes their Type/Metal/Design variants (existing orders are unaffected) and collapses each ` +
+        `back to a single default variant at its base price. You can run Apply again later to rebuild it.`
+    );
+    if (!ok) return;
+    removeFetcher.submit({ intent: "removeVariants", productGids: JSON.stringify([...checked]) }, { method: "POST" });
+  };
+
   const setInventoryBulk = () => {
     const quantity = parseInt(bulkQuantity, 10);
     if (!Number.isInteger(quantity) || quantity < 0) {
@@ -362,6 +430,9 @@ export default function Index() {
   );
   const inventoryResultByGid = Object.fromEntries(
     (inventoryFetcher.data?.intent === "setInventory" ? inventoryFetcher.data.results || [] : []).map((r) => [r.productGid, r])
+  );
+  const removeResultByGid = Object.fromEntries(
+    (removeFetcher.data?.intent === "removeVariants" ? removeFetcher.data.results || [] : []).map((r) => [r.productGid, r])
   );
 
   return (
@@ -493,6 +564,18 @@ export default function Index() {
             />
           </div>
         )}
+        {removeFetcher.data?.intent === "removeVariants" && !removeFetcher.data.ok && (
+          <div style={{ marginTop: "12px" }}>
+            <FriendlyError
+              message={
+                removeFetcher.data.error === "Check at least one product first."
+                  ? removeFetcher.data.error
+                  : "Couldn't remove variants for those products."
+              }
+              detail={removeFetcher.data.error}
+            />
+          </div>
+        )}
 
         {scanFetcher.data?.intent === "scanSetup" && scanFetcher.data.ok && (
           <div style={{ marginTop: "12px" }}>
@@ -585,9 +668,13 @@ export default function Index() {
                         Set stock for {checked.size} selected
                       </s-button>
                     </div>
+                    <s-button tone="critical" {...(isRemoving ? { loading: true } : {})} onClick={removeVariants}>
+                      Remove variants for {checked.size} selected
+                    </s-button>
                     <span style={{ fontSize: "12px", color: brand.muted }}>
-                      Processes up to {setupBatchSize} per click — click again for the rest of a larger selection.
-                      Setting stock only works on products already Applied (needs tracked variants).
+                      Apply processes up to {setupBatchSize} per click (click again for the rest); Fix channels/Set
+                      stock/Remove variants process up to {bulkBatchSize} per click. Setting stock only works on
+                      products already Applied (needs tracked variants).
                     </span>
                   </div>
                 </div>
@@ -633,11 +720,20 @@ export default function Index() {
                               </a>
                             </td>
                             <td style={tdStyle}>
-                              <Pill
-                                label={p.hasSetup ? `Set up (${currentTypes.join("/") || "—"})` : "Not set up"}
-                                active
-                                color={p.hasSetup ? brand.success : brand.muted}
-                              />
+                              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                                <Pill
+                                  label={p.hasSetup ? `Set up (${currentTypes.join("/") || "—"})` : "Not set up"}
+                                  active
+                                  color={p.hasSetup ? brand.success : brand.muted}
+                                />
+                                {removeResultByGid[p.id] && (
+                                  removeResultByGid[p.id].ok ? (
+                                    <span style={{ fontSize: "11px", color: brand.success }}>✓ removed</span>
+                                  ) : (
+                                    <FriendlyErrorInline message="Couldn't remove" detail={removeResultByGid[p.id].error} />
+                                  )
+                                )}
+                              </div>
                             </td>
                             <td style={tdStyle}>
                               <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>

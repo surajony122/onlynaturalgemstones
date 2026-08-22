@@ -637,6 +637,17 @@ export async function repriceDesignVariants(admin, productGid, precomputedRates,
 // this function ever looping unbounded.
 export const SETUP_BATCH_SIZE = 5;
 
+// Fix channels / set inventory / remove variants are 2-4 GraphQL calls per
+// product (a publications query + publish + unpublish, or a variant lookup
+// + one inventorySetQuantities call, or a variant lookup + one productSet
+// call) — nowhere near the 20-30+ calls Apply/Reprice needs per product
+// (stone info, up to 24 parallel design lookups, the productSet write
+// itself). Reusing SETUP_BATCH_SIZE (5) for these was overly cautious and
+// is why a 20-product "Fix channels for N selected" click only ever
+// touched 5 at a time — confirmed live. This cap is still well inside a
+// single request's timeout budget even at 40 products x ~4 calls each.
+export const BULK_BATCH_SIZE = 40;
+
 /**
  * Runs repriceDesignVariants for each given product, sequentially (not in
  * parallel — these are real, live-price-affecting writes, and running them
@@ -685,7 +696,7 @@ export async function setupJewelryVariantsForProducts(admin, items) {
  */
 export async function fixChannelsForProducts(admin, productGids) {
   const results = [];
-  for (const gid of productGids.slice(0, SETUP_BATCH_SIZE)) {
+  for (const gid of productGids.slice(0, BULK_BATCH_SIZE)) {
     try {
       const diag = await ensureOnlineStoreOnly(admin, gid);
       if (diag.error) throw new Error(diag.error);
@@ -695,7 +706,7 @@ export async function fixChannelsForProducts(admin, productGids) {
       results.push({ productGid: gid, ok: false, error: String(err.message || err) });
     }
   }
-  return { results, processed: results.length, skipped: Math.max(0, productGids.length - SETUP_BATCH_SIZE) };
+  return { results, processed: results.length, skipped: Math.max(0, productGids.length - BULK_BATCH_SIZE) };
 }
 
 function chunk(arr, size) {
@@ -722,7 +733,7 @@ export async function setInventoryForProducts(admin, productGids, quantity) {
     throw new Error("Couldn't find a location to set inventory at (locations query failed or returned none).");
   }
   const results = [];
-  for (const gid of productGids.slice(0, SETUP_BATCH_SIZE)) {
+  for (const gid of productGids.slice(0, BULK_BATCH_SIZE)) {
     try {
       const res = await admin.graphql(
         `#graphql
@@ -777,5 +788,93 @@ export async function setInventoryForProducts(admin, productGids, quantity) {
       results.push({ productGid: gid, ok: false, error: String(err.message || err) });
     }
   }
-  return { results, processed: results.length, skipped: Math.max(0, productGids.length - SETUP_BATCH_SIZE) };
+  return { results, processed: results.length, skipped: Math.max(0, productGids.length - BULK_BATCH_SIZE) };
+}
+
+/**
+ * Reverses jewelry variant setup on a batch of products: deletes the whole
+ * Customised(Type)/Metals/Design variant matrix and collapses the product
+ * back down to a single plain "Default Title" variant, at whatever price
+ * its "Loose"/base variant already had (the stone's own price — nothing
+ * here recomputes it, this only removes the customization variants built
+ * on top of it). productSet is a full synchronizer for a product's options
+ * — any option value left out of the input gets its variants deleted, the
+ * same mechanism that already lets unticking one Type in Apply remove just
+ * that Type's variants; this just leaves out ALL of Customised/Metals/
+ * Design at once.
+ *
+ * Does NOT touch sales channel publication — removing variants isn't a
+ * publish/unpublish action, so whatever channels the product is on are
+ * left as they are. The resulting single variant is left untracked
+ * (inventoryItem.tracked: false, inventoryPolicy CONTINUE) — matches how a
+ * plain, never-set-up product looks, so this is a true rollback rather
+ * than a half state stuck between "set up" and "not set up". Running
+ * Apply again on the product afterwards rebuilds the full matrix from
+ * scratch, same as setting it up for the first time.
+ */
+export async function removeJewelryVariantsForProducts(admin, productGids) {
+  const results = [];
+  for (const gid of productGids.slice(0, BULK_BATCH_SIZE)) {
+    try {
+      const res = await admin.graphql(
+        `#graphql
+        query VariantsForRemoval($id: ID!) {
+          product(id: $id) {
+            variants(first: 250) {
+              nodes { price selectedOptions { name value } }
+            }
+          }
+        }`,
+        { variables: { id: gid } },
+      );
+      const json = await res.json();
+      if (json.errors) throw new Error(`Variant lookup failed: ${JSON.stringify(json.errors).slice(0, 300)}`);
+      const variants = json.data?.product?.variants?.nodes || [];
+      if (!variants.length) throw new Error("Product has no variants at all");
+
+      // The "Loose" variant (Customised: Loose) carries the stone's own
+      // base price — same one repriceDesignVariants reads to build every
+      // other variant's price on top of. Falls back to the first variant
+      // if this product somehow has no Loose variant (e.g. was never
+      // actually set up despite being selected here).
+      const looseVariant = variants.find((v) =>
+        (v.selectedOptions || []).some((o) => o.name === "Customised" && o.value === "Loose"),
+      );
+      const basePrice = parseFloat((looseVariant || variants[0]).price);
+
+      const setRes = await admin.graphql(
+        `#graphql
+        mutation RemoveJewelryVariants($input: ProductSetInput!) {
+          productSet(input: $input, synchronous: true) {
+            product { id }
+            userErrors { field message }
+          }
+        }`,
+        {
+          variables: {
+            input: {
+              id: gid,
+              productOptions: [{ name: "Title", position: 1, values: [{ name: "Default Title" }] }],
+              variants: [
+                {
+                  optionValues: [{ optionName: "Title", name: "Default Title" }],
+                  price: basePrice.toFixed(2),
+                  inventoryPolicy: "CONTINUE",
+                  inventoryItem: { tracked: false },
+                },
+              ],
+            },
+          },
+        },
+      );
+      const setJson = await setRes.json();
+      const userErrors = setJson.data?.productSet?.userErrors || [];
+      if (userErrors.length) throw new Error(`productSet failed: ${JSON.stringify(userErrors)}`);
+
+      results.push({ productGid: gid, ok: true, basePrice });
+    } catch (err) {
+      results.push({ productGid: gid, ok: false, error: String(err.message || err) });
+    }
+  }
+  return { results, processed: results.length, skipped: Math.max(0, productGids.length - BULK_BATCH_SIZE) };
 }
