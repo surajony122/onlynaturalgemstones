@@ -43,7 +43,7 @@ embedded = true
 #   Reprice click without it (the whole call failed, not just the
 #   location lookup, since GraphqlQueryError throws rather than returning
 #   a field-level error). Requires the merchant to re-approve once too.
-scopes = "write_products,read_products,read_themes,write_inventory,read_orders,write_metaobjects,write_metaobject_definitions,write_publications,write_customers,read_customers,read_merchant_managed_fulfillment_orders,read_locations"
+scopes = "write_products,read_products,read_themes,write_inventory,read_orders,write_metaobjects,write_metaobject_definitions,write_publications,write_customers,read_customers,read_merchant_managed_fulfillment_orders,read_locations,write_cart_transforms,read_cart_transforms"
 
 # Lets the theme call https://<store-domain>/apps/customize , which Shopify
 # signs and proxies to this app's /proxy route — see app/routes/proxy.jsx.
