@@ -18,7 +18,6 @@ export const loader = async ({ request }) => {
           nodes {
             id
             functionId
-            blockDeployments
           }
         }
       }`
@@ -33,14 +32,11 @@ export const loader = async ({ request }) => {
     const functionsRes = await admin.graphql(
       `#graphql
       query GetShopifyFunctions {
-        shopifyFunctions(first: 10) {
+        shopifyFunctions(first: 25) {
           nodes {
             id
             title
             apiType
-            app {
-              title
-            }
           }
         }
       }`
@@ -69,29 +65,36 @@ export const action = async ({ request }) => {
     let functionId = formData.get("functionId");
 
     try {
-      // If functionId is not a full GID or UUID, find it from deployed functions
-      if (!functionId || functionId === "cart-transform" || functionId === "cart-transform-bundle") {
-        const functionsRes = await admin.graphql(
-          `#graphql
-          query GetCartTransformFunction {
-            shopifyFunctions(first: 10) {
-              nodes {
-                id
-                title
-                apiType
-              }
+      // Find all functions on store
+      const functionsRes = await admin.graphql(
+        `#graphql
+        query GetAllFunctions {
+          shopifyFunctions(first: 25) {
+            nodes {
+              id
+              title
+              apiType
             }
-          }`
-        );
-        const functionsData = await functionsRes.json();
-        const found = (functionsData?.data?.shopifyFunctions?.nodes || []).find(
-          (f) => f.apiType === "cart_transform" || f.title?.toLowerCase().includes("cart-transform")
-        );
-        if (found) {
-          functionId = found.id;
-        } else {
-          functionId = "96c6d7ec-66ef-b768-41f5-696ea678bcf8e849fc5c";
-        }
+          }
+        }`
+      );
+      const functionsData = await functionsRes.json();
+      const nodes = functionsData?.data?.shopifyFunctions?.nodes || [];
+
+      // Find cart_transform function
+      const targetFunction = nodes.find(
+        (f) => f.apiType === "cart_transform" || f.title?.toLowerCase().includes("cart") || f.id === functionId
+      );
+
+      if (targetFunction) {
+        functionId = targetFunction.id;
+      }
+
+      if (!functionId) {
+        return {
+          success: false,
+          error: `No cart_transform function found on store. Found ${nodes.length} other functions: ${nodes.map((n) => `${n.title} (${n.apiType})`).join(", ")}`,
+        };
       }
 
       const response = await admin.graphql(
