@@ -3,23 +3,27 @@ import { useFetcher, useLoaderData } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
-import { findLiveThemeId, inspectThemeCustomizerFiles, listThemes } from "../utils/shopify-admin.server";
-import { buildSettingsDesignMatrix, fetchSettingsProductsStatus } from "../utils/settingsMatrix.server";
+import {
+  DEFAULT_RATES,
+  fetchCustomisationStatus,
+  buildGemstoneCustomisationMatrix,
+} from "../utils/gemstoneCustomisationMatrix.server";
 import { tableWrapStyle, tableStyle, thStyle, tdStyle, TableGlobalStyles, Pill, brand } from "../components/table-kit";
 import { FriendlyError, FriendlyErrorInline } from "../components/friendly-error";
 
 export const loader = async ({ request }) => {
   const { session, admin } = await authenticate.admin(request);
-  let settingsProducts = [];
+  let customisationStatus = { found: false, totalVariants: 0 };
   try {
-    settingsProducts = await fetchSettingsProductsStatus(admin);
+    customisationStatus = await fetchCustomisationStatus(admin);
   } catch (err) {
-    console.error("[app._index] loader fetchSettingsProductsStatus error:", err);
+    console.error("[app._index] loader fetchCustomisationStatus error:", err);
   }
 
   return {
     shopDomain: (session.shop || "").replace(".myshopify.com", ""),
-    settingsProducts,
+    customisationStatus,
+    defaultRates: DEFAULT_RATES,
   };
 };
 
@@ -28,48 +32,24 @@ export const action = async ({ request }) => {
   const formData = await request.formData();
   const intent = formData.get("intent");
 
-  if (intent === "refreshProducts") {
+  if (intent === "refreshStatus") {
     try {
-      const customTitles = JSON.parse(formData.get("customTitles") || "{}");
-      const products = await fetchSettingsProductsStatus(admin, customTitles);
-      return { intent, ok: true, products };
+      const status = await fetchCustomisationStatus(admin);
+      return { intent, ok: true, customisationStatus: status };
     } catch (err) {
-      console.error("[app._index] refreshProducts failed:", err);
+      console.error("[app._index] refreshStatus failed:", err);
       return { intent, ok: false, error: String(err.message || err) };
     }
   }
 
-  if (intent === "buildSettingsMatrix") {
+  if (intent === "rebuildCustomisationMatrix") {
     try {
-      const targets = JSON.parse(formData.get("targets") || "{}");
-      const result = await buildSettingsDesignMatrix(admin, targets);
-      const updatedProducts = await fetchSettingsProductsStatus(admin, targets);
-      return { intent, ok: true, ...result, updatedProducts };
+      const rates = JSON.parse(formData.get("rates") || "{}");
+      const result = await buildGemstoneCustomisationMatrix(admin, rates);
+      const updatedStatus = await fetchCustomisationStatus(admin);
+      return { intent, ok: true, ...result, customisationStatus: updatedStatus };
     } catch (err) {
-      console.error("[app._index] buildSettingsMatrix failed:", err);
-      return { intent, ok: false, error: String(err.message || err) };
-    }
-  }
-
-  if (intent === "listThemes") {
-    try {
-      const themes = await listThemes(admin);
-      return { intent, ok: true, themes };
-    } catch (err) {
-      console.error("[app._index] listThemes failed:", err);
-      return { intent, ok: false, error: String(err.message || err) };
-    }
-  }
-
-  if (intent === "inspectTheme") {
-    try {
-      const themeId = formData.get("themeId");
-      const themeName = formData.get("themeName");
-      const theme = themeId ? { id: themeId, name: themeName || themeId } : await findLiveThemeId(admin);
-      const result = await inspectThemeCustomizerFiles(admin, theme.id);
-      return { intent, ok: true, theme, ...result };
-    } catch (err) {
-      console.error("[app._index] inspectTheme failed:", err);
+      console.error("[app._index] rebuildCustomisationMatrix failed:", err);
       return { intent, ok: false, error: String(err.message || err) };
     }
   }
@@ -78,299 +58,340 @@ export const action = async ({ request }) => {
 };
 
 export default function Index() {
-  const { shopDomain, settingsProducts: initialProducts } = useLoaderData();
-  const settingsMatrixFetcher = useFetcher();
+  const { shopDomain, customisationStatus: initialStatus, defaultRates } = useLoaderData();
+  const matrixFetcher = useFetcher();
   const refreshFetcher = useFetcher();
-  const themeFetcher = useFetcher();
-  const themeListFetcher = useFetcher();
   const shopify = useAppBridge();
 
-  const [productsList, setProductsList] = useState(initialProducts || []);
-  const [selectedTypes, setSelectedTypes] = useState({ ring: true, pendant: true, bracelet: true });
-  const [productTitles, setProductTitles] = useState({
-    ring: "Ring Settings",
-    pendant: "Pendant Settings",
-    bracelet: "Bracelet Settings",
-  });
-  const [selectedThemeId, setSelectedThemeId] = useState("");
+  const [status, setStatus] = useState(initialStatus || {});
+  const [rates, setRates] = useState(defaultRates || {});
 
-  const isBuilding = settingsMatrixFetcher.state === "submitting";
+  const isBuilding = matrixFetcher.state === "submitting";
   const isRefreshing = refreshFetcher.state === "submitting";
-  const isListingThemes = themeListFetcher.state === "submitting";
-  const isInspectingTheme = themeFetcher.state === "submitting";
 
-  // Sync products when action completes
   useEffect(() => {
-    if (settingsMatrixFetcher.data?.intent === "buildSettingsMatrix") {
-      if (settingsMatrixFetcher.data.ok) {
-        shopify.toast.show("Settings design matrix rebuilt successfully!");
-        if (settingsMatrixFetcher.data.updatedProducts) {
-          setProductsList(settingsMatrixFetcher.data.updatedProducts);
-        }
-      } else {
-        shopify.toast.show(settingsMatrixFetcher.data.error || "Failed to rebuild matrix", { isError: true });
-      }
+    if (matrixFetcher.data?.customisationStatus) {
+      setStatus(matrixFetcher.data.customisationStatus);
     }
-  }, [settingsMatrixFetcher.data, shopify]);
+    if (matrixFetcher.data?.ok) {
+      shopify.toast.show(`Successfully synced ${matrixFetcher.data.totalVariants || 0} customization variants!`);
+    } else if (matrixFetcher.data?.error) {
+      shopify.toast.show(`Error: ${matrixFetcher.data.error}`, { isError: true });
+    }
+  }, [matrixFetcher.data, shopify]);
 
   useEffect(() => {
-    if (refreshFetcher.data?.intent === "refreshProducts" && refreshFetcher.data.ok) {
-      setProductsList(refreshFetcher.data.products);
-      shopify.toast.show("Product status refreshed");
+    if (refreshFetcher.data?.customisationStatus) {
+      setStatus(refreshFetcher.data.customisationStatus);
+      shopify.toast.show("Status refreshed!");
     }
   }, [refreshFetcher.data, shopify]);
 
-  const handleToggleType = (type) => {
-    setSelectedTypes((prev) => ({ ...prev, [type]: !prev[type] }));
-  };
-
-  const handleTitleChange = (type, val) => {
-    setProductTitles((prev) => ({ ...prev, [type]: val }));
-  };
-
-  const handleRefresh = () => {
-    refreshFetcher.submit(
-      { intent: "refreshProducts", customTitles: JSON.stringify(productTitles) },
-      { method: "POST" }
-    );
+  const handleRateChange = (key, value) => {
+    setRates((prev) => ({ ...prev, [key]: parseFloat(value) || 0 }));
   };
 
   const handleRebuild = () => {
-    const targets = {};
-    Object.keys(selectedTypes).forEach((type) => {
-      if (selectedTypes[type]) {
-        targets[type] = productTitles[type] || "Settings";
-      }
-    });
-
-    if (Object.keys(targets).length === 0) {
-      shopify.toast.show("Please select at least one supporting setting product.", { isError: true });
-      return;
-    }
-
-    settingsMatrixFetcher.submit(
-      { intent: "buildSettingsMatrix", targets: JSON.stringify(targets) },
-      { method: "POST" }
+    matrixFetcher.submit(
+      {
+        intent: "rebuildCustomisationMatrix",
+        rates: JSON.stringify(rates),
+      },
+      { method: "post" },
     );
   };
 
-  const listThemesForInspector = () => themeListFetcher.submit({ intent: "listThemes" }, { method: "POST" });
-  const inspectTheme = () => {
-    const selected = (themeListFetcher.data?.themes || []).find((t) => t.id === selectedThemeId);
-    themeFetcher.submit(
-      selected ? { intent: "inspectTheme", themeId: selected.id, themeName: selected.name } : { intent: "inspectTheme" },
-      { method: "POST" }
-    );
+  const handleRefresh = () => {
+    refreshFetcher.submit({ intent: "refreshStatus" }, { method: "post" });
   };
 
   return (
-    <s-page heading="Jewelry Settings Design Matrix">
+    <div style={{ maxWidth: 1040, margin: "0 auto", padding: "24px 20px 80px", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
       <TableGlobalStyles />
 
-      {/* Main Settings Product Matrix Manager */}
-      <s-section heading="Supporting Setting Products (Ring, Pendant, Bracelet)">
-        <s-paragraph>
-          This manager builds and updates the pre-priced <strong>Metal &times; Design</strong> variant matrix on your 3
-          supporting setting products. <strong>Leaves all gemstone products 100% untouched.</strong>
-        </s-paragraph>
+      {/* Header Banner */}
+      <div style={{ background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)", color: "#fff", padding: "28px 32px", borderRadius: 16, marginBottom: 28, boxShadow: "0 10px 25px -5px rgba(15, 23, 42, 0.15)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
+          <div>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.12)", padding: "4px 10px", borderRadius: 20, fontSize: 12, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: 12, backdropFilter: "blur(4px)" }}>
+              💎 Shubh Gems Jewelry Engine
+            </div>
+            <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em" }}>
+              Daily Metal Rates & Gemstone Customisation Matrix
+            </h1>
+            <p style={{ margin: "8px 0 0", color: "#94a3b8", fontSize: 14, maxWidth: 640, lineHeight: 1.5 }}>
+              Update daily gold/silver rates here. The app automatically recalculates and syncs all design prices to <strong>Gemstone Customisation</strong> in Shopify.
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <button
+              onClick={handleRefresh}
+              disabled={isRefreshing || isBuilding}
+              style={{ padding: "9px 16px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.06)", color: "#fff", fontWeight: 600, fontSize: 13, cursor: isRefreshing ? "wait" : "pointer" }}
+            >
+              {isRefreshing ? "Refreshing..." : "↻ Refresh Status"}
+            </button>
+          </div>
+        </div>
+      </div>
 
-        <div style={{ marginTop: "16px", ...tableWrapStyle }}>
+      {/* Error Displays */}
+      {matrixFetcher.data?.error && (
+        <div style={{ marginBottom: 24 }}>
+          <FriendlyError title="Matrix Build Error" error={matrixFetcher.data.error} />
+        </div>
+      )}
+
+      {/* Live Helper Product Status Card */}
+      <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 24, marginBottom: 28, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 16px", color: "#0f172a", display: "flex", alignItems: "center", gap: 8 }}>
+          <span>📦</span> Matrix Target Product
+        </h2>
+
+        <div style={tableWrapStyle}>
           <table style={tableStyle}>
             <thead>
               <tr>
-                <th style={{ ...thStyle, width: "45px", textAlign: "center" }}>Select</th>
-                <th style={{ ...thStyle, width: "110px" }}>Type</th>
-                <th style={thStyle}>Shopify Product Title</th>
-                <th style={{ ...thStyle, width: "140px" }}>Status</th>
-                <th style={thStyle}>Metals Detected</th>
-                <th style={{ ...thStyle, width: "90px", textAlign: "right" }}>Variants</th>
+                <th style={thStyle}>Target Product</th>
+                <th style={thStyle}>Status</th>
+                <th style={thStyle}>Active Variants</th>
+                <th style={thStyle}>Catalog Types</th>
               </tr>
             </thead>
             <tbody>
-              {productsList.map((item) => {
-                const isChecked = !!selectedTypes[item.type];
-                const titleVal = productTitles[item.type] || item.title;
-
-                return (
-                  <tr key={item.type}>
-                    <td style={{ ...tdStyle, textAlign: "center" }}>
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={() => handleToggleType(item.type)}
-                        style={{ cursor: "pointer", width: "16px", height: "16px" }}
-                      />
-                    </td>
-                    <td style={tdStyle}>
-                      <span
-                        style={{
-                          display: "inline-block",
-                          padding: "3px 8px",
-                          borderRadius: "6px",
-                          fontSize: "11.5px",
-                          fontWeight: 700,
-                          textTransform: "uppercase",
-                          background: brand.panel,
-                          color: brand.body,
-                          border: `1px solid ${brand.border}`,
-                        }}
-                      >
-                        {item.type}
-                      </span>
-                    </td>
-                    <td style={tdStyle}>
-                      <input
-                        type="text"
-                        value={titleVal}
-                        onChange={(e) => handleTitleChange(item.type, e.target.value)}
-                        placeholder="Product title in Shopify"
-                        style={{
-                          width: "100%",
-                          padding: "6px 10px",
-                          fontSize: "13px",
-                          borderRadius: "6px",
-                          border: `1px solid ${brand.border}`,
-                          background: "#fff",
-                        }}
-                      />
-                    </td>
-                    <td style={tdStyle}>
-                      {item.found ? (
-                        <Pill label="✓ Found in Store" active color={brand.success} />
-                      ) : (
-                        <Pill label="⚠ Not Found" active color={brand.danger} />
-                      )}
-                    </td>
-                    <td style={tdStyle}>
-                      <span style={{ fontSize: "12px", color: brand.muted }}>
-                        {item.metals && item.metals.length > 0 ? item.metals.join(", ") : "None detected"}
-                      </span>
-                    </td>
-                    <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700 }}>
-                      {item.totalVariants || 0}
-                    </td>
-                  </tr>
-                );
-              })}
+              <tr>
+                <td style={{ ...tdStyle, fontWeight: 600, color: "#0f172a" }}>
+                  {status.title || "Gemstone Customisation"}
+                </td>
+                <td style={tdStyle}>
+                  {status.found ? (
+                    <Pill color="green">✓ Active in Store</Pill>
+                  ) : (
+                    <Pill color="amber">⏳ Ready to Create</Pill>
+                  )}
+                </td>
+                <td style={{ ...tdStyle, fontWeight: 700, fontSize: 14, color: brand }}>
+                  {status.totalVariants || 0} variants
+                </td>
+                <td style={{ ...tdStyle, color: "#64748b", fontSize: 13 }}>
+                  Rings, Pendants, Bracelets (All Metals & Designs)
+                </td>
+              </tr>
             </tbody>
           </table>
         </div>
+      </div>
 
-        <div style={{ marginTop: "16px", display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
-          <s-button
-            tone="critical"
-            variant="primary"
-            {...(isBuilding ? { loading: true } : {})}
-            onClick={handleRebuild}
-          >
-            Rebuild Matrix on Selected Products
-          </s-button>
-
-          <s-button {...(isRefreshing ? { loading: true } : {})} onClick={handleRefresh}>
-            Check / Refresh Status
-          </s-button>
-        </div>
-
-        {settingsMatrixFetcher.data?.intent === "buildSettingsMatrix" && !settingsMatrixFetcher.data.ok && (
-          <div style={{ marginTop: "14px" }}>
-            <FriendlyError
-              message="Couldn't rebuild the settings design matrix."
-              detail={settingsMatrixFetcher.data.error}
-            />
-          </div>
-        )}
-
-        {settingsMatrixFetcher.data?.intent === "buildSettingsMatrix" && settingsMatrixFetcher.data.ok && (
-          <div style={{ marginTop: "14px", display: "flex", flexDirection: "column", gap: "8px" }}>
-            {(settingsMatrixFetcher.data.results || []).map((r) => (
-              <div key={r.type} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                {r.ok ? (
-                  <Pill label={`✓ ${r.title}: ${r.variantCount} variants updated`} active color={brand.success} />
-                ) : (
-                  <FriendlyErrorInline message={`${r.title} failed`} detail={r.error} />
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </s-section>
-
-      {/* Inspect storefront customizer Section */}
-      <s-section heading="Theme Customizer Inspector (Diagnostic)">
-        <s-paragraph>
-          Scan any theme's Liquid and JS files to inspect customizer configurations and verify storefront scripts.
-        </s-paragraph>
-        <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
-          <s-button {...(isListingThemes ? { loading: true } : {})} onClick={listThemesForInspector}>
-            List themes
-          </s-button>
-          {themeListFetcher.data?.ok && (themeListFetcher.data.themes || []).length > 0 && (
-            <select
-              value={selectedThemeId}
-              onChange={(e) => setSelectedThemeId(e.target.value)}
-              style={{
-                padding: "6px 10px",
-                fontSize: "13px",
-                borderRadius: "6px",
-                border: `1px solid ${brand.border}`,
-                background: "#fff",
-              }}
-            >
-              <option value="">-- Live theme (default) --</option>
-              {themeListFetcher.data.themes.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name} {t.role === "MAIN" ? "(live)" : `(${t.role.toLowerCase()})`}
-                </option>
-              ))}
-            </select>
-          )}
-          <s-button {...(isInspectingTheme ? { loading: true } : {})} onClick={inspectTheme}>
-            Inspect theme files
-          </s-button>
-        </div>
-
-        {themeFetcher.data?.intent === "inspectTheme" && themeFetcher.data.ok && (
-          <div style={{ marginTop: "14px", display: "flex", flexDirection: "column", gap: "10px" }}>
-            <p style={{ fontSize: "12.5px", color: brand.muted, margin: 0 }}>
-              Theme: <s-text fontWeight="bold">{themeFetcher.data.theme?.name}</s-text> ·{" "}
-              {themeFetcher.data.totalFilesScanned} files scanned · {themeFetcher.data.candidateCount} matched
+      {/* Daily Metal Rates Editor */}
+      <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 24, marginBottom: 28, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+          <div>
+            <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "#0f172a", display: "flex", alignItems: "center", gap: 8 }}>
+              <span>⚖️</span> Daily Metal Rates & Pricing Formula
+            </h2>
+            <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: 13 }}>
+              Enter current market prices per gram. Prices include making charges and GST automatically.
             </p>
-            {themeFetcher.data.candidates?.length > 0 && (
-              <p style={{ fontSize: "12px", color: brand.body, margin: 0 }}>
-                Matching files: {themeFetcher.data.candidates.join(", ")}
-              </p>
-            )}
-            {(themeFetcher.data.contents || []).map((f) => (
-              <div key={f.filename} style={{ border: `1px solid ${brand.border}`, borderRadius: "10px", padding: "10px" }}>
-                <p style={{ fontSize: "12.5px", fontWeight: 600, color: brand.body, margin: "0 0 6px" }}>
-                  {f.filename} ({f.length.toLocaleString()} chars{f.length > 3000 ? ", showing first 3,000" : ""})
-                </p>
-                {f.excerpt && (
-                  <pre
-                    style={{
-                      fontSize: "11px",
-                      whiteSpace: "pre-wrap",
-                      wordBreak: "break-word",
-                      maxHeight: "260px",
-                      overflow: "auto",
-                      background: brand.panel,
-                      padding: "8px",
-                      borderRadius: "6px",
-                      margin: 0,
-                    }}
-                  >
-                    {f.excerpt}
-                  </pre>
-                )}
-              </div>
-            ))}
           </div>
-        )}
-      </s-section>
-    </s-page>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginBottom: 24 }}>
+          <div style={{ background: "#f8fafc", padding: 14, borderRadius: 10, border: "1px solid #e2e8f0" }}>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 6 }}>
+              Silver (per gram)
+            </label>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={{ color: "#64748b", fontWeight: 600 }}>₹</span>
+              <input
+                type="number"
+                step="any"
+                value={rates.silver || 0}
+                onChange={(e) => handleRateChange("silver", e.target.value)}
+                style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, fontWeight: 600 }}
+              />
+            </div>
+          </div>
+
+          <div style={{ background: "#f8fafc", padding: 14, borderRadius: 10, border: "1px solid #e2e8f0" }}>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 6 }}>
+              22K Yellow Gold (per gram)
+            </label>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={{ color: "#64748b", fontWeight: 600 }}>₹</span>
+              <input
+                type="number"
+                step="any"
+                value={rates["22k-yellow"] || 0}
+                onChange={(e) => handleRateChange("22k-yellow", e.target.value)}
+                style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, fontWeight: 600 }}
+              />
+            </div>
+          </div>
+
+          <div style={{ background: "#f8fafc", padding: 14, borderRadius: 10, border: "1px solid #e2e8f0" }}>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 6 }}>
+              18K Yellow Gold (per gram)
+            </label>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={{ color: "#64748b", fontWeight: 600 }}>₹</span>
+              <input
+                type="number"
+                step="any"
+                value={rates["18k-yellow"] || 0}
+                onChange={(e) => handleRateChange("18k-yellow", e.target.value)}
+                style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, fontWeight: 600 }}
+              />
+            </div>
+          </div>
+
+          <div style={{ background: "#f8fafc", padding: 14, borderRadius: 10, border: "1px solid #e2e8f0" }}>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 6 }}>
+              18K White Gold (per gram)
+            </label>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={{ color: "#64748b", fontWeight: 600 }}>₹</span>
+              <input
+                type="number"
+                step="any"
+                value={rates["18k-white"] || 0}
+                onChange={(e) => handleRateChange("18k-white", e.target.value)}
+                style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, fontWeight: 600 }}
+              />
+            </div>
+          </div>
+
+          <div style={{ background: "#f8fafc", padding: 14, borderRadius: 10, border: "1px solid #e2e8f0" }}>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 6 }}>
+              14K Yellow Gold (per gram)
+            </label>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={{ color: "#64748b", fontWeight: 600 }}>₹</span>
+              <input
+                type="number"
+                step="any"
+                value={rates["14k-yellow"] || 0}
+                onChange={(e) => handleRateChange("14k-yellow", e.target.value)}
+                style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, fontWeight: 600 }}
+              />
+            </div>
+          </div>
+
+          <div style={{ background: "#f8fafc", padding: 14, borderRadius: 10, border: "1px solid #e2e8f0" }}>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 6 }}>
+              14K White Gold (per gram)
+            </label>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={{ color: "#64748b", fontWeight: 600 }}>₹</span>
+              <input
+                type="number"
+                step="any"
+                value={rates["14k-white"] || 0}
+                onChange={(e) => handleRateChange("14k-white", e.target.value)}
+                style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, fontWeight: 600 }}
+              />
+            </div>
+          </div>
+
+          <div style={{ background: "#f8fafc", padding: 14, borderRadius: 10, border: "1px solid #e2e8f0" }}>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 6 }}>
+              Panchdhatu (per gram)
+            </label>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={{ color: "#64748b", fontWeight: 600 }}>₹</span>
+              <input
+                type="number"
+                step="any"
+                value={rates.panchdhatu || 0}
+                onChange={(e) => handleRateChange("panchdhatu", e.target.value)}
+                style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, fontWeight: 600 }}
+              />
+            </div>
+          </div>
+
+          <div style={{ background: "#f8fafc", padding: 14, borderRadius: 10, border: "1px solid #e2e8f0" }}>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 6 }}>
+              Tamba / Copper (per gram)
+            </label>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={{ color: "#64748b", fontWeight: 600 }}>₹</span>
+              <input
+                type="number"
+                step="any"
+                value={rates.copper || 0}
+                onChange={(e) => handleRateChange("copper", e.target.value)}
+                style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, fontWeight: 600 }}
+              />
+            </div>
+          </div>
+
+          <div style={{ background: "#f8fafc", padding: 14, borderRadius: 10, border: "1px solid #e2e8f0" }}>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 6 }}>
+              Making Charges (per gram)
+            </label>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={{ color: "#64748b", fontWeight: 600 }}>₹</span>
+              <input
+                type="number"
+                step="any"
+                value={rates.makingCharge || 0}
+                onChange={(e) => handleRateChange("makingCharge", e.target.value)}
+                style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, fontWeight: 600 }}
+              />
+            </div>
+          </div>
+
+          <div style={{ background: "#f8fafc", padding: 14, borderRadius: 10, border: "1px solid #e2e8f0" }}>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 6 }}>
+              Tax / GST Rate (%)
+            </label>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={{ color: "#64748b", fontWeight: 600 }}>%</span>
+              <input
+                type="number"
+                step="any"
+                value={rates.taxRate || 0}
+                onChange={(e) => handleRateChange("taxRate", e.target.value)}
+                style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, fontWeight: 600 }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Action Button */}
+        <div style={{ display: "flex", justifyContent: "flex-end", borderTop: "1px solid #f1f5f9", paddingTop: 18 }}>
+          <button
+            onClick={handleRebuild}
+            disabled={isBuilding}
+            style={{
+              padding: "12px 24px",
+              borderRadius: 8,
+              border: "none",
+              background: isBuilding ? "#94a3b8" : "linear-gradient(135deg, #059669 0%, #047857 100%)",
+              color: "#fff",
+              fontWeight: 700,
+              fontSize: 14,
+              cursor: isBuilding ? "wait" : "pointer",
+              boxShadow: "0 4px 12px rgba(5, 150, 105, 0.25)",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            {isBuilding ? (
+              <>
+                <span className="shubh-spinner" style={{ display: "inline-block", width: 14, height: 14, border: "2px solid #fff", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.6s linear infinite" }}></span>
+                Calculating & Syncing Matrix...
+              </>
+            ) : (
+              <>🚀 Save Rates & Rebuild Customisation Matrix</>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
 export function ErrorBoundary() {
-  return boundary.error();
+  return boundary.error(useLoaderData());
 }
