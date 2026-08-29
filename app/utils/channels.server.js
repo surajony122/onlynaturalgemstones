@@ -27,36 +27,20 @@ export async function ensureOnlineStoreOnly(admin, productId) {
       return diag;
     }
     const allPubs = pubJson.data?.publications?.nodes || [];
-    const onlineStore = allPubs.find((p) => p.name === "Online Store");
-    const others = allPubs.filter((p) => p.id !== onlineStore?.id);
-    diag.foundOnlineStore = !!onlineStore;
-    diag.otherChannels = others.map((p) => p.name);
+    diag.allChannels = allPubs.map((p) => p.name);
 
-    if (onlineStore) {
+    if (allPubs.length) {
       const publishRes = await admin.graphql(
         `#graphql
-        mutation PublishToOnlineStore($id: ID!, $input: [PublicationInput!]!) {
+        mutation PublishToAll($id: ID!, $input: [PublicationInput!]!) {
           productUpdate(input: { id: $id, status: ACTIVE }) { product { id status } }
           publishablePublish(id: $id, input: $input) { userErrors { field message } }
         }`,
-        { variables: { id: productId, input: [{ publicationId: onlineStore.id }] } },
+        { variables: { id: productId, input: allPubs.map((p) => ({ publicationId: p.id })) } },
       );
       const publishJson = await publishRes.json();
       diag.publishUserErrors = publishJson.data?.publishablePublish?.userErrors || [];
       diag.publishGraphqlErrors = publishJson.errors || null;
-    }
-
-    if (others.length) {
-      const unpublishRes = await admin.graphql(
-        `#graphql
-        mutation UnpublishFromOtherChannels($id: ID!, $input: [PublicationInput!]!) {
-          publishableUnpublish(id: $id, input: $input) { userErrors { field message } }
-        }`,
-        { variables: { id: productId, input: others.map((p) => ({ publicationId: p.id })) } },
-      );
-      const unpublishJson = await unpublishRes.json();
-      diag.unpublishUserErrors = unpublishJson.data?.publishableUnpublish?.userErrors || [];
-      diag.unpublishGraphqlErrors = unpublishJson.errors || null;
     }
   } catch (err) {
     diag.error = String(err.message || err);
