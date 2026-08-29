@@ -78,20 +78,48 @@ async function findSettingsProduct(admin, title) {
   return json.data?.products?.nodes?.[0] || null;
 }
 
-/**
- * Runs the rebuild for all 3 Settings products. Never lets one product's
- * failure stop the others — each gets its own try/catch and a per-type
- * result entry, same pattern as every other bulk action in this app.
- */
-export async function buildSettingsDesignMatrix(admin) {
-  const settings = await getThemeSettings(admin, THEME_GID);
-  const results = [];
+export async function fetchSettingsProductsStatus(admin, customTitles = {}) {
+  const titles = { ...SETTINGS_PRODUCT_TITLES, ...customTitles };
+  const list = [];
 
-  for (const [type, title] of Object.entries(SETTINGS_PRODUCT_TITLES)) {
+  for (const [type, defaultTitle] of Object.entries(SETTINGS_PRODUCT_TITLES)) {
+    const title = titles[type] || defaultTitle;
     try {
       const product = await findSettingsProduct(admin, title);
       if (!product) {
-        results.push({ type, title, ok: false, error: `Product titled "${title}" not found` });
+        list.push({ type, title, found: false, totalVariants: 0, metals: [] });
+      } else {
+        const metalOption = product.options.find((o) => o.name.toLowerCase().includes("metal"));
+        list.push({
+          type,
+          title: product.title,
+          id: product.id,
+          found: true,
+          totalVariants: product.totalVariants || 0,
+          metals: metalOption ? metalOption.values : [],
+        });
+      }
+    } catch (err) {
+      list.push({ type, title, found: false, error: err.message, totalVariants: 0, metals: [] });
+    }
+  }
+
+  return list;
+}
+
+/**
+ * Runs the rebuild for selected Settings products.
+ */
+export async function buildSettingsDesignMatrix(admin, targets = null) {
+  const settings = await getThemeSettings(admin, THEME_GID);
+  const results = [];
+  const entries = targets && typeof targets === "object" ? Object.entries(targets) : Object.entries(SETTINGS_PRODUCT_TITLES);
+
+  for (const [type, title] of entries) {
+    try {
+      const product = await findSettingsProduct(admin, title);
+      if (!product) {
+        results.push({ type, title, ok: false, error: `Product titled "${title}" not found in your store` });
         continue;
       }
 
