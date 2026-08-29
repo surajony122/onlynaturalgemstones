@@ -258,8 +258,30 @@ export async function buildGemstoneCustomisationMatrix(admin, rates = {}) {
     throw new Error(`productSet failed: ${JSON.stringify(userErrors)}`);
   }
 
-  // Ensure published across all channels including Razorpay Magic Checkout
+  // Ensure handle is explicitly gemstone-customisation and publish across all sales channels
+  let variantsNodes = [];
   try {
+    const fetchRes = await admin.graphql(
+      `#graphql
+      query FetchAllCustomisationVariants($id: ID!) {
+        product(id: $id) {
+          id
+          handle
+          variants(first: 250) {
+            nodes {
+              id
+              title
+              price
+              selectedOptions { name value }
+            }
+          }
+        }
+      }`,
+      { variables: { id: product.id } },
+    );
+    const fetchJson = await fetchRes.json();
+    variantsNodes = fetchJson.data?.product?.variants?.nodes || [];
+
     const pubRes = await admin.graphql(`#graphql
       query AllPubs { publications(first: 25) { nodes { id name } } }`);
     const pubJson = await pubRes.json();
@@ -268,14 +290,60 @@ export async function buildGemstoneCustomisationMatrix(admin, rates = {}) {
       await admin.graphql(
         `#graphql
         mutation PublishToAll($id: ID!, $input: [PublicationInput!]!) {
-          productUpdate(input: { id: $id, status: ACTIVE }) { product { id status } }
+          productUpdate(input: { id: $id, status: ACTIVE, handle: "gemstone-customisation" }) { product { id status handle } }
           publishablePublish(id: $id, input: $input) { userErrors { field message } }
         }`,
         { variables: { id: product.id, input: allPubs.map((p) => ({ publicationId: p.id })) } },
       );
     }
+
+    // Write compact snippet directly to active theme files if possible
+    if (variantsNodes.length > 0) {
+      const matrixArray = variantsNodes.map((n) => {
+        const numericId = n.id.replace("gid://shopify/ProductVariant/", "");
+        const optMap = {};
+        (n.selectedOptions || []).forEach((o) => {
+          optMap[o.name.toLowerCase()] = o.value;
+        });
+        return {
+          id: numericId,
+          type: optMap["type"] || "",
+          metal: optMap["metal"] || "",
+          design: optMap["design"] || "",
+          price: parseFloat(n.price || 0),
+        };
+      });
+
+      const snippetContent = `<script>
+  window._shubhCustomisationMatrix = ${JSON.stringify(matrixArray)};
+  window._shubhDefaultHelperVariantId = "${matrixArray[0]?.id || ""}";
+</script>`;
+
+      // Find draft theme Dawn 16.0.0 - Cart Bundle (190705238315)
+      const themeGid = "gid://shopify/OnlineStoreTheme/190705238315";
+      await admin.graphql(
+        `#graphql
+        mutation UpsertSnippet($themeId: ID!, $files: [OnlineStoreThemeFilesUpsertFileInput!]!) {
+          themeFilesUpsert(themeId: $themeId, files: $files) {
+            upsertedThemeFiles { filename }
+            userErrors { field message }
+          }
+        }`,
+        {
+          variables: {
+            themeId: themeGid,
+            files: [
+              {
+                filename: "snippets/shubh-customisation-lookup.liquid",
+                body: { type: "TEXT", value: snippetContent },
+              },
+            ],
+          },
+        },
+      );
+    }
   } catch (pubErr) {
-    console.warn("Non-fatal channel publish warning:", pubErr);
+    console.warn("Non-fatal post-sync warning:", pubErr);
   }
 
   return {
