@@ -67,6 +67,7 @@ async function findSettingsProduct(admin, title) {
         nodes {
           id
           title
+          totalVariants
           options { name values }
         }
       }
