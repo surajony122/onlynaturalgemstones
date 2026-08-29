@@ -36,6 +36,7 @@ export async function ensureOnlineStoreOnly(admin, productId) {
       const publishRes = await admin.graphql(
         `#graphql
         mutation PublishToOnlineStore($id: ID!, $input: [PublicationInput!]!) {
+          productUpdate(input: { id: $id, status: ACTIVE }) { product { id status } }
           publishablePublish(id: $id, input: $input) { userErrors { field message } }
         }`,
         { variables: { id: productId, input: [{ publicationId: onlineStore.id }] } },

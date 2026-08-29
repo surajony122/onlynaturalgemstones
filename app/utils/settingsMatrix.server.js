@@ -204,11 +204,11 @@ export async function buildSettingsDesignMatrix(admin, targets = null) {
         `#graphql
         mutation SetSettingsDesignVariants($input: ProductSetInput!) {
           productSet(input: $input, synchronous: true) {
-            product { id }
+            product { id status }
             userErrors { field message }
           }
         }`,
-        { variables: { input: { id: product.id, productOptions, variants } } },
+        { variables: { input: { id: product.id, status: "ACTIVE", productOptions, variants } } },
       );
       const setJson = await setRes.json();
       const userErrors = setJson.data?.productSet?.userErrors;
