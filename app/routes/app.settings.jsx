@@ -55,6 +55,7 @@ export const loader = async ({ request }) => {
     whatsappIntervalValue: row?.whatsappIntervalValue || DEFAULT_WHATSAPP_INTERVAL_VALUE,
     whatsappIntervalUnit: row?.whatsappIntervalUnit || DEFAULT_WHATSAPP_INTERVAL_UNIT,
     interaktWebhookSecretSet: !!row?.interaktWebhookSecret,
+    googlePlacesApiKeySet: !!row?.googlePlacesApiKey,
     // So the page can say which env vars are filling in for anything
     // not saved here yet.
     envFallback: {
@@ -64,6 +65,7 @@ export const loader = async ({ request }) => {
       googleServiceAccountPrivateKey: !!process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY,
       astroLeadsSpreadsheetId: !!process.env.ASTRO_LEADS_SPREADSHEET_ID,
       interaktApiKey: !!process.env.INTERAKT_API_KEY,
+      googlePlacesApiKey: !!process.env.GOOGLE_PLACES_API_KEY,
     },
   };
 };
@@ -159,6 +161,7 @@ export const action = async ({ request }) => {
   const interaktApiKey = formData.get("interaktApiKey")?.trim() || existing?.interaktApiKey || "";
   const interaktWebhookSecret = formData.get("interaktWebhookSecret")?.trim() || existing?.interaktWebhookSecret || "";
   const sheetsRelaySecret = formData.get("sheetsRelaySecret")?.trim() || existing?.sheetsRelaySecret || "";
+  const googlePlacesApiKey = formData.get("googlePlacesApiKey")?.trim() || existing?.googlePlacesApiKey || "";
 
   await saveAppSettings(session.shop, {
     gmailUser: formData.get("gmailUser")?.trim() || "",
@@ -177,6 +180,7 @@ export const action = async ({ request }) => {
     whatsappIntervalValue: formData.get("whatsappIntervalValue")?.trim() || "",
     whatsappIntervalUnit: formData.get("whatsappIntervalUnit")?.trim() || "",
     interaktWebhookSecret,
+    googlePlacesApiKey,
   });
 
   return { intent: "save", ok: true };
@@ -230,6 +234,7 @@ export default function SettingsPage() {
   const [whatsappIntervalValue, setWhatsappIntervalValue] = useState(data.whatsappIntervalValue);
   const [whatsappIntervalUnit, setWhatsappIntervalUnit] = useState(data.whatsappIntervalUnit);
   const [interaktWebhookSecret, setInteraktWebhookSecret] = useState("");
+  const [googlePlacesApiKey, setGooglePlacesApiKey] = useState("");
 
   useEffect(() => {
     if (fetcher.data?.intent === "save" && fetcher.data.ok) {
@@ -239,6 +244,7 @@ export default function SettingsPage() {
       setInteraktApiKey("");
       setInteraktWebhookSecret("");
       setSheetsRelaySecret("");
+      setGooglePlacesApiKey("");
     }
   }, [fetcher.data, shopify]);
 
@@ -298,6 +304,7 @@ export default function SettingsPage() {
         whatsappIntervalValue,
         whatsappIntervalUnit,
         interaktWebhookSecret,
+        googlePlacesApiKey,
       },
       { method: "POST" }
     );
@@ -707,6 +714,38 @@ export default function SettingsPage() {
               placeholder={data.interaktWebhookSecretSet ? "•••• •••• •••• ••••" : "any secret string — pick one, match it in Interakt"}
             />
           </div>
+        </s-section>
+
+        <s-section heading="Location Autocomplete (Google Places)">
+          <s-paragraph>
+            Powers the city suggestions on the storefront's "Place of Birth" field (Personalised Pooja form). The
+            key is only ever used server-side by this app — the theme calls our own endpoint, never Google
+            directly, so the key never reaches the customer's browser. Leave blank to keep using the free
+            (Photon/OpenStreetMap) lookup instead.
+          </s-paragraph>
+          <s-paragraph>
+            Get a key from Google Cloud Console: enable the <s-text fontWeight="bold">Places API</s-text>, then
+            create an API key under Credentials. Since this key is only called from our server, restricting it to
+            this store's domain isn't necessary the way it would be for a client-side integration — an IP or API
+            restriction in Google Cloud Console is still good practice, but optional.
+          </s-paragraph>
+
+          <label style={labelStyle} htmlFor="googlePlacesApiKey">
+            Google Places API Key{" "}
+            {data.googlePlacesApiKeySet ? "(●●●● already set — leave blank to keep it)" : "(not set yet)"}
+          </label>
+          <input
+            id="googlePlacesApiKey"
+            style={fieldStyle}
+            type="password"
+            autoComplete="new-password"
+            value={googlePlacesApiKey}
+            onChange={(e) => setGooglePlacesApiKey(e.target.value)}
+            placeholder={data.googlePlacesApiKeySet ? "•••• •••• •••• ••••" : "from Google Cloud Console → Credentials"}
+          />
+          {!data.googlePlacesApiKeySet && data.envFallback.googlePlacesApiKey && (
+            <p style={hintStyle}>Currently falling back to the GOOGLE_PLACES_API_KEY env var on Render.</p>
+          )}
         </s-section>
 
         <div style={{ margin: "24px 0" }}>

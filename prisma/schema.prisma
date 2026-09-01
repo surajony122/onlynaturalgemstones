@@ -329,6 +329,17 @@ model AppSettings {
   // slot so a permanently-broken lead can't block the queue forever).
   // Null means none sent yet under pacing.
   whatsappLastSentAt             DateTime?
+  // Google Places API key — used server-side only, by
+  // proxy.places-autocomplete.jsx, to power the "Place of Birth"
+  // autocomplete on the theme's Personalised Pooja form. Never sent to
+  // the browser (the theme calls our proxy endpoint, which calls Google
+  // itself and returns just the results) — unlike a typical client-side
+  // Places integration, this key never needs a domain restriction for
+  // security, though restricting it in Google Cloud Console is still
+  // good practice. Blank means the endpoint falls back to the free
+  // Photon/OpenStreetMap lookup instead (see
+  // proxy.places-autocomplete.jsx for both paths).
+  googlePlacesApiKey             String?
   updatedAt                      DateTime @updatedAt
 }
 
