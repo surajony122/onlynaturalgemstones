@@ -78,7 +78,7 @@ export const loader = async ({ request }) => {
 
   const url = new URL(request.url);
   const query = (url.searchParams.get("q") || "").trim();
-  if (query.length < 2) {
+  if (query.length < 1) {
     return Response.json({ suggestions: [] });
   }
 
