@@ -17,20 +17,35 @@
 import { authenticate } from "../shopify.server";
 import { getAppSettings } from "../utils/appSettings.server";
 
+// Uses Places API (New) -- the legacy `maps/api/place/autocomplete/json`
+// endpoint is REQUEST_DENIED ("legacy API ... not enabled for your
+// project") on any Google Cloud project created recently enough to only
+// have the new API available (confirmed live) -- so this deliberately
+// targets the current one, not the older/more commonly-documented one.
 async function fetchGoogleSuggestions(query, apiKey) {
-  const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(
-    query,
-  )}&types=(cities)&key=${encodeURIComponent(apiKey)}`;
-  const res = await fetch(url);
+  const res = await fetch("https://places.googleapis.com/v1/places:autocomplete", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": apiKey,
+    },
+    body: JSON.stringify({
+      input: query,
+      includedPrimaryTypes: ["locality"],
+    }),
+  });
   const data = await res.json();
-  if (data.status !== "OK" && data.status !== "ZERO_RESULTS") {
-    throw new Error(`Google Places error: ${data.status}${data.error_message ? " - " + data.error_message : ""}`);
+  if (!res.ok) {
+    throw new Error(`Google Places error: ${data?.error?.message || res.statusText}`);
   }
-  return (data.predictions || []).map((p) => ({
-    mainText: p.structured_formatting?.main_text || p.description,
-    secondaryText: p.structured_formatting?.secondary_text || "",
-    fullText: p.description,
-  }));
+  return (data.suggestions || [])
+    .map((s) => s.placePrediction)
+    .filter(Boolean)
+    .map((p) => ({
+      mainText: p.structuredFormat?.mainText?.text || p.text?.text || "",
+      secondaryText: p.structuredFormat?.secondaryText?.text || "",
+      fullText: p.text?.text || "",
+    }));
 }
 
 // Same free lookup the theme used to call directly, before this endpoint
