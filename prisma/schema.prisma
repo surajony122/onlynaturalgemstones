@@ -281,6 +281,18 @@ model AppSettings {
   // app/routes/webhooks.orders.updated.jsx. Defaults to "order_inprocess"
   // if left blank — see DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME.
   interaktOrderTemplateName      String?
+  // Third, separate WhatsApp template — the wishlist reminder (see
+  // sendWishlistWhatsApp in interakt.server.js), sent alongside the
+  // wishlist reminder email on the same debounced/interval schedule —
+  // used when this Settings page field is left blank. Defaults to
+  // "wishlist_reminder" if left blank, see
+  // DEFAULT_INTERAKT_WISHLIST_TEMPLATE_NAME. Column added after the
+  // fact — this field was already referenced throughout
+  // appSettings.server.js/app.settings.jsx but had no matching column,
+  // which made every Settings-page save fail with a Prisma "Unknown
+  // argument" error (confirmed live) regardless of what was actually
+  // being changed.
+  interaktWishlistTemplateName  String?
   // Tag name that, when present on an order, triggers the order-
   // processing WhatsApp send (see webhooks.orders.updated.jsx) — added
   // after confirming live that none of Shopify's own fulfillment-status
