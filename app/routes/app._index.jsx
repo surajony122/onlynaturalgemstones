@@ -452,6 +452,24 @@ export default function Index() {
               </div>
             </div>
 
+            <div style={{ background: "#f8fafc", padding: "14px 16px", borderRadius: 10, border: "1px solid #e2e8f0", marginBottom: 18, display: "flex", alignItems: "center", gap: 10 }}>
+              <input
+                type="checkbox"
+                id="enableMakingChargeAndTax"
+                checked={!!rates.enableMakingChargeAndTax}
+                onChange={(e) => setRates((prev) => ({ ...prev, enableMakingChargeAndTax: e.target.checked }))}
+                style={{ width: 16, height: 16, cursor: "pointer" }}
+              />
+              <label htmlFor="enableMakingChargeAndTax" style={{ fontSize: 13, fontWeight: 600, color: "#334155", cursor: "pointer" }}>
+                Apply Making Charge &amp; GST Tax to live pricing
+              </label>
+              <span style={{ fontSize: 12, color: "#94a3b8" }}>
+                {rates.enableMakingChargeAndTax
+                  ? "On — the making charge and tax rate above are added to customized pricing on the storefront."
+                  : "Off — customized pricing uses metal cost only (making charge/tax above are saved but not applied)."}
+              </span>
+            </div>
+
             <div style={{ display: "flex", justifyContent: "flex-end", borderTop: "1px solid #f1f5f9", paddingTop: 18 }}>
               <button
                 onClick={handleRebuild}

@@ -26,8 +26,15 @@
  *     "14K Yellow Gold": ..., "14K White Gold": ...
  *   },
  *   makingCharge: ...,
- *   taxRate: ...
+ *   taxRate: ...,
+ *   enableMakingChargeAndTax: true | false
  * }
+ *
+ * enableMakingChargeAndTax is the on/off switch for whether
+ * makingCharge/taxRate actually get added to storefront pricing at all --
+ * moved here from a Theme Settings checkbox per explicit request, now
+ * that pricing lives in this app rather than the theme. false unless the
+ * dashboard's own checkbox has been turned on and saved.
  */
 import { authenticate } from "../shopify.server";
 import { getAppSettings, ratesFromAppSettings } from "../utils/appSettings.server";
@@ -56,5 +63,6 @@ export const loader = async ({ request }) => {
     },
     makingCharge: rates.makingCharge,
     taxRate: rates.taxRate,
+    enableMakingChargeAndTax: rates.enableMakingChargeAndTax,
   });
 };

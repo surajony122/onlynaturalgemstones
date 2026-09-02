@@ -376,6 +376,14 @@ model AppSettings {
   metalRateGold14kWhite          String?
   metalMakingCharge              String?
   metalTaxRate                   String?
+  // On/off switch for applying metalMakingCharge/metalTaxRate at all --
+  // moved here from a Theme Settings checkbox per explicit request, now
+  // that pricing lives in this app rather than the theme. "true"/"false"
+  // string, same storage convention as the rest of this model. Off
+  // (unset/anything other than "true") means a customized ring/pendant/
+  // bracelet is priced on metal cost alone, matching the storefront's
+  // existing behavior exactly until this is turned on.
+  metalEnableMakingChargeTax     String?
   updatedAt                      DateTime @updatedAt
 }
 

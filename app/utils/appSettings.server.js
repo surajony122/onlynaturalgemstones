@@ -190,6 +190,12 @@ export async function saveMetalRates(shop, rates) {
     const value = rates[rateKey];
     clean[field] = value === undefined || value === null || value === "" ? null : String(value);
   }
+  // Boolean, not a rate -- stored/read separately from the numeric loop
+  // above. Moved here from a Theme Settings checkbox per explicit
+  // request, so pricing (rates AND whether making charge/tax apply at
+  // all) has a single home in this app instead of being split across
+  // the app and the theme.
+  clean.metalEnableMakingChargeTax = rates.enableMakingChargeAndTax ? "true" : "false";
   return prisma.appSettings.upsert({
     where: { shop },
     create: { shop, ...clean },
@@ -197,8 +203,10 @@ export async function saveMetalRates(shop, rates) {
   });
 }
 
-/** Resolved rates in DEFAULT_RATES's own key shape — a saved value wins,
- * DEFAULT_RATES fills in anything blank/unparseable. Used by both
+/** Resolved rates in DEFAULT_RATES's own key shape, plus
+ * enableMakingChargeAndTax (boolean, off/false unless explicitly saved
+ * as "true") — a saved value wins, DEFAULT_RATES fills in anything
+ * blank/unparseable for the numeric fields. Used by both
  * app._index.jsx's loader (to prefill the dashboard) and
  * proxy.metal-rates.jsx (to serve the storefront). Takes the object
  * getAppSettings/getRawAppSettingsRow already returned — doesn't fetch
@@ -210,5 +218,6 @@ export function ratesFromAppSettings(settings) {
     const parsed = raw !== undefined && raw !== null && raw !== "" ? parseFloat(raw) : NaN;
     resolved[rateKey] = Number.isFinite(parsed) ? parsed : DEFAULT_RATES[rateKey];
   }
+  resolved.enableMakingChargeAndTax = !!settings && settings.metalEnableMakingChargeTax === "true";
   return resolved;
 }
