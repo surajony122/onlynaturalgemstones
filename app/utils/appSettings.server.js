@@ -148,10 +148,27 @@ export async function getRawAppSettingsRow(shop) {
 
 /** Upserts the shop's settings row. Blank-string fields are stored as
  * null (not empty string) so getAppSettings's `|| env fallback` logic
- * treats "cleared in the form" the same as "never set". */
+ * treats "cleared in the form" the same as "never set".
+ *
+ * IMPORTANT: only fields actually present as keys on `data` are touched.
+ * FIELDS is a flat, shared list across every settings form this app has
+ * (Gmail, Sheets, Interakt/WhatsApp, Google Places, metal rates/pricing
+ * -- each on its own page/tab), but no single form submits all of them.
+ * This used to loop over the full FIELDS list regardless of what `data`
+ * actually contained, so `data[field]` was `undefined` for every field
+ * NOT part of the calling form -- which `(undefined || "").trim() || null`
+ * turned into an explicit `null`, and that null got written by the
+ * upsert's `update: clean` just like any other value. Concretely: saving
+ * app.settings.jsx's form (which only submits ~16 of the 26 FIELDS) was
+ * silently wiping the other 10 -- the metal rates and Making
+ * Charge/Tax Rate entered on the app._index.jsx dashboard -- back to
+ * null on every single save, with no error and no indication anything
+ * had changed. Checking hasOwnProperty first means a form that doesn't
+ * mention a field leaves whatever's already saved for it alone. */
 export async function saveAppSettings(shop, data) {
   const clean = {};
   for (const field of FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(data, field)) continue;
     const value = (data[field] || "").trim();
     clean[field] = value || null;
   }
