@@ -352,6 +352,30 @@ model AppSettings {
   // Photon/OpenStreetMap lookup instead (see
   // proxy.places-autocomplete.jsx for both paths).
   googlePlacesApiKey             String?
+  // Daily metal rates + making charge + tax rate, editable from this
+  // app's own dashboard (app._index.jsx, "Daily Metal Rates & Pricing
+  // Formula" panel) via the "Save Rates & Rebuild Customisation Matrix"
+  // button — that button's label already promised persistence, but
+  // until this, rates were only ever transient React state, reset to
+  // DEFAULT_RATES (gemstoneCustomisationMatrix.server.js) on every page
+  // load, never actually saved. Also now the source proxy.metal-rates.jsx
+  // serves to the storefront, replacing the theme's own shubh_rate_*
+  // Theme Settings as the live pricing source (per explicit request —
+  // those Theme Settings still exist and still work as a fallback if
+  // this app is ever uninstalled or this fetch fails, but are no longer
+  // the primary source while it's running). Stored as strings, same
+  // pattern as the rest of this model -- parsed with a numeric fallback
+  // to DEFAULT_RATES wherever read.
+  metalRateSilver                String?
+  metalRatePanchdhatu            String?
+  metalRateCopper                String?
+  metalRateGold22kYellow         String?
+  metalRateGold18kYellow         String?
+  metalRateGold18kWhite          String?
+  metalRateGold14kYellow         String?
+  metalRateGold14kWhite          String?
+  metalMakingCharge              String?
+  metalTaxRate                   String?
   updatedAt                      DateTime @updatedAt
 }
 

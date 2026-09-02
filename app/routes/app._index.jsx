@@ -4,11 +4,11 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import {
-  DEFAULT_RATES,
   fetchCustomisationStatus,
   buildGemstoneCustomisationMatrix,
   runFullSystemDiagnostics,
 } from "../utils/gemstoneCustomisationMatrix.server";
+import { getAppSettings, saveMetalRates, ratesFromAppSettings } from "../utils/appSettings.server";
 import { tableWrapStyle, tableStyle, thStyle, tdStyle, TableGlobalStyles, Pill, brand } from "../components/table-kit";
 import { FriendlyError } from "../components/friendly-error";
 
@@ -23,16 +23,21 @@ export const loader = async ({ request }) => {
     console.error("[app._index] loader diagnostics error:", err);
   }
 
+  const settings = await getAppSettings(session.shop);
+
   return {
     shopDomain: (session.shop || "").replace(".myshopify.com", ""),
     customisationStatus,
     systemChecks,
-    defaultRates: DEFAULT_RATES,
+    // Saved rates (this dashboard's own "Save Rates & Rebuild..." button)
+    // take priority over the hardcoded defaults -- same
+    // saved-row-wins-else-fallback pattern the rest of AppSettings uses.
+    defaultRates: ratesFromAppSettings(settings),
   };
 };
 
 export const action = async ({ request }) => {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const formData = await request.formData();
   const intent = formData.get("intent");
 
@@ -50,6 +55,13 @@ export const action = async ({ request }) => {
   if (intent === "rebuildCustomisationMatrix") {
     try {
       const rates = JSON.parse(formData.get("rates") || "{}");
+      // Persists the entered rates FIRST -- this is what the button's own
+      // "Save Rates & ..." label already promised, but previously never
+      // actually happened (rates only ever lived in React state, reset
+      // to DEFAULT_RATES on every page load). proxy.metal-rates.jsx reads
+      // this same saved row to serve the storefront, so saving it here is
+      // also what makes live pricing use these rates going forward.
+      await saveMetalRates(session.shop, rates);
       const result = await buildGemstoneCustomisationMatrix(admin, rates);
       const updatedStatus = await fetchCustomisationStatus(admin);
       const checks = await runFullSystemDiagnostics(admin);

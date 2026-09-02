@@ -6,6 +6,7 @@
  * working as defaults even before anyone visits the Settings page.
  */
 import prisma from "../db.server";
+import { DEFAULT_RATES } from "./gemstoneCustomisationMatrix.server";
 
 const FIELDS = [
   "gmailUser",
@@ -25,6 +26,16 @@ const FIELDS = [
   "whatsappIntervalUnit",
   "interaktWebhookSecret",
   "googlePlacesApiKey",
+  "metalRateSilver",
+  "metalRatePanchdhatu",
+  "metalRateCopper",
+  "metalRateGold22kYellow",
+  "metalRateGold18kYellow",
+  "metalRateGold18kWhite",
+  "metalRateGold14kYellow",
+  "metalRateGold14kWhite",
+  "metalMakingCharge",
+  "metalTaxRate",
 ];
 
 const ENV_FALLBACK = {
@@ -149,4 +160,55 @@ export async function saveAppSettings(shop, data) {
     create: { shop, ...clean },
     update: clean,
   });
+}
+
+// Maps DEFAULT_RATES's own key shape (silver, panchdhatu, copper,
+// 22k-yellow, 18k-yellow, 18k-white, 14k-yellow, 14k-white, makingCharge,
+// taxRate -- see gemstoneCustomisationMatrix.server.js) to this model's
+// field names.
+const RATE_KEY_TO_FIELD = {
+  silver: "metalRateSilver",
+  panchdhatu: "metalRatePanchdhatu",
+  copper: "metalRateCopper",
+  "22k-yellow": "metalRateGold22kYellow",
+  "18k-yellow": "metalRateGold18kYellow",
+  "18k-white": "metalRateGold18kWhite",
+  "14k-yellow": "metalRateGold14kYellow",
+  "14k-white": "metalRateGold14kWhite",
+  makingCharge: "metalMakingCharge",
+  taxRate: "metalTaxRate",
+};
+
+/** Persists the metal rates entered on the app's own dashboard
+ * (app._index.jsx's "Daily Metal Rates & Pricing Formula" panel) — see
+ * that route's "rebuildCustomisationMatrix" action, which calls this
+ * before running the matrix rebuild. proxy.metal-rates.jsx reads this
+ * same saved row to serve the storefront. */
+export async function saveMetalRates(shop, rates) {
+  const clean = {};
+  for (const [rateKey, field] of Object.entries(RATE_KEY_TO_FIELD)) {
+    const value = rates[rateKey];
+    clean[field] = value === undefined || value === null || value === "" ? null : String(value);
+  }
+  return prisma.appSettings.upsert({
+    where: { shop },
+    create: { shop, ...clean },
+    update: clean,
+  });
+}
+
+/** Resolved rates in DEFAULT_RATES's own key shape — a saved value wins,
+ * DEFAULT_RATES fills in anything blank/unparseable. Used by both
+ * app._index.jsx's loader (to prefill the dashboard) and
+ * proxy.metal-rates.jsx (to serve the storefront). Takes the object
+ * getAppSettings/getRawAppSettingsRow already returned — doesn't fetch
+ * anything itself. */
+export function ratesFromAppSettings(settings) {
+  const resolved = {};
+  for (const [rateKey, field] of Object.entries(RATE_KEY_TO_FIELD)) {
+    const raw = settings ? settings[field] : null;
+    const parsed = raw !== undefined && raw !== null && raw !== "" ? parseFloat(raw) : NaN;
+    resolved[rateKey] = Number.isFinite(parsed) ? parsed : DEFAULT_RATES[rateKey];
+  }
+  return resolved;
 }
