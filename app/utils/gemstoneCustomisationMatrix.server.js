@@ -184,13 +184,24 @@ export function generateAllCustomisationVariants(rates) {
               if (seenCombinations.has(comboKey)) continue;
               seenCombinations.add(comboKey);
 
-              const price = computeDesignPrice(designEntry, metalKey, rates);
+              // Weight scales with the chosen size -- theme's updatePrice()
+              // and pricing.server.js's computeTrustedQuote both do
+              // weight *= size / 7 (7" is the catalog's baseline size).
+              // This was missing here entirely: every bracelet size was
+              // being priced off the SAME unscaled catalog weight, so
+              // Size 5 and Size 10 of the same design charged identically
+              // -- confirmed live (BR01/Silver: all 6 sizes at Rs 4,000).
+              const scaledEntry = {
+                ...designEntry,
+                weight: (parseFloat(designEntry.weight) || 0) * (parseFloat(size) / 7),
+              };
+              const price = computeDesignPrice(scaledEntry, metalKey, rates);
               variants.push({
                 type: typeDisplayName,
                 metal: metalDisplayName,
                 design: `${designCode} (Size ${size})`,
                 price,
-                weight: designEntry.weight || 0,
+                weight: scaledEntry.weight,
               });
             }
           } else {
