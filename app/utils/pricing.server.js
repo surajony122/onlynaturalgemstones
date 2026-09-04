@@ -186,6 +186,17 @@ export async function computeTrustedQuote(admin, selections) {
     }
     designWeight = parseFloat(match.weight) || 0;
     designPrice = parseFloat(match.price) || 0;
+
+    // Bracelet/bangle weight scales with the chosen size, exactly like the
+    // theme's updatePrice() (weight *= size / 7, 7" being the catalog's
+    // baseline size) and settingsMatrix.server.js's batch builder. This was
+    // previously missing here, so a trusted quote for e.g. a size-10
+    // bracelet used the same weight as a size-5 one -- silently under/over
+    // pricing every sized bracelet relative to what the customer actually
+    // gets charged.
+    if ((type.includes("bracelet") || type.includes("bangle")) && designWeight > 0) {
+      designWeight *= (parseFloat(ringSize) || 7) / 7;
+    }
   }
 
   // --- Metal cost (mirrors updatePrice()'s branching exactly) ---
