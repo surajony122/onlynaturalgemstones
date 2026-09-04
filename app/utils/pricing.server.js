@@ -168,6 +168,16 @@ export async function computeTrustedQuote(admin, selections) {
     parseFloat(settings[METAL_RATE_SETTINGS_KEY[metalKey]]) || METAL_RATE_DEFAULTS[metalKey];
   const isGoldOrSilver = metalTitleLower.includes("gold") || metalKey === "silver";
 
+  // Ring size and bracelet/bangle size are both mandatory selections
+  // (theme-side enforced in setupCartInterceptor) -- re-checked here too
+  // since this function never trusts client state. Doesn't affect price
+  // either way (ring size never did; bracelet size no longer does, see
+  // the design-weight block below) -- this is purely "was a size picked
+  // at all", for fulfillment.
+  if ((type.includes("ring") || type.includes("bracelet") || type.includes("bangle")) && !ringSize) {
+    throw new QuoteError(`Size is required for ${type}`);
+  }
+
   // --- Design weight/price: product-specific override first, then the
   // ported global catalog, exactly like the Liquid template's fallback
   // order. A custom-uploaded design (no catalog entry by definition) skips
@@ -187,16 +197,14 @@ export async function computeTrustedQuote(admin, selections) {
     designWeight = parseFloat(match.weight) || 0;
     designPrice = parseFloat(match.price) || 0;
 
-    // Bracelet/bangle weight scales with the chosen size, exactly like the
-    // theme's updatePrice() (weight *= size / 7, 7" being the catalog's
-    // baseline size) and settingsMatrix.server.js's batch builder. This was
-    // previously missing here, so a trusted quote for e.g. a size-10
-    // bracelet used the same weight as a size-5 one -- silently under/over
-    // pricing every sized bracelet relative to what the customer actually
-    // gets charged.
-    if ((type.includes("bracelet") || type.includes("bangle")) && designWeight > 0) {
-      designWeight *= (parseFloat(ringSize) || 7) / 7;
-    }
+    // Explicit decision: bracelet/bangle price does NOT vary by size --
+    // it's a flat per-design amount regardless of which wrist size the
+    // customer picks. (An earlier version of this function scaled weight
+    // by size/7 to mirror the theme's old behavior; the theme itself no
+    // longer does that either -- see shubh-gems-customizer.js's
+    // updatePrice(). Size is still a required selection, just not a
+    // price input -- see the ringSize null-check in setupCartInterceptor
+    // on the theme side.)
   }
 
   // --- Metal cost (mirrors updatePrice()'s branching exactly) ---

@@ -179,29 +179,27 @@ export function generateAllCustomisationVariants(rates) {
           }
 
           if (typeKey === "bracelet") {
+            // Explicit decision: bracelet price does NOT vary by size --
+            // every size of a given design shares the same flat price,
+            // computed once from the catalog's unscaled weight. Size is
+            // still a separate, required variant option (for fulfillment
+            // -- see setupCartInterceptor on the theme side), just not a
+            // price input. (An earlier version of this scaled weight by
+            // size/7 to mirror the theme's old per-size pricing; the
+            // theme no longer does that either -- see
+            // shubh-gems-customizer.js's updatePrice().)
+            const price = computeDesignPrice(designEntry, metalKey, rates);
             for (const size of BRACELET_SIZES) {
               const comboKey = `${typeDisplayName}|${metalDisplayName}|${designCode} (Size ${size})`;
               if (seenCombinations.has(comboKey)) continue;
               seenCombinations.add(comboKey);
 
-              // Weight scales with the chosen size -- theme's updatePrice()
-              // and pricing.server.js's computeTrustedQuote both do
-              // weight *= size / 7 (7" is the catalog's baseline size).
-              // This was missing here entirely: every bracelet size was
-              // being priced off the SAME unscaled catalog weight, so
-              // Size 5 and Size 10 of the same design charged identically
-              // -- confirmed live (BR01/Silver: all 6 sizes at Rs 4,000).
-              const scaledEntry = {
-                ...designEntry,
-                weight: (parseFloat(designEntry.weight) || 0) * (parseFloat(size) / 7),
-              };
-              const price = computeDesignPrice(scaledEntry, metalKey, rates);
               variants.push({
                 type: typeDisplayName,
                 metal: metalDisplayName,
                 design: `${designCode} (Size ${size})`,
                 price,
-                weight: scaledEntry.weight,
+                weight: designEntry.weight || 0,
               });
             }
           } else {
@@ -598,5 +596,40 @@ export async function runFullSystemDiagnostics(admin) {
     });
   }
 
-  return checks;
+  return checks.map(addPlainLanguage);
+}
+
+// Turns a technical check into something a non-technical merchant can act
+// on without understanding GraphQL/variants/theme ids -- one short plain-
+// English sentence ("plain") and, where the fix really is just clicking
+// the Rebuild button, a flag the UI uses to show that exact button right
+// on the alert ("canRebuildFix"). Matches by check name rather than
+// touching every individual checks.push() call above, so adding a new
+// check later doesn't require also writing its plain-language version by
+// hand -- it just falls back to a generic message instead of throwing.
+function addPlainLanguage(check) {
+  if (check.status === "PASS") return check;
+  const byName = {
+    "Design Catalog Freshness": {
+      plain: "Some customization prices may be showing the wrong amount to customers.",
+      canRebuildFix: true,
+    },
+    "Helper Matrix Product": {
+      plain: "Customization pricing isn't set up correctly, which can cause wrong prices at checkout.",
+      canRebuildFix: true,
+    },
+    "Sales Channel Publishing": {
+      plain: "Customization options may not be available on your online store.",
+      canRebuildFix: false,
+    },
+    "Theme Customizer Assets": {
+      plain: "Some customization features may be missing from your website.",
+      canRebuildFix: true,
+    },
+  };
+  const known = byName[check.name] || {
+    plain: "Something needs attention in your customization setup.",
+    canRebuildFix: false,
+  };
+  return { ...check, ...known };
 }
