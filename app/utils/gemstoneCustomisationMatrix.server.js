@@ -45,8 +45,27 @@ function isGoldOrSilverMetal(metalKey) {
 export function computeDesignPrice(entry, metalKey, rates) {
   const currentRates = { ...DEFAULT_RATES, ...rates };
   const metalRate = currentRates[metalKey] || 0;
-  const makingCharge = parseFloat(currentRates.makingCharge || 500);
-  const taxRate = parseFloat(currentRates.taxRate || 3.0);
+
+  // Two bugs fixed here together:
+  //  1. `currentRates.makingCharge || 500` treats an intentionally-saved 0
+  //     (making charge/tax turned OFF) as "not set" and silently falls
+  //     back to the 500/3.0 defaults instead -- classic JS falsy-zero
+  //     bug. Confirmed live: with the dashboard's making charge and tax
+  //     both saved as 0, this still baked in Rs 500/g + 3% tax, producing
+  //     e.g. Rs 1,01,970 for a variant the storefront calculator shows as
+  //     Rs 96,000. `??` (nullish coalescing) only falls back on
+  //     null/undefined, so an explicit 0 is respected.
+  //  2. This function never checked enableMakingChargeAndTax at all --
+  //     the theme's own updatePrice() only ever raises making charge/tax
+  //     above 0 when that dashboard toggle is on (see
+  //     shubh-gems-customizer.js's shubhFetchAppMetalRates), so matching
+  //     it means zeroing both out here whenever the toggle is off,
+  //     regardless of whatever numbers happen to be saved in those
+  //     fields (e.g. leftover values from before the toggle was turned
+  //     off, or being edited ahead of turning it back on).
+  const chargesEnabled = !!currentRates.enableMakingChargeAndTax;
+  const makingCharge = chargesEnabled ? parseFloat(currentRates.makingCharge ?? 500) : 0;
+  const taxRate = chargesEnabled ? parseFloat(currentRates.taxRate ?? 3.0) : 0;
 
   if (isGoldOrSilverMetal(metalKey)) {
     const weight = parseFloat(entry.weight || 4.0);
