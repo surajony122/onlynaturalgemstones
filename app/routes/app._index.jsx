@@ -188,6 +188,36 @@ export default function Index() {
         </div>
       </div>
 
+      {/* Big, unmissable, plain-English alert — shows the instant the app
+          opens, regardless of which tab is active, so a non-technical
+          merchant sees it without needing to know to click "Diagnostics"
+          or "Troubleshooting". Built from the same checks as those tabs;
+          "canRebuildFix" issues get the Rebuild button right here so
+          fixing it is one click from the first thing you see. */}
+      {checks.filter((c) => c.status !== "PASS").length > 0 && (
+        <div style={{ background: "#fef2f2", border: "2px solid #fca5a5", borderRadius: 14, padding: "18px 22px", marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#991b1b", marginBottom: 6 }}>
+              ⚠️ {checks.filter((c) => c.status !== "PASS").length === 1 ? "1 issue needs" : `${checks.filter((c) => c.status !== "PASS").length} issues need`} your attention
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 20, color: "#7f1d1d", fontSize: 13, lineHeight: 1.7 }}>
+              {checks.filter((c) => c.status !== "PASS").map((c, idx) => (
+                <li key={idx}>{c.plain || c.message}</li>
+              ))}
+            </ul>
+          </div>
+          {checks.some((c) => c.status !== "PASS" && c.canRebuildFix) && (
+            <button
+              onClick={handleRebuild}
+              disabled={isBuilding}
+              style={{ padding: "12px 22px", borderRadius: 8, border: "none", background: "#dc2626", color: "#fff", fontWeight: 700, fontSize: 14, cursor: isBuilding ? "wait" : "pointer", whiteSpace: "nowrap", boxShadow: "0 4px 12px rgba(220, 38, 38, 0.25)" }}
+            >
+              {isBuilding ? "Fixing..." : "🔧 Fix This Now"}
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Navigation Tabs */}
       <div style={{ display: "flex", gap: 8, marginBottom: 24, borderBottom: "1px solid #e2e8f0", paddingBottom: 12 }}>
         <button

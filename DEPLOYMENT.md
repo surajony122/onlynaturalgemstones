@@ -91,6 +91,22 @@ Using [cron-job.org](https://cron-job.org) (free, no credit card):
 alternative if you'd rather not use a third-party site — ask if you want
 that set up instead.)
 
+## 6b. Set up the free daily health-check ping (recommended)
+
+Same idea as step 6, but this one watches for pricing/setup problems
+(the app's own "Diagnostics" tab checks) and emails you in plain
+language if anything needs attention — so you find out even if you
+don't open the app that day:
+
+```
+GET https://<your-render-url>/cron/health-check?secret=<CRON_SECRET>
+```
+
+Set it up on cron-job.org exactly like step 6 (same `CRON_SECRET`, a
+second cronjob entry, once daily). Requires Gmail to already be
+connected in the app's Settings page — if it isn't, this still runs
+the check but has nowhere to send the email, and just logs it instead.
+
 ## 7. Tell me it's done
 
 Once installed, I can drive a full live test again (same way I verified
