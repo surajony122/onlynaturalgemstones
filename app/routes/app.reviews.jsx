@@ -5,11 +5,12 @@
  * storefront-facing read side and sections/shubh-google-reviews.liquid
  * for the theme section that renders them.
  *
- * Manual entry for now — copy each review's name/stars/text/date
- * straight from the Google Business Profile listing. Once the Google
- * Business Profile API access request clears, a sync job can start
- * writing rows into this same table alongside anything entered here by
- * hand; nothing about the storefront side changes either way.
+ * New reviews come in via CSV import (see CsvImportForm below) — no
+ * one-by-one "Add a review" form; that was removed in favor of importing
+ * a whole batch at once. Existing rows can still be edited/deleted
+ * individually. Once the Google Business Profile API access request
+ * clears, a sync job can start writing rows into this same table too;
+ * nothing about the storefront side changes either way.
  */
 import { useEffect, useState } from "react";
 import { useFetcher, useLoaderData } from "react-router";
@@ -94,33 +95,6 @@ export const action = async ({ request }) => {
       // isn't needed since bad rows were already filtered out above.
       await prisma.googleReview.createMany({ data: valid });
       return { intent, ok: true, imported: valid.length, skipped };
-    } catch (err) {
-      return { intent, ok: false, error: String(err?.message || err) };
-    }
-  }
-
-  if (intent === "create") {
-    const authorName = formData.get("authorName")?.trim();
-    const reviewText = formData.get("reviewText")?.trim();
-    const rating = Math.min(5, Math.max(1, parseInt(formData.get("rating"), 10) || 0));
-    if (!authorName || !reviewText || !rating) {
-      return { intent, ok: false, error: "Name, rating, and review text are all required." };
-    }
-    try {
-      await prisma.googleReview.create({
-        data: {
-          shop: session.shop,
-          authorName,
-          rating,
-          reviewText,
-          reviewDate: formData.get("reviewDate")?.trim() || null,
-          photoUrl: formData.get("photoUrl")?.trim() || null,
-          collections: [],
-          isActive: true,
-          sortOrder: 0,
-        },
-      });
-      return { intent, ok: true };
     } catch (err) {
       return { intent, ok: false, error: String(err?.message || err) };
     }
@@ -377,108 +351,6 @@ function CsvImportForm() {
   );
 }
 
-function AddReviewForm() {
-  const fetcher = useFetcher();
-  const shopify = useAppBridge();
-  const busy = fetcher.state !== "idle";
-  const [authorName, setAuthorName] = useState("");
-  const [rating, setRating] = useState("5");
-  const [reviewText, setReviewText] = useState("");
-  const [reviewDate, setReviewDate] = useState("");
-  const [photoUrl, setPhotoUrl] = useState("");
-
-  useEffect(() => {
-    if (fetcher.data?.intent !== "create") return;
-    if (fetcher.data.ok) {
-      shopify.toast.show("Review added");
-      setAuthorName("");
-      setRating("5");
-      setReviewText("");
-      setReviewDate("");
-      setPhotoUrl("");
-    } else {
-      shopify.toast.show(fetcher.data.error || "Couldn't add review", { isError: true });
-    }
-  }, [fetcher.data, shopify]);
-
-  const submit = (e) => {
-    e.preventDefault();
-    fetcher.submit({ intent: "create", authorName, rating, reviewText, reviewDate, photoUrl }, { method: "POST" });
-  };
-
-  return (
-    <s-section heading="Add a review">
-      <s-paragraph>
-        Copy each review's details straight from your Google Business Profile listing. New reviews start visible on
-        the homepage only — pick which collections (if any) it should also appear on further down the page.
-      </s-paragraph>
-      <form onSubmit={submit}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 100px", gap: "12px" }}>
-          <div>
-            <label style={labelStyle} htmlFor="authorName">Reviewer name</label>
-            <input
-              id="authorName"
-              style={fieldStyle}
-              type="text"
-              value={authorName}
-              onChange={(e) => setAuthorName(e.target.value)}
-              placeholder="e.g. Priya Sharma"
-            />
-          </div>
-          <div>
-            <label style={labelStyle} htmlFor="rating">Rating</label>
-            <select id="rating" style={fieldStyle} value={rating} onChange={(e) => setRating(e.target.value)}>
-              {[5, 4, 3, 2, 1].map((n) => (
-                <option key={n} value={n}>{n} star{n === 1 ? "" : "s"}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <label style={labelStyle} htmlFor="reviewText">Review text</label>
-        <textarea
-          id="reviewText"
-          style={{ ...fieldStyle, minHeight: "70px" }}
-          value={reviewText}
-          onChange={(e) => setReviewText(e.target.value)}
-          placeholder="Paste the review's text here"
-        />
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-          <div>
-            <label style={labelStyle} htmlFor="reviewDate">
-              Date shown (optional, free text — as it reads on Google)
-            </label>
-            <input
-              id="reviewDate"
-              style={fieldStyle}
-              type="text"
-              value={reviewDate}
-              onChange={(e) => setReviewDate(e.target.value)}
-              placeholder="e.g. 2 months ago"
-            />
-          </div>
-          <div>
-            <label style={labelStyle} htmlFor="photoUrl">Reviewer photo URL (optional)</label>
-            <input
-              id="photoUrl"
-              style={fieldStyle}
-              type="text"
-              value={photoUrl}
-              onChange={(e) => setPhotoUrl(e.target.value)}
-              placeholder="https://..."
-            />
-          </div>
-        </div>
-
-        <s-button {...(busy ? { loading: true } : {})} onClick={submit}>
-          Add review
-        </s-button>
-      </form>
-    </s-section>
-  );
-}
-
 function ReviewRow({ review, collections }) {
   const fetcher = useFetcher();
   const shopify = useAppBridge();
@@ -679,12 +551,11 @@ export default function ReviewsPage() {
   return (
     <s-page heading={`Google Reviews (${reviews.length})`} width="full">
       <CsvImportForm />
-      <AddReviewForm />
 
       <s-section heading="All reviews">
         <TableGlobalStyles />
         {reviews.length === 0 ? (
-          <s-paragraph>No reviews added yet — use the form above to add your first one.</s-paragraph>
+          <s-paragraph>No reviews added yet — use the CSV import above to add your first batch.</s-paragraph>
         ) : (
           <div style={tableWrapStyle}>
             <table style={tableStyle}>
