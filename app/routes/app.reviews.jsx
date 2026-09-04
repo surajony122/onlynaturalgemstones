@@ -52,6 +52,53 @@ export const action = async ({ request }) => {
   const formData = await request.formData();
   const intent = formData.get("intent");
 
+  if (intent === "bulkImport") {
+    let rows = [];
+    try {
+      rows = JSON.parse(formData.get("rows") || "[]");
+      if (!Array.isArray(rows)) rows = [];
+    } catch {
+      return { intent, ok: false, error: "Couldn't read the parsed CSV data." };
+    }
+
+    const valid = [];
+    let skipped = 0;
+    for (const row of rows) {
+      const authorName = String(row.authorName || "").trim();
+      const reviewText = String(row.reviewText || "").trim();
+      const rating = Math.min(5, Math.max(1, parseInt(row.rating, 10) || 0));
+      if (!authorName || !reviewText || !rating) {
+        skipped++;
+        continue;
+      }
+      valid.push({
+        shop: session.shop,
+        authorName,
+        rating,
+        reviewText,
+        reviewDate: row.reviewDate ? String(row.reviewDate).trim() : null,
+        photoUrl: row.photoUrl ? String(row.photoUrl).trim() : null,
+        collections: [],
+        isActive: true,
+        sortOrder: 0,
+      });
+    }
+
+    if (!valid.length) {
+      return { intent, ok: false, error: "No valid rows found — check each row has a name, rating (1-5), and review text." };
+    }
+
+    try {
+      // createMany, not one-by-one create -- 27 reviews is small either
+      // way, but this is one round trip instead of N, and skipMultipleRows
+      // isn't needed since bad rows were already filtered out above.
+      await prisma.googleReview.createMany({ data: valid });
+      return { intent, ok: true, imported: valid.length, skipped };
+    } catch (err) {
+      return { intent, ok: false, error: String(err?.message || err) };
+    }
+  }
+
   if (intent === "create") {
     const authorName = formData.get("authorName")?.trim();
     const reviewText = formData.get("reviewText")?.trim();
@@ -153,6 +200,180 @@ function Stars({ rating }) {
       {"★".repeat(rating)}
       <span style={{ color: "#E5E7EB" }}>{"★".repeat(5 - rating)}</span>
     </span>
+  );
+}
+
+// Minimal, dependency-free CSV parser — handles quoted fields (so review
+// text containing commas or line breaks doesn't split incorrectly) and
+// "" as an escaped quote inside a quoted field, same as Excel/Sheets/
+// Numbers all produce when you export/copy a table as CSV.
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let field = "";
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += c;
+      }
+    } else if (c === '"') {
+      inQuotes = true;
+    } else if (c === ",") {
+      row.push(field);
+      field = "";
+    } else if (c === "\n" || c === "\r") {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      row.push(field);
+      field = "";
+      if (row.some((f) => f !== "")) rows.push(row);
+      row = [];
+    } else {
+      field += c;
+    }
+  }
+  if (field !== "" || row.length) {
+    row.push(field);
+    rows.push(row);
+  }
+  return rows;
+}
+
+// Recognizes a handful of likely header spellings per column, so a
+// spreadsheet titled "Reviewer" or "Name", "Stars" or "Rating", etc. all
+// work without the user having to match an exact template.
+const HEADER_ALIASES = {
+  authorName: ["author name", "author", "name", "reviewer", "reviewer name"],
+  rating: ["rating", "stars", "star rating", "score"],
+  reviewText: ["review text", "review", "text", "comment", "content"],
+  reviewDate: ["date", "review date", "date shown", "time"],
+  photoUrl: ["photo url", "photo", "avatar", "image", "image url"],
+};
+
+function rowsToReviews(rows) {
+  if (!rows.length) return [];
+  const header = rows[0].map((h) => h.trim().toLowerCase());
+  const colIndex = {};
+  for (const [field, aliases] of Object.entries(HEADER_ALIASES)) {
+    const idx = header.findIndex((h) => aliases.includes(h));
+    if (idx !== -1) colIndex[field] = idx;
+  }
+  return rows.slice(1).map((r) => ({
+    authorName: colIndex.authorName !== undefined ? r[colIndex.authorName] : "",
+    rating: colIndex.rating !== undefined ? r[colIndex.rating] : "",
+    reviewText: colIndex.reviewText !== undefined ? r[colIndex.reviewText] : "",
+    reviewDate: colIndex.reviewDate !== undefined ? r[colIndex.reviewDate] : "",
+    photoUrl: colIndex.photoUrl !== undefined ? r[colIndex.photoUrl] : "",
+  }));
+}
+
+const CSV_TEMPLATE =
+  "Author Name,Rating,Review Text,Date,Photo URL\n" +
+  '"Priya Sharma",5,"Beautiful blue sapphire, exactly as described. Fast shipping too!","2 months ago",\n' +
+  '"Rohit Verma",4,"Good quality, certificate included. Slightly delayed delivery.","3 months ago",\n';
+
+function downloadCsvTemplate() {
+  const blob = new Blob([CSV_TEMPLATE], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "google-reviews-template.csv";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function CsvImportForm() {
+  const fetcher = useFetcher();
+  const shopify = useAppBridge();
+  const busy = fetcher.state !== "idle";
+  const [fileName, setFileName] = useState("");
+  const [parsedCount, setParsedCount] = useState(0);
+  const [parsedRows, setParsedRows] = useState(null);
+  const [parseError, setParseError] = useState("");
+
+  useEffect(() => {
+    if (fetcher.data?.intent !== "bulkImport") return;
+    if (fetcher.data.ok) {
+      shopify.toast.show(
+        `Imported ${fetcher.data.imported} review${fetcher.data.imported === 1 ? "" : "s"}` +
+          (fetcher.data.skipped ? ` (${fetcher.data.skipped} skipped — missing name/rating/text)` : "")
+      );
+      setFileName("");
+      setParsedRows(null);
+      setParsedCount(0);
+    } else {
+      shopify.toast.show(fetcher.data.error || "Import failed", { isError: true });
+    }
+  }, [fetcher.data, shopify]);
+
+  const onFile = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    setFileName(file.name);
+    setParseError("");
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const rows = parseCsv(String(reader.result));
+        const reviews = rowsToReviews(rows).filter((r) => r.authorName || r.reviewText);
+        setParsedRows(reviews);
+        setParsedCount(reviews.length);
+      } catch (err) {
+        setParseError("Couldn't read that file as CSV: " + String(err?.message || err));
+        setParsedRows(null);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const runImport = () => {
+    if (!parsedRows || !parsedRows.length) return;
+    fetcher.submit({ intent: "bulkImport", rows: JSON.stringify(parsedRows) }, { method: "POST" });
+  };
+
+  return (
+    <s-section heading="Import from CSV">
+      <s-paragraph>
+        Google doesn't offer a built-in "export reviews" button, so compile a spreadsheet yourself — copy each
+        review's details from your Google Business Profile listing (or use any review-export tool you trust) — then
+        export/save it as CSV and upload it here. Columns can be named flexibly (e.g. "Reviewer" or "Name" both
+        work), but should cover: <s-text fontWeight="bold">Author Name, Rating (1-5), Review Text</s-text>, and
+        optionally Date and Photo URL.
+      </s-paragraph>
+      <button type="button" style={smallBtn} onClick={downloadCsvTemplate}>
+        Download a template CSV
+      </button>
+
+      <div style={{ marginTop: "14px" }}>
+        <label style={labelStyle} htmlFor="csvFile">Choose CSV file</label>
+        <input id="csvFile" type="file" accept=".csv,text/csv" onChange={onFile} style={{ display: "block", marginTop: "6px" }} />
+      </div>
+
+      {parseError && <p style={{ color: "#DC2626", fontSize: "12px", marginTop: "8px" }}>{parseError}</p>}
+
+      {parsedRows && (
+        <div style={{ marginTop: "10px" }}>
+          <p style={{ fontSize: "12.5px", color: "#374151" }}>
+            Found <s-text fontWeight="bold">{parsedCount}</s-text> row{parsedCount === 1 ? "" : "s"} in{" "}
+            <s-text fontWeight="bold">{fileName}</s-text>. Rows missing a name, rating, or review text will be
+            skipped automatically on import.
+          </p>
+          <s-button {...(busy ? { loading: true } : {})} onClick={runImport}>
+            Import {parsedCount} review{parsedCount === 1 ? "" : "s"}
+          </s-button>
+        </div>
+      )}
+    </s-section>
   );
 }
 
@@ -457,6 +678,7 @@ export default function ReviewsPage() {
 
   return (
     <s-page heading={`Google Reviews (${reviews.length})`} width="full">
+      <CsvImportForm />
       <AddReviewForm />
 
       <s-section heading="All reviews">
