@@ -319,8 +319,21 @@ export async function buildGemstoneCustomisationMatrix(admin, rates = {}) {
   window._shubhDefaultHelperVariantId = "${matrixArray[0]?.id || ""}";
 </script>`;
 
-      // Find draft theme Dawn 16.0.0 - Cart Bundle (190705238315)
-      const themeGid = "gid://shopify/OnlineStoreTheme/190705238315";
+      // Write the lookup snippet to the TEST theme ("TEST - DO NOT
+      // PUBLISH", id 190744330539) -- NOT the live theme. This id used to
+      // point at 190705238315 back when that was the safe draft/test
+      // theme ("Dawn 16.0.0 - Cart Bundle"), but that theme was later
+      // renamed and published to LIVE ("Final upto product custmisation")
+      // without this file being updated, meaning every rebuild was
+      // silently writing straight to production, bypassing the test-first
+      // workflow the rest of this project follows. Per the project's own
+      // "theme roles have changed before" warning, re-confirm the current
+      // TEST theme id with `shopify theme list` before trusting this
+      // constant if it's been a while. The updated snippet still needs to
+      // be manually promoted to LIVE the same way every other theme change
+      // is (pull, diff, explicit push) -- this function no longer does
+      // that step for you.
+      const themeGid = "gid://shopify/OnlineStoreTheme/190744330539";
       await admin.graphql(
         `#graphql
         mutation UpsertSnippet($themeId: ID!, $files: [OnlineStoreThemeFilesUpsertFileInput!]!) {
@@ -430,7 +443,10 @@ export async function runFullSystemDiagnostics(admin) {
 
   // 3. Theme Snippets & Lookup Table
   try {
-    const themeGid = "gid://shopify/OnlineStoreTheme/190705238315";
+    // Same TEST-theme id as buildGemstoneCustomisationMatrix above -- this
+    // check must point at whichever theme that function actually writes
+    // to, or a "PASS" here would be meaningless.
+    const themeGid = "gid://shopify/OnlineStoreTheme/190744330539";
     const filesRes = await admin.graphql(
       `#graphql
       query CheckThemeFiles($id: ID!) {
