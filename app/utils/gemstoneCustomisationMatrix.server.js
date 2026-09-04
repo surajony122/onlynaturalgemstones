@@ -378,15 +378,96 @@ export async function buildGemstoneCustomisationMatrix(admin, rates = {}) {
     console.warn("Non-fatal post-sync warning:", pubErr);
   }
 
+  // Compact preview for the app UI's "Live Design Prices" table -- reuses
+  // variantsNodes (already fetched above for the theme-snippet write)
+  // instead of a second GraphQL round trip. Sorted so the UI doesn't have
+  // to: by Type, then Metal, then Design.
+  const preview = variantsNodes
+    .map((n) => {
+      const optMap = {};
+      (n.selectedOptions || []).forEach((o) => {
+        optMap[o.name.toLowerCase()] = o.value;
+      });
+      return { type: optMap["type"] || "", metal: optMap["metal"] || "", design: optMap["design"] || "", price: parseFloat(n.price || 0) };
+    })
+    .sort((a, b) => a.type.localeCompare(b.type) || a.metal.localeCompare(b.metal) || a.design.localeCompare(b.design));
+
   return {
     ok: true,
     totalVariants: variantsInput.length,
     product: setJson.data?.productSet?.product,
+    preview,
+  };
+}
+
+/** Fetches the live price of every "Gemstone Customisation" variant,
+ * shaped for the app UI's "Live Design Prices" table -- lets the page
+ * show current prices on load, before anyone clicks Rebuild, not just
+ * right after a rebuild. */
+export async function fetchCustomisationVariantsPreview(admin) {
+  const product = await findOrCreateGemstoneCustomisationProduct(admin);
+  if (!product) return [];
+  const res = await admin.graphql(
+    `#graphql
+    query FetchCustomisationPreview($id: ID!) {
+      product(id: $id) {
+        variants(first: 250) {
+          nodes { price selectedOptions { name value } }
+        }
+      }
+    }`,
+    { variables: { id: product.id } },
+  );
+  const json = await res.json();
+  const nodes = json.data?.product?.variants?.nodes || [];
+  return nodes
+    .map((n) => {
+      const optMap = {};
+      (n.selectedOptions || []).forEach((o) => {
+        optMap[o.name.toLowerCase()] = o.value;
+      });
+      return { type: optMap["type"] || "", metal: optMap["metal"] || "", design: optMap["design"] || "", price: parseFloat(n.price || 0) };
+    })
+    .sort((a, b) => a.type.localeCompare(b.type) || a.metal.localeCompare(b.metal) || a.design.localeCompare(b.design));
+}
+
+// Real theme design images all live on this store's own Shopify CDN
+// (see snippets/shubh-gems-global-designs.liquid) -- any entry pointing
+// elsewhere is a strong signal that GLOBAL_DESIGNS has drifted from the
+// theme's real catalog again (exactly how this was discovered: a stale
+// copy had every image on an unrelated CDN domain, alongside wrong
+// weights and fabricated price fields). Cheap, pure, no GraphQL call --
+// safe to run on every diagnostics pass.
+function checkDesignCatalogFreshness() {
+  const offDomain = [];
+  for (const [setKey, set] of Object.entries(GLOBAL_DESIGNS)) {
+    for (const [typeKey, metals] of Object.entries(set)) {
+      for (const [metalKey, designs] of Object.entries(metals)) {
+        for (const entry of designs) {
+          if (entry.image && !entry.image.startsWith("https://cdn.shopify.com/")) {
+            offDomain.push(`${setKey}/${typeKey}/${metalKey}/${entry.design}`);
+          }
+        }
+      }
+    }
+  }
+  if (offDomain.length > 0) {
+    return {
+      name: "Design Catalog Freshness",
+      status: "ERROR",
+      message: `${offDomain.length} design(s) in app/data/globalDesigns.server.js have image URLs off the store's own CDN (e.g. ${offDomain[0]}) -- this catalog has drifted from the theme's real one, and every price computed from it (Rebuild Matrix, Magic Checkout's trusted quote) is wrong.`,
+      resolution: "Regenerate: pull the current theme's snippets/shubh-gems-global-designs.liquid fresh, then run scripts/extract-designs.js + scripts/generate-globaldesigns.js (see that script's header comment) rather than hand-editing.",
+    };
+  }
+  return {
+    name: "Design Catalog Freshness",
+    status: "PASS",
+    message: `All ${Object.values(GLOBAL_DESIGNS).reduce((n, s) => n + Object.values(s).reduce((m, t) => m + Object.values(t).reduce((k, d) => k + d.length, 0), 0), 0)} catalog entries point at the store's own CDN -- no sign of drift from the theme's real design data.`,
   };
 }
 
 export async function runFullSystemDiagnostics(admin) {
-  const checks = [];
+  const checks = [checkDesignCatalogFreshness()];
 
   // 1. Gemstone Customisation Product Status
   try {

@@ -7,6 +7,7 @@ import {
   fetchCustomisationStatus,
   buildGemstoneCustomisationMatrix,
   runFullSystemDiagnostics,
+  fetchCustomisationVariantsPreview,
 } from "../utils/gemstoneCustomisationMatrix.server";
 import { getAppSettings, saveMetalRates, ratesFromAppSettings } from "../utils/appSettings.server";
 import { tableWrapStyle, tableStyle, thStyle, tdStyle, TableGlobalStyles, Pill, brand } from "../components/table-kit";
@@ -16,9 +17,11 @@ export const loader = async ({ request }) => {
   const { session, admin } = await authenticate.admin(request);
   let customisationStatus = { found: false, totalVariants: 0 };
   let systemChecks = [];
+  let variantsPreview = [];
   try {
     customisationStatus = await fetchCustomisationStatus(admin);
     systemChecks = await runFullSystemDiagnostics(admin);
+    variantsPreview = await fetchCustomisationVariantsPreview(admin);
   } catch (err) {
     console.error("[app._index] loader diagnostics error:", err);
   }
@@ -29,6 +32,7 @@ export const loader = async ({ request }) => {
     shopDomain: (session.shop || "").replace(".myshopify.com", ""),
     customisationStatus,
     systemChecks,
+    variantsPreview,
     // Saved rates (this dashboard's own "Save Rates & Rebuild..." button)
     // take priority over the hardcoded defaults -- same
     // saved-row-wins-else-fallback pattern the rest of AppSettings uses.
@@ -76,13 +80,15 @@ export const action = async ({ request }) => {
 };
 
 export default function Index() {
-  const { shopDomain, customisationStatus: initialStatus, systemChecks: initialChecks, defaultRates } = useLoaderData();
+  const { shopDomain, customisationStatus: initialStatus, systemChecks: initialChecks, variantsPreview: initialPreview, defaultRates } = useLoaderData();
   const matrixFetcher = useFetcher();
   const diagFetcher = useFetcher();
   const shopify = useAppBridge();
 
   const [status, setStatus] = useState(initialStatus || {});
   const [checks, setChecks] = useState(initialChecks || []);
+  const [preview, setPreview] = useState(initialPreview || []);
+  const [previewTypeFilter, setPreviewTypeFilter] = useState("all");
   const [rates, setRates] = useState(defaultRates || {});
   const [activeTab, setActiveTab] = useState("pricing"); // "pricing" | "diagnostics" | "troubleshooting"
 
@@ -95,6 +101,9 @@ export default function Index() {
     }
     if (matrixFetcher.data?.systemChecks) {
       setChecks(matrixFetcher.data.systemChecks);
+    }
+    if (matrixFetcher.data?.preview) {
+      setPreview(matrixFetcher.data.preview);
     }
     if (matrixFetcher.data?.ok) {
       shopify.toast.show(`Successfully synced ${matrixFetcher.data.totalVariants || 0} customization variants!`);
@@ -500,6 +509,67 @@ export default function Index() {
               </button>
             </div>
           </div>
+
+          {/* Live Design Prices — the actual price each Type/Metal/Design
+              combo is charging right now, straight off the real Shopify
+              variants (not a recomputation) — refreshes after every
+              Rebuild, so what's shown here is proof the click did
+              something, not just a "success" toast. */}
+          <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 24, marginBottom: 28, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
+              <div>
+                <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "#0f172a", display: "flex", alignItems: "center", gap: 8 }}>
+                  <span>💰</span> Live Design Prices
+                </h2>
+                <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: 13 }}>
+                  What each design is actually charging right now, read straight off the live "Gemstone Customisation" variants.
+                </p>
+              </div>
+              <select
+                value={previewTypeFilter}
+                onChange={(e) => setPreviewTypeFilter(e.target.value)}
+                style={{ padding: "7px 10px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 13, fontWeight: 600, color: "#334155" }}
+              >
+                <option value="all">All Types</option>
+                {Array.from(new Set(preview.map((p) => p.type))).sort().map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+
+            {preview.length === 0 ? (
+              <p style={{ color: "#94a3b8", fontSize: 13, margin: 0 }}>
+                No live variants yet — click "Save Rates & Rebuild Customisation Matrix" above to create and price them.
+              </p>
+            ) : (
+              <div style={{ ...tableWrapStyle, maxHeight: 420, overflowY: "auto" }}>
+                <table style={tableStyle}>
+                  <thead style={{ position: "sticky", top: 0, background: "#fff" }}>
+                    <tr>
+                      <th style={thStyle}>Type</th>
+                      <th style={thStyle}>Metal</th>
+                      <th style={thStyle}>Design</th>
+                      <th style={thStyle}>Live Price</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview
+                      .filter((p) => previewTypeFilter === "all" || p.type === previewTypeFilter)
+                      .map((p, idx) => (
+                        <tr key={idx}>
+                          <td style={tdStyle}>{p.type}</td>
+                          <td style={tdStyle}>{p.metal}</td>
+                          <td style={{ ...tdStyle, fontWeight: 600 }}>{p.design}</td>
+                          <td style={{ ...tdStyle, fontWeight: 700, color: brand }}>
+                            ₹{p.price.toLocaleString("en-IN")}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </>
       )}
 
@@ -565,12 +635,71 @@ export default function Index() {
 
       {/* TAB 3: Troubleshooting & Issue Solver */}
       {activeTab === "troubleshooting" && (
-        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 24, marginBottom: 28, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+          {/* Live, real issues -- built from the SAME diagnostics as the
+              System Diagnostics tab, not a generic static list. This is
+              what makes this tab "troubleshooting" rather than "reference
+              docs": it tells you what's ACTUALLY wrong right now, if
+              anything, using the exact checks that just ran. */}
+          <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, flexWrap: "wrap", gap: 12 }}>
+              <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: "#0f172a", display: "flex", alignItems: "center", gap: 8 }}>
+                <span>🩺</span> Active Issues Right Now
+              </h2>
+              <button
+                onClick={handleRunDiagnostics}
+                disabled={isChecking}
+                style={{ padding: "7px 12px", borderRadius: 6, border: "1px solid #cbd5e1", background: "#f8fafc", fontWeight: 600, fontSize: 12, cursor: "pointer" }}
+              >
+                {isChecking ? "Scanning..." : "↻ Re-check"}
+              </button>
+            </div>
+            <p style={{ margin: "4px 0 20px", color: "#64748b", fontSize: 13 }}>
+              Pulled live from the same {checks.length} checks as the Diagnostics tab — not a fixed list.
+            </p>
+
+            {checks.filter((c) => c.status !== "PASS").length === 0 ? (
+              <div style={{ padding: "14px 16px", borderRadius: 10, background: "#f0fdf4", border: "1px solid #bbf7d0", color: "#166534", fontSize: 13, fontWeight: 600 }}>
+                ✓ No active issues detected — all {checks.length} checks are passing.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {checks.filter((c) => c.status !== "PASS").map((c, idx) => (
+                  <div key={idx} style={{ border: `1px solid ${c.status === "ERROR" ? "#fecaca" : "#fde68a"}`, borderRadius: 10, padding: 18, background: c.status === "ERROR" ? "#fef2f2" : "#fffbeb" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                      <div>
+                        <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#0f172a" }}>
+                          {c.status === "ERROR" ? "🔴" : "🟡"} {c.name}
+                        </h3>
+                        <p style={{ margin: "6px 0 0", color: "#475569", fontSize: 13, lineHeight: 1.5 }}>{c.message}</p>
+                        {c.resolution && (
+                          <p style={{ margin: "4px 0 0", color: "#059669", fontSize: 13, fontWeight: 600 }}>
+                            <strong>How to solve:</strong> {c.resolution}
+                          </p>
+                        )}
+                      </div>
+                      {/matrix|variant|price/i.test(c.name) && (
+                        <button
+                          onClick={handleRebuild}
+                          disabled={isBuilding}
+                          style={{ padding: "8px 14px", borderRadius: 6, border: "none", background: "#059669", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}
+                        >
+                          🚀 1-Click Sync Matrix
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 24, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
           <h2 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 8px", color: "#0f172a" }}>
-            🛠️ Self-Healing Troubleshooting & Error Solver
+            📖 Common Scenarios &amp; How to Fix Them
           </h2>
           <p style={{ margin: "0 0 20px", color: "#64748b", fontSize: 13 }}>
-            If you ever encounter an issue in the future, follow these quick 1-click solutions:
+            Reference guide for issues that don't always show up as a failed check above:
           </p>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -624,6 +753,7 @@ export default function Index() {
                 </p>
               </div>
             </div>
+          </div>
           </div>
         </div>
       )}
