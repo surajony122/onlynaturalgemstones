@@ -11,17 +11,9 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { getAppSettings } from "../utils/appSettings.server";
-import nodemailer from "nodemailer";
-import { google } from "googleapis";
+import { withTimeout, checkGmail, checkGoogleSheets, checkInterakt } from "../utils/serviceHealth.server";
 
 const STORE_DOMAIN = "onlynaturalgemstones.com";
-
-function withTimeout(promise, ms, label) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => setTimeout(() => reject(new Error(`${label}: timed out after ${ms}ms`)), ms)),
-  ]);
-}
 
 async function checkDatabase() {
   try {
@@ -59,112 +51,6 @@ async function checkScope(admin, label, query) {
     const json = await res.json();
     if (json.errors) return { ok: false, detail: "GraphQL errors (likely missing scope): " + JSON.stringify(json.errors).slice(0, 200) };
     return { ok: true, detail: "OK" };
-  } catch (err) {
-    return { ok: false, detail: String(err?.message || err) };
-  }
-}
-
-async function checkGmail(settings) {
-  if (!settings.gmailUser || !settings.gmailAppPassword) {
-    return { ok: false, detail: "Not configured — set Gmail address + App Password on the Settings page." };
-  }
-  try {
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: { user: settings.gmailUser, pass: settings.gmailAppPassword },
-    });
-    await withTimeout(transporter.verify(), 8000, "Gmail SMTP");
-    return { ok: true, detail: `Authenticated as ${settings.gmailUser}` };
-  } catch (err) {
-    return { ok: false, detail: String(err?.message || err) };
-  }
-}
-
-async function checkGoogleSheets(settings) {
-  // Relay path (see googleSheets.server.js) takes priority when set,
-  // same as the actual mirror code — this check was only ever looking
-  // at the service-account fields, so it kept showing "Not configured"
-  // even after the relay was set up and working. A plain GET (doGet in
-  // the deployed Apps Script) is a safe, non-destructive reachability
-  // check — it can't confirm the shared secret is correct without
-  // actually writing a row, which this deliberately avoids doing on
-  // every page load; the debug astro-advice submission (sheetMirrorStatus)
-  // is the real end-to-end proof.
-  if (settings.sheetsRelayUrl) {
-    try {
-      const res = await withTimeout(fetch(settings.sheetsRelayUrl, { method: "GET" }), 8000, "Sheets relay");
-      if (!res.ok) {
-        const text = await res.text();
-        return { ok: false, detail: `Relay URL unreachable — HTTP ${res.status}: ${text.slice(0, 200)}` };
-      }
-      return {
-        ok: true,
-        detail: "Sheets relay (Apps Script Web App) is reachable. This only confirms the deployment responds — it can't verify the shared secret without writing a real row, so a debug astro-advice submission's sheetMirrorStatus is still the definitive end-to-end check.",
-      };
-    } catch (err) {
-      return { ok: false, detail: "Relay URL unreachable: " + String(err?.message || err) };
-    }
-  }
-
-  if (!settings.googleServiceAccountEmail || !settings.googleServiceAccountPrivateKey || !settings.astroLeadsSpreadsheetId) {
-    return { ok: null, detail: "Not configured — optional, leads/events still save to the database regardless." };
-  }
-  try {
-    const privateKey = settings.googleServiceAccountPrivateKey.replace(/\\n/g, "\n");
-    const auth = new google.auth.JWT({
-      email: settings.googleServiceAccountEmail,
-      key: privateKey,
-      scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-    });
-    const sheets = google.sheets({ version: "v4", auth });
-    const meta = await withTimeout(
-      sheets.spreadsheets.get({ spreadsheetId: settings.astroLeadsSpreadsheetId }),
-      8000,
-      "Google Sheets"
-    );
-    return { ok: true, detail: `Connected to "${meta.data.properties?.title || settings.astroLeadsSpreadsheetId}"` };
-  } catch (err) {
-    return { ok: false, detail: String(err?.message || err) };
-  }
-}
-
-async function checkInterakt(settings) {
-  if (!settings.interaktApiKey) {
-    return { ok: null, detail: "Not configured — set the Secret Key on the Settings page (WhatsApp section)." };
-  }
-  try {
-    // Contacts Retrieval API, limit=1 — the lightest real call Interakt
-    // offers that both proves the key is valid and never sends/costs
-    // anything (unlike the Send Template API, which would actually
-    // message someone just to run a health check).
-    const res = await withTimeout(
-      fetch("https://api.interakt.ai/v1/public/apis/users/?offset=0&limit=1", {
-        headers: { Authorization: "Basic " + settings.interaktApiKey },
-      }),
-      8000,
-      "Interakt API"
-    );
-    if (res.status === 401 || res.status === 403) {
-      return { ok: false, detail: `HTTP ${res.status}: Secret Key rejected — check it's copied correctly from Interakt → Settings → Developer Setting.` };
-    }
-    if (res.status === 405) {
-      // Seen live with a real, working key — this specific diagnostic
-      // endpoint (Contacts Retrieval) rejected the call, but the actual
-      // Send Template API (a different endpoint entirely) kept sending
-      // real messages successfully at the same time. Downgraded from a
-      // hard failure to a warning so it stops reading as "WhatsApp
-      // sending is broken" when it isn't — see Settings page's Send Test
-      // button for the check that actually matters.
-      return {
-        ok: "warn",
-        detail: "HTTP 405 from this diagnostic endpoint (Contacts Retrieval) specifically — does NOT mean sending is broken. The Send Template API is a separate endpoint; use Settings → Send Test to confirm the path that actually matters.",
-      };
-    }
-    if (!res.ok) {
-      const text = await res.text();
-      return { ok: false, detail: `HTTP ${res.status}: ${text.slice(0, 200)}` };
-    }
-    return { ok: true, detail: `Secret Key valid. Template in use: "${settings.interaktTemplateName || "gem_recommendation (default)"}" — this doesn't confirm the template itself is Meta-approved, only that the key works.` };
   } catch (err) {
     return { ok: false, detail: String(err?.message || err) };
   }
