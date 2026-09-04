@@ -180,16 +180,33 @@ export async function computeTrustedQuote(admin, selections) {
 
   // --- Design weight/price: product-specific override first, then the
   // ported global catalog, exactly like the Liquid template's fallback
-  // order. A custom-uploaded design (no catalog entry by definition) skips
-  // straight to the flat-fallback branch below, same as the theme JS.
+  // order.
+  //
+  // A custom-uploaded design does NOT skip this -- it was previously
+  // assumed to (see the theme's `else (f = w || 2e3)` -- WRONG, as
+  // confirmed live: the theme's own updatePrice() treats "Customised"
+  // as a real catalog entry for gold/silver, weight-based like any
+  // other design), which meant this trusted quote fell back to a flat
+  // Rs 2,000 for every custom-uploaded design regardless of metal/
+  // weight -- completely disconnected from the real surcharge the
+  // customer saw and was actually charged (confirmed live: Rs 1,60,000
+  // for a 22K Gold ring). Looking up the theme's own "Customised"
+  // catalog entry here (same weight=10 baseline every metal's design
+  // list carries) instead makes this match the real formula.
   // (productMatches was already fetched above, in parallel with freeCertType) ---
   let designWeight = 0;
   let designPrice = 0;
-  if (!isCustomDesign) {
-    let match = productMatches.find((d) => d.design.trim() === (designCode || "").trim());
+  {
+    const lookupCode = isCustomDesign ? "Customised" : designCode;
+    let match = productMatches.find((d) => d.design.trim().toLowerCase() === (lookupCode || "").trim().toLowerCase());
     if (!match) {
       const designSet = selections.designSet === "pearl" ? "pearl" : "default";
-      match = lookupGlobalDesign({ type, metalTitle, designCode, designSet });
+      match = lookupGlobalDesign({ type, metalTitle, designCode: lookupCode, designSet });
+      if (!match && isCustomDesign) {
+        // "Customized" (US spelling) fallback, in case a design set's
+        // catalog ever uses that spelling instead.
+        match = lookupGlobalDesign({ type, metalTitle, designCode: "Customized", designSet });
+      }
     }
     if (!match) {
       throw new QuoteError(`Unrecognized design "${designCode}" for ${type}/${metalTitle}`);
