@@ -359,7 +359,7 @@ export default function WishlistLeadsPage() {
   const sendDueNow = () => fetcher.submit({ intent: "sendDueNow" }, { method: "POST" });
 
   return (
-    <s-page heading={`Wishlist — Leads (${leads.length})`} width="full">
+    <s-page heading={`Wishlist — Leads (${leads.length})`} inlineSize="large">
       <s-button slot="primary-action" onClick={sendDueNow} {...(isSending ? { loading: true } : {})}>
         Send Due Emails Now
       </s-button>

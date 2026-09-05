@@ -583,7 +583,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <s-page heading="Astro Advice — Settings" width="full">
+    <s-page heading="Astro Advice — Settings" inlineSize="large">
       <s-section heading="Connections at a glance">
         <s-paragraph>
           Live status, checked just now — the same checks the <s-link href="/app/server-health">Server</s-link> page
@@ -962,7 +962,10 @@ export default function SettingsPage() {
         </div>
       </form>
 
-      <s-section slot="aside" heading="Where this data goes">
+      {/* No slot="aside" -- an aside forces the page into a narrower
+          two-column layout, which is the opposite of the full-width,
+          single-column boxed look this page should have. */}
+      <s-section heading="Where this data goes">
         <s-paragraph>
           Leads and email open/click/sent events are viewable on the{" "}
           <s-link href="/app/astro-leads">Astro Leads</s-link> page.

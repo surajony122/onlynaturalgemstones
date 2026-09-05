@@ -1,6 +1,6 @@
 export default function AdditionalPage() {
   return (
-    <s-page heading="Additional page" width="full">
+    <s-page heading="Additional page" inlineSize="large">
       <s-section heading="Multiple pages">
         <s-paragraph>
           The app template comes with an additional page which demonstrates how
@@ -20,7 +20,9 @@ export default function AdditionalPage() {
           <code>app/routes/app.jsx</code>.
         </s-paragraph>
       </s-section>
-      <s-section slot="aside" heading="Resources">
+      {/* No slot="aside" -- keeps this page single-column/full-width like
+          the rest of the app instead of splitting into two columns. */}
+      <s-section heading="Resources">
         <s-unordered-list>
           <s-list-item>
             <s-link

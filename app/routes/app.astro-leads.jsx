@@ -418,7 +418,7 @@ export default function AstroLeadsPage() {
   const { sorted: sortedLeads, sortKey, sortDir, onSort } = useSort(filteredLeads, "createdAt", "desc");
 
   return (
-    <s-page heading={`Astro Advice — Leads (${leads.length})`} width="full">
+    <s-page heading={`Astro Advice — Leads (${leads.length})`} inlineSize="large">
       <WhatsAppQueueSection whatsappQueue={whatsappQueue} />
       <s-section>
         <TableGlobalStyles />

@@ -275,7 +275,7 @@ export default function ServerHealthPage() {
   const failingCount = checks.filter((c) => c.ok === false).length;
 
   return (
-    <s-page heading="Server" width="full">
+    <s-page heading="Server" inlineSize="large">
       <s-section heading={failingCount === 0 ? "✓ All checks passing" : `⚠ ${failingCount} check(s) failing`}>
         {/* At-a-glance strip — every check's pill in one row, so the
             overall picture reads in a glance before scrolling into the
@@ -467,7 +467,12 @@ export default function ServerHealthPage() {
         )}
       </s-section>
 
-      <s-section slot="aside" heading="What each check means">
+      {/* No slot="aside" here on purpose -- an aside forces Shopify's Page
+          component into a narrower two-column layout, which is exactly
+          the "boxed in with side space" look this page just moved away
+          from. Rendered as a regular stacked section instead so it's
+          full width like everything else on the page. */}
+      <s-section heading="What each check means">
         <Explain summary="ℹ️ read_themes / read_products">
           <s-paragraph>
             If either fails, the recommendation email still sends but falls back to a plain text header (no store

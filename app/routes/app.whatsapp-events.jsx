@@ -358,7 +358,7 @@ export default function WhatsAppEventsPage() {
   const { sorted: sortedMessages, sortKey, sortDir, onSort } = useSort(filteredMessages, "sentAt", "desc");
 
   return (
-    <s-page heading={`WhatsApp Events (${summary.total})`} width="full">
+    <s-page heading={`WhatsApp Events (${summary.total})`} inlineSize="large">
       <s-section>
         <TableGlobalStyles />
         <button type="button" style={smallBtn} onClick={() => revalidator.revalidate()} disabled={isRefreshing}>

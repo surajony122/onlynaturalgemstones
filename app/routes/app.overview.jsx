@@ -88,7 +88,7 @@ export default function OverviewPage() {
   const { stats, healthy } = useLoaderData();
 
   return (
-    <s-page heading="Overview" width="full">
+    <s-page heading="Overview" inlineSize="large">
       <s-section>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px" }}>
           <p style={{ fontSize: "12.5px", color: brand.muted, margin: 0 }}>
