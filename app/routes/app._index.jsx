@@ -143,7 +143,7 @@ export default function Index() {
   const allPassed = checks.length > 0 && checks.every((c) => c.status === "PASS");
 
   return (
-    <div style={{ maxWidth: 1080, margin: "0 auto", padding: "24px 20px 80px", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
+    <div style={{ width: "100%", padding: "24px 24px 80px", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
       <TableGlobalStyles />
 
       {/* Header Banner */}

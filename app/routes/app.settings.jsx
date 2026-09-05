@@ -583,7 +583,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <s-page heading="Astro Advice — Settings">
+    <s-page heading="Astro Advice — Settings" width="full">
       <s-section heading="Connections at a glance">
         <s-paragraph>
           Live status, checked just now — the same checks the <s-link href="/app/server-health">Server</s-link> page
