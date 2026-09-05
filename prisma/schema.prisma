@@ -202,6 +202,26 @@ model OrderProcessingNotification {
   @@unique([orderId, triggerKey])
 }
 
+// Email counterpart to OrderProcessingNotification above -- same
+// (orderId, triggerKey) dedup shape, kept as its own table rather than
+// adding an email column to that one so the WhatsApp and email channels
+// can each independently succeed/fail/skip (e.g. Gmail not configured)
+// without one blocking or overwriting the other's record. See
+// app/utils/orderProcessingEmail.server.js and
+// app/routes/webhooks.orders.updated.jsx.
+model OrderProcessingEmailNotification {
+  id         String   @id @default(cuid())
+  shop       String?
+  orderId    String
+  triggerKey String   @default("tag")
+  orderName  String?
+  email      String?
+  status     String? // same "OK: .../skipped: .../threw: ..." shape as elsewhere
+  notifiedAt DateTime @default(now())
+
+  @@unique([orderId, triggerKey])
+}
+
 // Append-only, unconditional log of every orders/updated webhook receipt
 // — written as the VERY FIRST thing in webhooks.orders.updated.jsx,
 // before the "already notified" check or any GraphQL call. Exists

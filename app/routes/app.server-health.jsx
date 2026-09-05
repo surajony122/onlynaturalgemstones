@@ -147,6 +147,21 @@ async function checkOrderProcessingNotifications() {
   }));
 }
 
+// Email counterpart to the above -- see orderProcessingEmail.server.js
+// and webhooks.orders.updated.jsx's "Channel 2: Email" section. Kept as
+// its own table (not merged into the one above) since the two channels
+// dedup, succeed, and fail independently of each other.
+async function checkOrderProcessingEmailNotifications() {
+  const recent = await prisma.orderProcessingEmailNotification.findMany({
+    orderBy: { notifiedAt: "desc" },
+    take: 20,
+  });
+  return recent.map((n) => ({
+    ...n,
+    notifiedAt: n.notifiedAt.toISOString(),
+  }));
+}
+
 /** The definitive answer to "does Shopify actually call our webhook
  * endpoint" — written unconditionally, before anything else runs, at the
  * top of webhooks.orders.updated.jsx. Unlike checkRegisteredWebhooks
@@ -166,7 +181,7 @@ export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const settings = await getAppSettings(session.shop);
 
-  const [database, shopifyAdmin, readThemes, readProducts, gmail, googleSheets, interakt, recentLeads, orderProcessingNotifications, registeredWebhooks, webhookReceipts] = await Promise.all([
+  const [database, shopifyAdmin, readThemes, readProducts, gmail, googleSheets, interakt, recentLeads, orderProcessingNotifications, orderProcessingEmailNotifications, registeredWebhooks, webhookReceipts] = await Promise.all([
     checkDatabase(),
     checkShopifyAdmin(admin),
     checkScope(
@@ -184,6 +199,7 @@ export const loader = async ({ request }) => {
     checkInterakt(settings),
     checkRecentLeads(),
     checkOrderProcessingNotifications(),
+    checkOrderProcessingEmailNotifications(),
     checkRegisteredWebhooks(admin),
     checkWebhookReceipts(),
   ]);
@@ -201,6 +217,7 @@ export const loader = async ({ request }) => {
     ],
     recentLeads,
     orderProcessingNotifications,
+    orderProcessingEmailNotifications,
     registeredWebhooks,
     webhookReceipts,
   };
@@ -271,7 +288,7 @@ const tableStyle = { width: "100%", borderCollapse: "collapse" };
 const monoDetailStyle = { color: "#374151", fontFamily: "monospace", fontSize: "11px", lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word", maxWidth: "480px" };
 
 export default function ServerHealthPage() {
-  const { checkedAt, checks, recentLeads, orderProcessingNotifications, registeredWebhooks, webhookReceipts } = useLoaderData();
+  const { checkedAt, checks, recentLeads, orderProcessingNotifications, orderProcessingEmailNotifications, registeredWebhooks, webhookReceipts } = useLoaderData();
   const failingCount = checks.filter((c) => c.ok === false).length;
 
   return (
@@ -456,6 +473,46 @@ export default function ServerHealthPage() {
                     <td style={td}>{new Date(n.notifiedAt).toLocaleString()}</td>
                     <td style={td}>{n.orderName || n.orderId}</td>
                     <td style={td}>{n.phone || "—"}</td>
+                    <td style={td}>
+                      <ResultPill status={n.status} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </s-section>
+
+      <s-section heading="Order Processing Email notifications">
+        <Explain summary="ℹ️ Why this exists, and what an empty list means">
+          <s-paragraph>
+            Shopify has no native "order processing/approved" email template to hook into (only Order
+            confirmation/Shipping confirmation/Delivered/Cancelled), so this app sends it directly instead — same
+            trigger as the WhatsApp table above, via the merchant's connected Gmail (Settings page). One row per
+            order the webhook attempted to email — see <s-text>orderProcessingEmail.server.js</s-text>. A "skipped"
+            result usually means Gmail isn't configured yet, or the order had no email address.
+          </s-paragraph>
+        </Explain>
+        {orderProcessingEmailNotifications.length === 0 ? (
+          <s-paragraph>No order-processing emails recorded yet.</s-paragraph>
+        ) : (
+          <div style={tableWrapStyle}>
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={th}>When</th>
+                  <th style={th}>Order</th>
+                  <th style={th}>Email</th>
+                  <th style={th}>Result</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orderProcessingEmailNotifications.map((n) => (
+                  <tr key={n.id}>
+                    <td style={td}>{new Date(n.notifiedAt).toLocaleString()}</td>
+                    <td style={td}>{n.orderName || n.orderId}</td>
+                    <td style={td}>{n.email || "—"}</td>
                     <td style={td}>
                       <ResultPill status={n.status} />
                     </td>

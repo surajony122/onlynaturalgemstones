@@ -1,7 +1,16 @@
 /**
- * orders/updated webhook — sends the "order processing" WhatsApp
- * notification the first time an order is seen as "marked as in
- * progress." Two INDEPENDENT triggers, either one fires it:
+ * orders/updated webhook — sends the "order processing" WhatsApp AND
+ * email notifications the first time an order is seen as "marked as in
+ * progress" (email added because Shopify has no native "processing/
+ * approved" notification template to hook a Liquid template into --
+ * only confirmation/shipped/delivered/cancelled -- so this app sends it
+ * directly via the merchant's own connected Gmail instead; see
+ * orderProcessingEmail.server.js). The two channels are independent: each
+ * has its own dedup table (OrderProcessingNotification for WhatsApp,
+ * OrderProcessingEmailNotification for email) so one being unavailable
+ * or already-sent for a given occurrence never blocks the other.
+ *
+ * Two INDEPENDENT triggers, either one fires both channels:
  *
  *   1. TAG: the order carries a specific tag (default
  *      "notify-processing", see AppSettings.orderProcessingTriggerTag /
@@ -64,6 +73,7 @@ import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { getAppSettings, DEFAULT_ORDER_PROCESSING_TRIGGER_TAG } from "../utils/appSettings.server";
 import { sendOrderProcessingWhatsApp } from "../utils/interakt.server";
+import { sendOrderProcessingEmail } from "../utils/orderProcessingEmail.server";
 
 export const action = async ({ request }) => {
   const { shop, admin, payload, topic } = await authenticate.webhook(request);
@@ -193,67 +203,99 @@ export const action = async ({ request }) => {
     // occurrence gets its own, different triggerKey and so notifies
     // again, exactly as requested).
     const triggerKey = hasTriggerTag ? "tag" : latestInProgressEvent.createdAt;
-
-    const already = await prisma.orderProcessingNotification.findUnique({
-      where: { orderId_triggerKey: { orderId, triggerKey } },
-    });
-    if (already) {
-      await setDetail(`skipped: already notified for this occurrence at ${already.notifiedAt.toISOString()} (status: ${already.status})`);
-      return new Response();
-    }
-
-    // Shipping address phone first -- confirmed live to be the reliable
-    // one (a real order's WhatsApp send went to a stale/wrong number
-    // when this prioritized the order's own top-level `phone` field
-    // instead). Customer profile phone next, then billing address, with
-    // the order-level field now checked LAST since it's the one that
-    // was wrong. phoneSource is recorded in the receipt log below so a
-    // future "wrong number" report doesn't need a second cross-check
-    // against /app/whatsapp-events to see which field was used.
-    let phone = null;
-    let phoneSource = "none found";
-    if (payload?.shipping_address?.phone) {
-      phone = payload.shipping_address.phone;
-      phoneSource = "shipping_address.phone";
-    } else if (payload?.customer?.phone) {
-      phone = payload.customer.phone;
-      phoneSource = "customer.phone";
-    } else if (payload?.billing_address?.phone) {
-      phone = payload.billing_address.phone;
-      phoneSource = "billing_address.phone";
-    } else if (payload?.phone) {
-      phone = payload.phone;
-      phoneSource = "order.phone (top-level -- least reliable, used only because nothing else was set)";
-    }
-    const firstName = payload?.customer?.first_name || "";
-    const orderNumber = payload?.name || String(payload.order_number || payload.id);
     const triggerReason = hasTriggerTag
       ? `tag "${triggerTag}"`
       : `order timeline event at ${triggerKey} mentioning "in progress"`;
-    const triggerAndPhoneDetail = `triggered by ${triggerReason} — sending to phone: ${phone || "(none found)"} (source: ${phoneSource})`;
-    await setDetail(triggerAndPhoneDetail);
+    const firstName = payload?.customer?.first_name || "";
+    const orderNumber = payload?.name || String(payload.order_number || payload.id);
 
-    let status;
-    try {
-      status = await sendOrderProcessingWhatsApp(settings, { phone, firstName, orderNumber, shop });
-    } catch (err) {
-      status = "threw: " + String((err && err.message) || err);
-    }
-    // Appended to the trigger/phone line rather than replacing it --
-    // setDetail overwrites the WHOLE column each call, so this used to
-    // silently lose the "which phone field was this?" context the
-    // moment the send finished, which is exactly the detail needed to
-    // debug a wrong-number report after the fact.
-    await setDetail(`${triggerAndPhoneDetail} | send result: ${status}`);
+    // WhatsApp and email are checked/sent/recorded independently below
+    // (each against its OWN dedup table) rather than one shared "already
+    // notified" gate -- otherwise the first channel to succeed for a
+    // given occurrence would silently block the other from ever being
+    // attempted for that same occurrence (e.g. Gmail getting configured
+    // AFTER WhatsApp already fired for this order would then never send
+    // the email at all). All outcomes are still combined into one
+    // receipt-log line so the "what happened" story stays in one place.
+    const detailParts = [`triggered by ${triggerReason}`];
 
-    // Recorded regardless of success/failure — a failed send (bad phone,
-    // template not approved yet, etc.) shouldn't retry-spam the customer
-    // for the SAME occurrence on every subsequent orders/updated event
-    // either; fix the underlying issue and resend manually if that ever
-    // matters. A future, genuinely new occurrence still gets its own row.
-    await prisma.orderProcessingNotification.create({
-      data: { shop, orderId, triggerKey, orderName: orderNumber, phone, status },
+    // --- Channel 1: WhatsApp -------------------------------------------
+    const alreadyWhatsApp = await prisma.orderProcessingNotification.findUnique({
+      where: { orderId_triggerKey: { orderId, triggerKey } },
     });
+    if (alreadyWhatsApp) {
+      detailParts.push(`WhatsApp: skipped, already notified at ${alreadyWhatsApp.notifiedAt.toISOString()} (status: ${alreadyWhatsApp.status})`);
+    } else {
+      // Shipping address phone first -- confirmed live to be the
+      // reliable one (a real order's WhatsApp send went to a stale/wrong
+      // number when this prioritized the order's own top-level `phone`
+      // field instead). Customer profile phone next, then billing
+      // address, with the order-level field checked LAST since it's the
+      // one that was wrong. phoneSource is recorded below so a future
+      // "wrong number" report doesn't need a second cross-check against
+      // /app/whatsapp-events to see which field was used.
+      let phone = null;
+      let phoneSource = "none found";
+      if (payload?.shipping_address?.phone) {
+        phone = payload.shipping_address.phone;
+        phoneSource = "shipping_address.phone";
+      } else if (payload?.customer?.phone) {
+        phone = payload.customer.phone;
+        phoneSource = "customer.phone";
+      } else if (payload?.billing_address?.phone) {
+        phone = payload.billing_address.phone;
+        phoneSource = "billing_address.phone";
+      } else if (payload?.phone) {
+        phone = payload.phone;
+        phoneSource = "order.phone (top-level -- least reliable, used only because nothing else was set)";
+      }
+
+      let waStatus;
+      try {
+        waStatus = await sendOrderProcessingWhatsApp(settings, { phone, firstName, orderNumber, shop });
+      } catch (err) {
+        waStatus = "threw: " + String((err && err.message) || err);
+      }
+      detailParts.push(`WhatsApp: sending to ${phone || "(none found)"} (source: ${phoneSource}) -> ${waStatus}`);
+
+      // Recorded regardless of success/failure — a failed send (bad
+      // phone, template not approved yet, etc.) shouldn't retry-spam the
+      // customer for the SAME occurrence on every subsequent
+      // orders/updated event either; fix the underlying issue and resend
+      // manually if that ever matters. A future, genuinely new
+      // occurrence still gets its own row.
+      await prisma.orderProcessingNotification.create({
+        data: { shop, orderId, triggerKey, orderName: orderNumber, phone, status: waStatus },
+      });
+    }
+
+    // --- Channel 2: Email -----------------------------------------------
+    // Shopify has no native "order processing/approved" notification
+    // template to hook into (only confirmation/shipped/delivered/
+    // cancelled) -- this app sends it directly instead, via the
+    // merchant's own connected Gmail (Settings page). See
+    // orderProcessingEmail.server.js for the bundle-card email itself.
+    const alreadyEmail = await prisma.orderProcessingEmailNotification.findUnique({
+      where: { orderId_triggerKey: { orderId, triggerKey } },
+    });
+    if (alreadyEmail) {
+      detailParts.push(`Email: skipped, already notified at ${alreadyEmail.notifiedAt.toISOString()} (status: ${alreadyEmail.status})`);
+    } else {
+      let emailStatus;
+      try {
+        emailStatus = await sendOrderProcessingEmail(admin, settings, payload);
+      } catch (err) {
+        emailStatus = "threw: " + String((err && err.message) || err);
+      }
+      const emailAddr = payload?.email || payload?.customer?.email || payload?.contact_email || null;
+      detailParts.push(`Email: ${emailStatus}`);
+
+      await prisma.orderProcessingEmailNotification.create({
+        data: { shop, orderId, triggerKey, orderName: orderNumber, email: emailAddr, status: emailStatus },
+      });
+    }
+
+    await setDetail(detailParts.join(" | "));
   } catch (err) {
     console.error("[webhooks.orders.updated] failed:", err);
     await setDetail("threw: " + String((err && err.message) || err));
