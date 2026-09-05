@@ -319,6 +319,54 @@ function TestResult({ fetcherData, intent }) {
   );
 }
 
+// Lighter-weight card for the three individual WhatsApp templates —
+// visually one notch below a full ServiceCard (no connection badge of
+// its own, since all three share the WhatsApp card's single Connected/
+// Failing status above them), so three of these read as "one connection,
+// three templates" instead of three more independent-looking services.
+function TemplateCard({ icon, title, children }) {
+  return (
+    <div
+      style={{
+        background: "#F9FAFB",
+        border: "1px solid #EDEEF1",
+        borderRadius: "12px",
+        padding: "14px",
+      }}
+    >
+      <div style={{ fontSize: "13px", fontWeight: 600, color: "#111827", marginBottom: "8px" }}>
+        {icon} {title}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// Long setup/explanation text collapsed behind a native <details> toggle
+// instead of sitting open on the page permanently — the field(s) that
+// actually need filling in stay visible; the "why"/"how" reference text
+// only shows up for someone who wants it. `open` on first load only when
+// the thing it explains isn't set up yet (isSet === false), since that's
+// exactly when someone would need the instructions most.
+function Explain({ summary, children, defaultOpen }) {
+  return (
+    <details open={defaultOpen || undefined} style={{ marginBottom: "14px" }}>
+      <summary
+        style={{
+          cursor: "pointer",
+          fontSize: "12px",
+          fontWeight: 500,
+          color: "#6B7280",
+          userSelect: "none",
+        }}
+      >
+        {summary}
+      </summary>
+      <div style={{ marginTop: "8px" }}>{children}</div>
+    </details>
+  );
+}
+
 // A password-style field that also knows how to reveal its own current
 // saved value on demand (the 👁 button) — used for every secret on this
 // page (Gmail App Password, service account key, Interakt Secret Key,
@@ -563,12 +611,14 @@ export default function SettingsPage() {
         </div>
 
         <s-section heading="Wishlist email timing">
-          <s-paragraph>
-            Hours to wait after a customer's <s-text>last</s-text> wishlist change before emailing them — each new
-            change pushes this out again, so someone actively adding items all day gets one email once they've gone
-            quiet, not one per add. See the <s-link href="/app/wishlist-leads">Wishlist Leads</s-link> page's "Send
-            Due Emails Now" button to run a check immediately instead of waiting.
-          </s-paragraph>
+          <Explain summary="ℹ️ How this timing works">
+            <s-paragraph>
+              Hours to wait after a customer's <s-text>last</s-text> wishlist change before emailing them — each new
+              change pushes this out again, so someone actively adding items all day gets one email once they've
+              gone quiet, not one per add. See the <s-link href="/app/wishlist-leads">Wishlist Leads</s-link> page's
+              "Send Due Emails Now" button to run a check immediately instead of waiting.
+            </s-paragraph>
+          </Explain>
           <label style={labelStyle} htmlFor="wishlistInterval">Wait time (hours)</label>
           <input
             id="wishlistInterval"
@@ -586,13 +636,6 @@ export default function SettingsPage() {
         </div>
 
         <ServiceCard icon="💬" title="WhatsApp (Interakt)" status={data.serviceStatus.interakt}>
-          <s-paragraph>
-            One Interakt account powers all three WhatsApp message types below — gem recommendation, order
-            processing, and wishlist reminder. Each needs its own template created and{" "}
-            <s-text fontWeight="bold">Meta-approved</s-text> in Interakt (green dot, Catalog &amp; Templates →
-            Templates Library) before it'll actually send.
-          </s-paragraph>
-
           <SecretField
             id="interaktApiKey"
             label="Secret Key"
@@ -604,172 +647,19 @@ export default function SettingsPage() {
             envFallbackHint={data.envFallback.interaktApiKey ? "Currently falling back to the INTERAKT_API_KEY env var on Render." : null}
           />
 
-          <div style={{ display: "grid", gap: "14px", marginTop: "8px" }}>
-            {/* --- Gem Recommendation template --- */}
-            <div style={{ padding: "14px", background: "#F9FAFB", border: "1px solid #EDEEF1", borderRadius: "12px" }}>
-              <div style={{ fontSize: "13px", fontWeight: 600, color: "#111827", marginBottom: "8px" }}>
-                1️⃣ Gem Recommendation
-              </div>
-              <label style={labelStyle} htmlFor="interaktTemplateName">Template name</label>
-              <input
-                id="interaktTemplateName"
-                style={fieldStyle}
-                type="text"
-                value={interaktTemplateName}
-                onChange={(e) => setInteraktTemplateName(e.target.value)}
-                placeholder={`${data.defaultInteraktTemplateName} (default if left blank)`}
-              />
-              <label style={labelStyle} htmlFor="testPhone">Send test message</label>
-              <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "5px" }}>
-                <input
-                  id="testPhone"
-                  style={{ ...fieldStyle, marginBottom: 0, maxWidth: "220px" }}
-                  type="tel"
-                  value={testPhone}
-                  onChange={(e) => setTestPhone(e.target.value)}
-                  placeholder="9876543210 or +919876543210"
-                />
-                <s-button {...(isSendingTest ? { loading: true } : {})} onClick={sendTestWhatsapp}>
-                  Send Test
-                </s-button>
-              </div>
-              <TestResult fetcherData={testFetcher.data} intent="sendTestWhatsapp" />
-            </div>
-
-            {/* --- Order Processing template --- */}
-            <div style={{ padding: "14px", background: "#F9FAFB", border: "1px solid #EDEEF1", borderRadius: "12px" }}>
-              <div style={{ fontSize: "13px", fontWeight: 600, color: "#111827", marginBottom: "8px" }}>
-                2️⃣ Order Processing
-              </div>
-              <s-paragraph>
-                Sends the first time an order is <s-text fontWeight="bold">tagged</s-text> with the trigger tag
-                below (add it in Shopify Admin whenever you want the message sent). Sends once per order.
-              </s-paragraph>
-              <label style={labelStyle} htmlFor="orderProcessingTriggerTag">Trigger tag</label>
-              <input
-                id="orderProcessingTriggerTag"
-                style={fieldStyle}
-                type="text"
-                value={orderProcessingTriggerTag}
-                onChange={(e) => setOrderProcessingTriggerTag(e.target.value)}
-                placeholder={`${data.defaultOrderProcessingTriggerTag} (default if left blank)`}
-              />
-              <label style={labelStyle} htmlFor="interaktOrderTemplateName">Template name</label>
-              <input
-                id="interaktOrderTemplateName"
-                style={fieldStyle}
-                type="text"
-                value={interaktOrderTemplateName}
-                onChange={(e) => setInteraktOrderTemplateName(e.target.value)}
-                placeholder={`${data.defaultInteraktOrderTemplateName} (default if left blank)`}
-              />
-              <label style={labelStyle} htmlFor="testOrderPhone">Send test message</label>
-              <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "5px" }}>
-                <input
-                  id="testOrderPhone"
-                  style={{ ...fieldStyle, marginBottom: 0, maxWidth: "220px" }}
-                  type="tel"
-                  value={testOrderPhone}
-                  onChange={(e) => setTestOrderPhone(e.target.value)}
-                  placeholder="9876543210 or +919876543210"
-                />
-                <s-button {...(isSendingOrderTest ? { loading: true } : {})} onClick={sendTestOrderWhatsapp}>
-                  Send Test
-                </s-button>
-              </div>
-              <TestResult fetcherData={testOrderFetcher.data} intent="sendTestOrderWhatsapp" />
-            </div>
-
-            {/* --- Wishlist Reminder template --- */}
-            <div style={{ padding: "14px", background: "#F9FAFB", border: "1px solid #EDEEF1", borderRadius: "12px" }}>
-              <div style={{ fontSize: "13px", fontWeight: 600, color: "#111827", marginBottom: "8px" }}>
-                3️⃣ Wishlist Reminder
-              </div>
-              <s-paragraph>
-                Sends alongside the wishlist reminder email, on the same timing set above. See{" "}
-                <s-link href="/app/wishlist-leads">Wishlist Leads</s-link> for per-lead status.
-              </s-paragraph>
-              <label style={labelStyle} htmlFor="interaktWishlistTemplateName">Template name</label>
-              <input
-                id="interaktWishlistTemplateName"
-                style={fieldStyle}
-                type="text"
-                value={interaktWishlistTemplateName}
-                onChange={(e) => setInteraktWishlistTemplateName(e.target.value)}
-                placeholder={`${data.defaultInteraktWishlistTemplateName} (default if left blank)`}
-              />
-              <label style={labelStyle} htmlFor="testWishlistPhone">Send test message</label>
-              <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "5px" }}>
-                <input
-                  id="testWishlistPhone"
-                  style={{ ...fieldStyle, marginBottom: 0, maxWidth: "220px" }}
-                  type="tel"
-                  value={testWishlistPhone}
-                  onChange={(e) => setTestWishlistPhone(e.target.value)}
-                  placeholder="9876543210 or +919876543210"
-                />
-                <s-button {...(isSendingWishlistTest ? { loading: true } : {})} onClick={sendTestWishlistWhatsapp}>
-                  Send Test
-                </s-button>
-              </div>
-              <TestResult fetcherData={testWishlistFetcher.data} intent="sendTestWishlistWhatsapp" />
-            </div>
-          </div>
-
-          <div style={{ marginTop: "16px" }}>
-            <label style={labelStyle}>WhatsApp follow-up reminder</label>
-            <p style={{ ...hintStyle, marginTop: "4px" }}>
-              The first message always sends <s-text>instantly</s-text> on submission — this adds an optional SECOND
-              message (same template, resent) after this much time. <s-text>0</s-text> turns follow-ups off. Needs
-              an external scheduler hitting <s-text>/cron/whatsapp-queue?secret=…</s-text>, or use{" "}
-              <s-link href="/app/astro-leads">Astro Leads</s-link>' "Process Follow-ups Now" button manually.
-            </p>
-            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-              <input
-                style={{ ...fieldStyle, marginBottom: 0, maxWidth: "100px" }}
-                type="number"
-                min="0"
-                step="1"
-                value={whatsappIntervalValue}
-                onChange={(e) => setWhatsappIntervalValue(e.target.value)}
-              />
-              <select
-                style={{ ...fieldStyle, marginBottom: 0, width: "auto", padding: "8px 10px" }}
-                value={whatsappIntervalUnit}
-                onChange={(e) => setWhatsappIntervalUnit(e.target.value)}
-              >
-                <option value="minutes">Minutes</option>
-                <option value="hours">Hours</option>
-                <option value="days">Days</option>
-              </select>
-            </div>
-          </div>
-
-          <div style={{ marginTop: "16px" }}>
-            <label style={labelStyle}>Delivery/read tracking (webhook)</label>
-            <p style={{ ...hintStyle, marginTop: "4px" }}>
-              Interakt has no API to fetch campaign stats — register this URL in Interakt → Settings → Developer
-              Setting → Webhooks (pick any secret, match it below) to see real sent/delivered/read status on{" "}
-              <s-link href="/app/whatsapp-events">WhatsApp Events</s-link>:
-              <br />
-              <s-text>https://shubh-gems-customizer-app.onrender.com/public/interakt-webhook</s-text>
-            </p>
-            <SecretField
-              id="interaktWebhookSecret"
-              label="Webhook Secret"
-              fieldName="interaktWebhookSecret"
-              isSet={data.interaktWebhookSecretSet}
-              value={interaktWebhookSecret}
-              onChange={setInteraktWebhookSecret}
-              placeholder="any secret string — pick one, match it in Interakt"
-            />
-          </div>
+          <Explain summary="ℹ️ Every template below needs Meta approval first">
+            <s-paragraph>
+              One Interakt account powers all three templates below. Each needs its own template created and{" "}
+              <s-text fontWeight="bold">Meta-approved</s-text> in Interakt (green dot, Catalog &amp; Templates →
+              Templates Library) before it'll actually send.
+            </s-paragraph>
+          </Explain>
 
           {testFetcher.data?.campaignStatus && (
             <p
               style={{
                 ...hintStyle,
-                marginTop: "10px",
+                marginTop: "-4px",
                 color: testFetcher.data.campaignStatus.startsWith("OK") ? "#16A34A" : "#DC2626",
               }}
             >
@@ -778,11 +668,168 @@ export default function SettingsPage() {
           )}
         </ServiceCard>
 
+        <div style={{ ...groupBannerStyle, margin: "0 0 12px", background: "#F9FAFB", borderColor: "#E5E7EB", color: "#374151" }}>
+          💬 Message templates — one card per WhatsApp message
+        </div>
+
+        <div style={{ display: "grid", gap: "14px", marginBottom: "16px" }}>
+          <TemplateCard icon="1️⃣" title="Gem Recommendation">
+            <label style={labelStyle} htmlFor="interaktTemplateName">Template name</label>
+            <input
+              id="interaktTemplateName"
+              style={fieldStyle}
+              type="text"
+              value={interaktTemplateName}
+              onChange={(e) => setInteraktTemplateName(e.target.value)}
+              placeholder={`${data.defaultInteraktTemplateName} (default if left blank)`}
+            />
+            <label style={labelStyle} htmlFor="testPhone">Send test message</label>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "5px" }}>
+              <input
+                id="testPhone"
+                style={{ ...fieldStyle, marginBottom: 0, maxWidth: "220px" }}
+                type="tel"
+                value={testPhone}
+                onChange={(e) => setTestPhone(e.target.value)}
+                placeholder="9876543210 or +919876543210"
+              />
+              <s-button {...(isSendingTest ? { loading: true } : {})} onClick={sendTestWhatsapp}>
+                Send Test
+              </s-button>
+            </div>
+            <TestResult fetcherData={testFetcher.data} intent="sendTestWhatsapp" />
+          </TemplateCard>
+
+          <TemplateCard icon="2️⃣" title="Order Processing">
+            <p style={{ ...hintStyle, marginTop: 0 }}>
+              Sends once per order, the first time it's <s-text fontWeight="bold">tagged</s-text> with the trigger
+              tag below.
+            </p>
+            <label style={labelStyle} htmlFor="orderProcessingTriggerTag">Trigger tag</label>
+            <input
+              id="orderProcessingTriggerTag"
+              style={fieldStyle}
+              type="text"
+              value={orderProcessingTriggerTag}
+              onChange={(e) => setOrderProcessingTriggerTag(e.target.value)}
+              placeholder={`${data.defaultOrderProcessingTriggerTag} (default if left blank)`}
+            />
+            <label style={labelStyle} htmlFor="interaktOrderTemplateName">Template name</label>
+            <input
+              id="interaktOrderTemplateName"
+              style={fieldStyle}
+              type="text"
+              value={interaktOrderTemplateName}
+              onChange={(e) => setInteraktOrderTemplateName(e.target.value)}
+              placeholder={`${data.defaultInteraktOrderTemplateName} (default if left blank)`}
+            />
+            <label style={labelStyle} htmlFor="testOrderPhone">Send test message</label>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "5px" }}>
+              <input
+                id="testOrderPhone"
+                style={{ ...fieldStyle, marginBottom: 0, maxWidth: "220px" }}
+                type="tel"
+                value={testOrderPhone}
+                onChange={(e) => setTestOrderPhone(e.target.value)}
+                placeholder="9876543210 or +919876543210"
+              />
+              <s-button {...(isSendingOrderTest ? { loading: true } : {})} onClick={sendTestOrderWhatsapp}>
+                Send Test
+              </s-button>
+            </div>
+            <TestResult fetcherData={testOrderFetcher.data} intent="sendTestOrderWhatsapp" />
+          </TemplateCard>
+
+          <TemplateCard icon="3️⃣" title="Wishlist Reminder">
+            <p style={{ ...hintStyle, marginTop: 0 }}>
+              Sends alongside the wishlist reminder email, on the timing set below. Per-lead status on{" "}
+              <s-link href="/app/wishlist-leads">Wishlist Leads</s-link>.
+            </p>
+            <label style={labelStyle} htmlFor="interaktWishlistTemplateName">Template name</label>
+            <input
+              id="interaktWishlistTemplateName"
+              style={fieldStyle}
+              type="text"
+              value={interaktWishlistTemplateName}
+              onChange={(e) => setInteraktWishlistTemplateName(e.target.value)}
+              placeholder={`${data.defaultInteraktWishlistTemplateName} (default if left blank)`}
+            />
+            <label style={labelStyle} htmlFor="testWishlistPhone">Send test message</label>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "5px" }}>
+              <input
+                id="testWishlistPhone"
+                style={{ ...fieldStyle, marginBottom: 0, maxWidth: "220px" }}
+                type="tel"
+                value={testWishlistPhone}
+                onChange={(e) => setTestWishlistPhone(e.target.value)}
+                placeholder="9876543210 or +919876543210"
+              />
+              <s-button {...(isSendingWishlistTest ? { loading: true } : {})} onClick={sendTestWishlistWhatsapp}>
+                Send Test
+              </s-button>
+            </div>
+            <TestResult fetcherData={testWishlistFetcher.data} intent="sendTestWishlistWhatsapp" />
+          </TemplateCard>
+        </div>
+
+        <ServiceCard icon="⚙️" title="WhatsApp — advanced">
+          <label style={labelStyle}>Follow-up reminder timing</label>
+          <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "5px" }}>
+            <input
+              style={{ ...fieldStyle, marginBottom: 0, maxWidth: "100px" }}
+              type="number"
+              min="0"
+              step="1"
+              value={whatsappIntervalValue}
+              onChange={(e) => setWhatsappIntervalValue(e.target.value)}
+            />
+            <select
+              style={{ ...fieldStyle, marginBottom: 0, width: "auto", padding: "8px 10px" }}
+              value={whatsappIntervalUnit}
+              onChange={(e) => setWhatsappIntervalUnit(e.target.value)}
+            >
+              <option value="minutes">Minutes</option>
+              <option value="hours">Hours</option>
+              <option value="days">Days</option>
+            </select>
+          </div>
+          <Explain summary="ℹ️ How the follow-up reminder works">
+            <p style={hintStyle}>
+              The first message always sends <s-text>instantly</s-text> on submission — this adds an optional SECOND
+              message (same template, resent) after this much time. <s-text>0</s-text> turns follow-ups off. Needs
+              an external scheduler hitting <s-text>/cron/whatsapp-queue?secret=…</s-text>, or use{" "}
+              <s-link href="/app/astro-leads">Astro Leads</s-link>' "Process Follow-ups Now" button manually.
+            </p>
+          </Explain>
+
+          <label style={labelStyle}>Delivery/read tracking (webhook)</label>
+          <SecretField
+            id="interaktWebhookSecret"
+            label="Webhook Secret"
+            fieldName="interaktWebhookSecret"
+            isSet={data.interaktWebhookSecretSet}
+            value={interaktWebhookSecret}
+            onChange={setInteraktWebhookSecret}
+            placeholder="any secret string — pick one, match it in Interakt"
+          />
+          <Explain summary="ℹ️ Where to register the webhook URL">
+            <p style={hintStyle}>
+              Interakt has no API to fetch campaign stats — register this URL in Interakt → Settings → Developer
+              Setting → Webhooks (pick any secret, match it above) to see real sent/delivered/read status on{" "}
+              <s-link href="/app/whatsapp-events">WhatsApp Events</s-link>:
+              <br />
+              <s-text>https://shubh-gems-customizer-app.onrender.com/public/interakt-webhook</s-text>
+            </p>
+          </Explain>
+        </ServiceCard>
+
         <ServiceCard icon="✉️" title="Email sending (Gmail)" status={data.serviceStatus.gmail}>
-          <s-paragraph>
-            The account the gem-recommendation email sends from. Needs a Gmail App Password (Google account →
-            Security → 2-Step Verification → App Passwords), not the account's real password.
-          </s-paragraph>
+          <Explain summary="ℹ️ What this is for">
+            <s-paragraph>
+              The account the gem-recommendation email sends from. Needs a Gmail App Password (Google account →
+              Security → 2-Step Verification → App Passwords), not the account's real password.
+            </s-paragraph>
+          </Explain>
 
           <label style={labelStyle} htmlFor="gmailUser">Gmail address</label>
           <input
@@ -809,19 +856,20 @@ export default function SettingsPage() {
         </ServiceCard>
 
         <ServiceCard icon="📊" title="Google Sheets mirror (optional)" status={data.serviceStatus.sheets}>
-          <s-paragraph>
-            Also mirrors every lead/email-event row into a Google Sheet, in addition to this app's own database.
-            Leave blank to skip — nothing else depends on this.
-          </s-paragraph>
-
-          <s-paragraph>
-            <s-text fontWeight="bold">Sheets relay (recommended)</s-text> — a tiny Apps Script Web App deployed
-            inside your own Sheet under your own Google account. No service account or key needed at all, which is
-            why this is the way to go if you ever hit a "service account key creation is disabled" error trying to
-            set up the fields below. Ask for the <s-text fontWeight="bold">sheets-relay.gs</s-text> file and the
-            5-minute setup steps if you haven't deployed it yet. If a Relay URL is set here, it's used instead of
-            the service-account fields below — no need to fill in both.
-          </s-paragraph>
+          <Explain summary="ℹ️ What this is for, and which fields to use">
+            <s-paragraph>
+              Mirrors every lead/email-event row into a Google Sheet, in addition to this app's own database. Leave
+              everything below blank to skip — nothing else depends on this.
+            </s-paragraph>
+            <s-paragraph>
+              <s-text fontWeight="bold">Sheets relay (recommended)</s-text> — a tiny Apps Script Web App deployed
+              inside your own Sheet under your own Google account. No service account or key needed at all, which is
+              why this is the way to go if you ever hit a "service account key creation is disabled" error trying to
+              set up the fields below. Ask for the <s-text fontWeight="bold">sheets-relay.gs</s-text> file and the
+              5-minute setup steps if you haven't deployed it yet. If a Relay URL is set here, it's used instead of
+              the service-account fields below — no need to fill in both.
+            </s-paragraph>
+          </Explain>
 
           <label style={labelStyle} htmlFor="sheetsRelayUrl">Sheets relay URL</label>
           <input
@@ -843,9 +891,9 @@ export default function SettingsPage() {
             placeholder="must match SHARED_SECRET in the script"
           />
 
-          <s-paragraph>
-            <s-text fontWeight="bold">Service account (fallback, needs no relay set above)</s-text>
-          </s-paragraph>
+          <label style={{ ...labelStyle, display: "block", marginTop: "6px", marginBottom: "4px" }}>
+            Service account (fallback, only used if no relay URL is set above)
+          </label>
 
           <label style={labelStyle} htmlFor="gsaEmail">Service account email</label>
           <input
@@ -880,18 +928,20 @@ export default function SettingsPage() {
         </ServiceCard>
 
         <ServiceCard icon="📍" title="Location Autocomplete (Google Places)" status={data.serviceStatus.places}>
-          <s-paragraph>
-            Powers the city suggestions on the storefront's "Place of Birth" field (Personalised Pooja form). The
-            key is only ever used server-side by this app — the theme calls our own endpoint, never Google
-            directly, so the key never reaches the customer's browser. Leave blank to keep using the free
-            (Photon/OpenStreetMap) lookup instead.
-          </s-paragraph>
-          <s-paragraph>
-            Get a key from Google Cloud Console: enable the <s-text fontWeight="bold">Places API</s-text>, then
-            create an API key under Credentials. Since this key is only called from our server, restricting it to
-            this store's domain isn't necessary the way it would be for a client-side integration — an IP or API
-            restriction in Google Cloud Console is still good practice, but optional.
-          </s-paragraph>
+          <Explain summary="ℹ️ What this is for, and how to get a key">
+            <s-paragraph>
+              Powers the city suggestions on the storefront's "Place of Birth" field (Personalised Pooja form). The
+              key is only ever used server-side by this app — the theme calls our own endpoint, never Google
+              directly, so the key never reaches the customer's browser. Leave blank to keep using the free
+              (Photon/OpenStreetMap) lookup instead.
+            </s-paragraph>
+            <s-paragraph>
+              Get a key from Google Cloud Console: enable the <s-text fontWeight="bold">Places API</s-text>, then
+              create an API key under Credentials. Since this key is only called from our server, restricting it to
+              this store's domain isn't necessary the way it would be for a client-side integration — an IP or API
+              restriction in Google Cloud Console is still good practice, but optional.
+            </s-paragraph>
+          </Explain>
 
           <SecretField
             id="googlePlacesApiKey"
