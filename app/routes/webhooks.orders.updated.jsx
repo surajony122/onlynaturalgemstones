@@ -125,35 +125,58 @@ export const action = async ({ request }) => {
     // fetched when the tag check alone didn't already decide it, to
     // keep the common no-op case (neither trigger applies) to a single
     // GraphQL call at most.
+    //
+    // Retried with a short pause between attempts (up to 2 tries: 0s,
+    // 2.5s -- kept short enough to stay well under Shopify's webhook
+    // response timeout, rather than risking Shopify treating a slower
+    // response as a failed delivery and retrying the whole webhook
+    // itself) rather than queried once -- confirmed live that clicking
+    // "Mark as in progress" fires this orders/updated webhook and
+    // writes the event to the order's Timeline (visible in Admin
+    // immediately) FASTER than that same event becomes readable through
+    // the events GraphQL connection this query uses. A single immediate
+    // query came back with the event simply missing from the 10 most
+    // recent -- not wrong text, not a missing scope, just not indexed
+    // yet -- so the notification silently never sent for a real order
+    // marked in progress seconds after being placed. Stops retrying the
+    // moment a match is found; still only costs one call in the (far
+    // more common) case where nothing matches at all.
     let recentEventMessages = [];
     let latestInProgressEvent = null;
     if (!hasTriggerTag) {
-      const res = await admin.graphql(
-        `#graphql
-        query RecentOrderEvents($id: ID!) {
-          order(id: $id) {
-            events(first: 10, sortKey: CREATED_AT, reverse: true) {
-              nodes {
-                message
-                createdAt
+      const RETRY_DELAYS_MS = [0, 2500];
+      for (let attempt = 0; attempt < RETRY_DELAYS_MS.length; attempt++) {
+        if (RETRY_DELAYS_MS[attempt] > 0) {
+          await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
+        }
+        const res = await admin.graphql(
+          `#graphql
+          query RecentOrderEvents($id: ID!) {
+            order(id: $id) {
+              events(first: 10, sortKey: CREATED_AT, reverse: true) {
+                nodes {
+                  message
+                  createdAt
+                }
               }
             }
-          }
-        }`,
-        { variables: { id: payload.admin_graphql_api_id } }
-      );
-      const json = await res.json();
-      if (json.errors) {
-        await setDetail("GraphQL errors (order events): " + JSON.stringify(json.errors).slice(0, 400));
-        return new Response();
+          }`,
+          { variables: { id: payload.admin_graphql_api_id } }
+        );
+        const json = await res.json();
+        if (json.errors) {
+          await setDetail("GraphQL errors (order events): " + JSON.stringify(json.errors).slice(0, 400));
+          return new Response();
+        }
+        const eventNodes = json?.data?.order?.events?.nodes || [];
+        recentEventMessages = eventNodes.map((e) => e.message).filter(Boolean);
+        // Nodes are already newest-first (reverse: true) — the first match
+        // is the MOST RECENT "in progress" event, which is what determines
+        // this order's current triggerKey. An older matching event further
+        // down the list doesn't matter once a newer one exists.
+        latestInProgressEvent = eventNodes.find((e) => String(e.message || "").toLowerCase().includes("in progress")) || null;
+        if (latestInProgressEvent) break;
       }
-      const eventNodes = json?.data?.order?.events?.nodes || [];
-      recentEventMessages = eventNodes.map((e) => e.message).filter(Boolean);
-      // Nodes are already newest-first (reverse: true) — the first match
-      // is the MOST RECENT "in progress" event, which is what determines
-      // this order's current triggerKey. An older matching event further
-      // down the list doesn't matter once a newer one exists.
-      latestInProgressEvent = eventNodes.find((e) => String(e.message || "").toLowerCase().includes("in progress")) || null;
     }
 
     if (!hasTriggerTag && !latestInProgressEvent) {
