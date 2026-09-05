@@ -68,6 +68,17 @@
  * (see app.server-health.jsx's "Webhook receipts" section) — nothing
  * about this handler's outcome should ever be invisible again the way
  * "found nothing to do" was before the very first rewrite of this file.
+ *
+ * Both sends are fire-and-forget (claimed via an atomic create() that
+ * doubles as the dedup lock, then sent WITHOUT awaiting before this
+ * handler responds) rather than awaited inline -- a stalled Gmail SMTP
+ * connection was observed hanging the response for 30s, which made
+ * Shopify consider the delivery failed and retry the same webhook,
+ * racing the retry against the original over the same dedup row. This
+ * is a persistent Render web service, so the background promises still
+ * run to completion after the response is sent; they just update the
+ * WebhookReceiptLog/notification rows once they finish instead of
+ * making Shopify wait for them.
  */
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -209,7 +220,7 @@ export const action = async ({ request }) => {
     const firstName = payload?.customer?.first_name || "";
     const orderNumber = payload?.name || String(payload.order_number || payload.id);
 
-    // WhatsApp and email are checked/sent/recorded independently below
+    // WhatsApp and email are claimed/sent/recorded independently below
     // (each against its OWN dedup table) rather than one shared "already
     // notified" gate -- otherwise the first channel to succeed for a
     // given occurrence would silently block the other from ever being
@@ -217,56 +228,72 @@ export const action = async ({ request }) => {
     // AFTER WhatsApp already fired for this order would then never send
     // the email at all). All outcomes are still combined into one
     // receipt-log line so the "what happened" story stays in one place.
-    const detailParts = [`triggered by ${triggerReason}`];
+    const detailParts = { trigger: `triggered by ${triggerReason}`, whatsapp: null, email: null };
+    const writeCombinedDetail = () =>
+      setDetail(
+        [detailParts.trigger, detailParts.whatsapp && `WhatsApp: ${detailParts.whatsapp}`, detailParts.email && `Email: ${detailParts.email}`]
+          .filter(Boolean)
+          .join(" | ")
+      );
+
+    // Shipping address phone first -- confirmed live to be the reliable
+    // one (a real order's WhatsApp send went to a stale/wrong number
+    // when this prioritized the order's own top-level `phone` field
+    // instead). Customer profile phone next, then billing address, with
+    // the order-level field checked LAST since it's the one that was
+    // wrong. phoneSource is recorded below so a future "wrong number"
+    // report doesn't need a second cross-check against
+    // /app/whatsapp-events to see which field was used.
+    let phone = null;
+    let phoneSource = "none found";
+    if (payload?.shipping_address?.phone) {
+      phone = payload.shipping_address.phone;
+      phoneSource = "shipping_address.phone";
+    } else if (payload?.customer?.phone) {
+      phone = payload.customer.phone;
+      phoneSource = "customer.phone";
+    } else if (payload?.billing_address?.phone) {
+      phone = payload.billing_address.phone;
+      phoneSource = "billing_address.phone";
+    } else if (payload?.phone) {
+      phone = payload.phone;
+      phoneSource = "order.phone (top-level -- least reliable, used only because nothing else was set)";
+    }
+    const emailAddr = payload?.email || payload?.customer?.email || payload?.contact_email || null;
 
     // --- Channel 1: WhatsApp -------------------------------------------
-    const alreadyWhatsApp = await prisma.orderProcessingNotification.findUnique({
-      where: { orderId_triggerKey: { orderId, triggerKey } },
-    });
-    if (alreadyWhatsApp) {
-      detailParts.push(`WhatsApp: skipped, already notified at ${alreadyWhatsApp.notifiedAt.toISOString()} (status: ${alreadyWhatsApp.status})`);
-    } else {
-      // Shipping address phone first -- confirmed live to be the
-      // reliable one (a real order's WhatsApp send went to a stale/wrong
-      // number when this prioritized the order's own top-level `phone`
-      // field instead). Customer profile phone next, then billing
-      // address, with the order-level field checked LAST since it's the
-      // one that was wrong. phoneSource is recorded below so a future
-      // "wrong number" report doesn't need a second cross-check against
-      // /app/whatsapp-events to see which field was used.
-      let phone = null;
-      let phoneSource = "none found";
-      if (payload?.shipping_address?.phone) {
-        phone = payload.shipping_address.phone;
-        phoneSource = "shipping_address.phone";
-      } else if (payload?.customer?.phone) {
-        phone = payload.customer.phone;
-        phoneSource = "customer.phone";
-      } else if (payload?.billing_address?.phone) {
-        phone = payload.billing_address.phone;
-        phoneSource = "billing_address.phone";
-      } else if (payload?.phone) {
-        phone = payload.phone;
-        phoneSource = "order.phone (top-level -- least reliable, used only because nothing else was set)";
-      }
-
-      let waStatus;
-      try {
-        waStatus = await sendOrderProcessingWhatsApp(settings, { phone, firstName, orderNumber, shop });
-      } catch (err) {
-        waStatus = "threw: " + String((err && err.message) || err);
-      }
-      detailParts.push(`WhatsApp: sending to ${phone || "(none found)"} (source: ${phoneSource}) -> ${waStatus}`);
-
-      // Recorded regardless of success/failure — a failed send (bad
-      // phone, template not approved yet, etc.) shouldn't retry-spam the
-      // customer for the SAME occurrence on every subsequent
-      // orders/updated event either; fix the underlying issue and resend
-      // manually if that ever matters. A future, genuinely new
-      // occurrence still gets its own row.
-      await prisma.orderProcessingNotification.create({
-        data: { shop, orderId, triggerKey, orderName: orderNumber, phone, status: waStatus },
+    // The create() call itself is the atomic claim on this occurrence --
+    // NOT a separate findUnique-then-create (that had a real race: two
+    // near-simultaneous webhook deliveries for the same order -- which
+    // Shopify sends whenever it thinks a delivery was slow/failed, e.g.
+    // while this handler was hung awaiting a stalled 30s Gmail SMTP
+    // connection before responding -- could both pass the "not already
+    // sent" check before either had written its row, then both try to
+    // create it, and the loser crashed with a P2002 unique-constraint
+    // error instead of gracefully backing off). Whichever delivery's
+    // create() succeeds owns sending; the other treats P2002 as "already
+    // claimed" and skips, exactly like the old "already notified" case.
+    let waClaim = null;
+    try {
+      waClaim = await prisma.orderProcessingNotification.create({
+        data: { shop, orderId, triggerKey, orderName: orderNumber, phone, status: "sending..." },
       });
+    } catch (err) {
+      detailParts.whatsapp = err?.code === "P2002" ? "skipped, already claimed by another delivery of this webhook" : "failed to claim -- " + String((err && err.message) || err);
+    }
+
+    if (waClaim) {
+      detailParts.whatsapp = `sending to ${phone || "(none found)"} (source: ${phoneSource})...`;
+      // Deliberately NOT awaited -- see the fire-and-forget note on
+      // Channel 2 below for why the actual send happens after this
+      // request has already responded to Shopify.
+      sendOrderProcessingWhatsApp(settings, { phone, firstName, orderNumber, shop })
+        .catch((err) => "threw: " + String((err && err.message) || err))
+        .then(async (waStatus) => {
+          await prisma.orderProcessingNotification.update({ where: { id: waClaim.id }, data: { status: waStatus } }).catch(() => {});
+          detailParts.whatsapp = `sent to ${phone || "(none found)"} (source: ${phoneSource}) -> ${waStatus}`;
+          await writeCombinedDetail();
+        });
     }
 
     // --- Channel 2: Email -----------------------------------------------
@@ -275,27 +302,44 @@ export const action = async ({ request }) => {
     // cancelled) -- this app sends it directly instead, via the
     // merchant's own connected Gmail (Settings page). See
     // orderProcessingEmail.server.js for the bundle-card email itself.
-    const alreadyEmail = await prisma.orderProcessingEmailNotification.findUnique({
-      where: { orderId_triggerKey: { orderId, triggerKey } },
-    });
-    if (alreadyEmail) {
-      detailParts.push(`Email: skipped, already notified at ${alreadyEmail.notifiedAt.toISOString()} (status: ${alreadyEmail.status})`);
-    } else {
-      let emailStatus;
-      try {
-        emailStatus = await sendOrderProcessingEmail(admin, settings, payload);
-      } catch (err) {
-        emailStatus = "threw: " + String((err && err.message) || err);
-      }
-      const emailAddr = payload?.email || payload?.customer?.email || payload?.contact_email || null;
-      detailParts.push(`Email: ${emailStatus}`);
-
-      await prisma.orderProcessingEmailNotification.create({
-        data: { shop, orderId, triggerKey, orderName: orderNumber, email: emailAddr, status: emailStatus },
+    //
+    // Sending is fire-and-forget (not awaited before responding to
+    // Shopify) on purpose: Gmail's SMTP connection from Render has been
+    // observed to hang for the full 30s connection-timeout ceiling
+    // (visible on the Server page's Gmail check) -- awaiting that here
+    // would hold this webhook's HTTP response open the whole time,
+    // Shopify would consider the delivery failed and retry the same
+    // webhook, and the retry would race this same request over the claim
+    // below (see the P2002 note above). This process is a persistent
+    // Render web service, not a serverless function frozen the instant a
+    // response is sent, so the promise below keeps running to completion
+    // in the background exactly as if it were awaited -- the only
+    // difference is Shopify no longer has to wait for it.
+    let emailClaim = null;
+    try {
+      emailClaim = await prisma.orderProcessingEmailNotification.create({
+        data: { shop, orderId, triggerKey, orderName: orderNumber, email: emailAddr, status: "sending..." },
       });
+    } catch (err) {
+      detailParts.email = err?.code === "P2002" ? "skipped, already claimed by another delivery of this webhook" : "failed to claim -- " + String((err && err.message) || err);
     }
 
-    await setDetail(detailParts.join(" | "));
+    if (emailClaim) {
+      detailParts.email = `sending to ${emailAddr || "(none found)"}...`;
+      sendOrderProcessingEmail(admin, settings, payload)
+        .catch((err) => "threw: " + String((err && err.message) || err))
+        .then(async (emailStatus) => {
+          await prisma.orderProcessingEmailNotification.update({ where: { id: emailClaim.id }, data: { status: emailStatus } }).catch(() => {});
+          detailParts.email = emailStatus;
+          await writeCombinedDetail();
+        });
+    }
+
+    // Written once immediately (reflecting "claimed, sending..." for
+    // whichever channels are in flight) so Shopify's response isn't held
+    // up by either send -- each background completion above overwrites
+    // this again with its own final result once it finishes.
+    await writeCombinedDetail();
   } catch (err) {
     console.error("[webhooks.orders.updated] failed:", err);
     await setDetail("threw: " + String((err && err.message) || err));
