@@ -179,13 +179,36 @@ export const action = async ({ request }) => {
       return new Response();
     }
 
-    const phone = payload?.phone || payload?.customer?.phone || payload?.shipping_address?.phone || payload?.billing_address?.phone || null;
+    // Shipping address phone first -- confirmed live to be the reliable
+    // one (a real order's WhatsApp send went to a stale/wrong number
+    // when this prioritized the order's own top-level `phone` field
+    // instead). Customer profile phone next, then billing address, with
+    // the order-level field now checked LAST since it's the one that
+    // was wrong. phoneSource is recorded in the receipt log below so a
+    // future "wrong number" report doesn't need a second cross-check
+    // against /app/whatsapp-events to see which field was used.
+    let phone = null;
+    let phoneSource = "none found";
+    if (payload?.shipping_address?.phone) {
+      phone = payload.shipping_address.phone;
+      phoneSource = "shipping_address.phone";
+    } else if (payload?.customer?.phone) {
+      phone = payload.customer.phone;
+      phoneSource = "customer.phone";
+    } else if (payload?.billing_address?.phone) {
+      phone = payload.billing_address.phone;
+      phoneSource = "billing_address.phone";
+    } else if (payload?.phone) {
+      phone = payload.phone;
+      phoneSource = "order.phone (top-level -- least reliable, used only because nothing else was set)";
+    }
     const firstName = payload?.customer?.first_name || "";
     const orderNumber = payload?.name || String(payload.order_number || payload.id);
     const triggerReason = hasTriggerTag
       ? `tag "${triggerTag}"`
       : `order timeline event at ${triggerKey} mentioning "in progress"`;
-    await setDetail(`triggered by ${triggerReason} — sending to phone: ${phone || "(none found)"}`);
+    const triggerAndPhoneDetail = `triggered by ${triggerReason} — sending to phone: ${phone || "(none found)"} (source: ${phoneSource})`;
+    await setDetail(triggerAndPhoneDetail);
 
     let status;
     try {
@@ -193,7 +216,12 @@ export const action = async ({ request }) => {
     } catch (err) {
       status = "threw: " + String((err && err.message) || err);
     }
-    await setDetail(`send result: ${status}`);
+    // Appended to the trigger/phone line rather than replacing it --
+    // setDetail overwrites the WHOLE column each call, so this used to
+    // silently lose the "which phone field was this?" context the
+    // moment the send finished, which is exactly the detail needed to
+    // debug a wrong-number report after the fact.
+    await setDetail(`${triggerAndPhoneDetail} | send result: ${status}`);
 
     // Recorded regardless of success/failure — a failed send (bad phone,
     // template not approved yet, etc.) shouldn't retry-spam the customer
