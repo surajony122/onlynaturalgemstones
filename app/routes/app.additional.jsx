@@ -16,8 +16,10 @@ export default function AdditionalPage() {
         <s-paragraph>
           To create your own page and have it show up in the app navigation, add
           a page inside <code>app/routes</code>, and a link to it in the{" "}
-          <code>&lt;ui-nav-menu&gt;</code> component found in{" "}
-          <code>app/routes/app.jsx</code>.
+          <code>NAV_ITEMS</code> list in{" "}
+          <code>app/routes/app.jsx</code> (an in-app tab bar, not Shopify's own
+          sidebar nav menu — this app deliberately keeps all its navigation
+          inside its own pages instead).
         </s-paragraph>
       </s-section>
       {/* No slot="aside" -- keeps this page single-column/full-width like
