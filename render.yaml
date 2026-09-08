@@ -92,11 +92,19 @@ services:
     # despite the "correct" secret being used. Confirmed by testing
     # this exact command locally before relying on Render to run it --
     # the raw-concatenation version failed with {"error":"Unauthorized"}
-    # even with the right secret. process.exitCode (not process.exit())
-    # so Render still gets an accurate success/fail signal without
-    # forcing an abrupt shutdown mid-I/O.
+    # even with the right secret.
+    #
+    # Checking r.ok before deciding exitCode is NOT optional either --
+    # found live that this job's very first real run hit a 401 (the
+    # CRON_SECRET typed into THIS service's own env var didn't match
+    # the web service's, a copy-paste mismatch) and Render's dashboard
+    # still showed "Successful run", because fetch() only rejects on a
+    # network-level failure, not an HTTP error status -- an early
+    # version of this script logged the response and unconditionally
+    # set exitCode = 0 regardless of what it actually said, making a
+    # broken secret look identical to a working one at a glance.
     startCommand: >-
-      node -e "fetch('https://shubh-gems-customizer-app.onrender.com/cron/order-processing-catchup?secret=' + encodeURIComponent(process.env.CRON_SECRET)).then(r => r.text()).then(t => { console.log(t); process.exitCode = 0; }).catch(e => { console.error(e); process.exitCode = 1; })"
+      node -e "fetch('https://shubh-gems-customizer-app.onrender.com/cron/order-processing-catchup?secret=' + encodeURIComponent(process.env.CRON_SECRET)).then(async r => { const t = await r.text(); console.log('HTTP', r.status, t); process.exitCode = r.ok ? 0 : 1; }).catch(e => { console.error(e); process.exitCode = 1; })"
     envVars:
       - key: NODE_VERSION
         value: 20.19.0
