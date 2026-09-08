@@ -103,7 +103,7 @@ export const action = async ({ request }) => {
 };
 
 export const loader = async ({ request }) => {
-  await authenticate.admin(request);
+  const { admin } = await authenticate.admin(request);
 
   const events = await prisma.whatsAppMessageEvent.findMany({
     orderBy: { receivedAt: "asc" },
@@ -205,8 +205,98 @@ export const loader = async ({ request }) => {
     };
   });
 
+  // "Order Processing" gets its own order-centric section below instead
+  // of sitting as flat one-row-per-message entries in the generic table
+  // -- the same order can legitimately fire more than once (a genuinely
+  // new "marked as in progress" occurrence notifies again, by design),
+  // and a flat list made that read as unrelated duplicate rows instead
+  // of the real story: one order, a timeline of attempts. Gem
+  // Recommendation / Wishlist don't have that same "same thing fires
+  // more than once" pattern, so they keep the existing flat table.
+  const otherMessages = enriched.filter((m) => m.kind !== "Order Processing");
+
+  const [waNotifications, emailNotifications] = await Promise.all([
+    prisma.orderProcessingNotification.findMany({ orderBy: { notifiedAt: "desc" }, take: PAGE_SIZE }),
+    prisma.orderProcessingEmailNotification.findMany({ orderBy: { notifiedAt: "desc" }, take: PAGE_SIZE }),
+  ]);
+
+  const orderGroups = new Map();
+  const ensureGroup = (orderId, orderName) => {
+    if (!orderGroups.has(orderId)) {
+      orderGroups.set(orderId, { orderId, orderName: orderName || orderId, phone: null, email: null, timeline: [] });
+    }
+    const g = orderGroups.get(orderId);
+    if (orderName) g.orderName = orderName;
+    return g;
+  };
+  for (const n of waNotifications) {
+    const g = ensureGroup(n.orderId, n.orderName);
+    if (n.phone) g.phone = n.phone;
+    g.timeline.push({ channel: "WhatsApp", notifiedAt: n.notifiedAt.toISOString(), status: n.status, triggerKey: n.triggerKey });
+  }
+  for (const n of emailNotifications) {
+    const g = ensureGroup(n.orderId, n.orderName);
+    if (n.email) g.email = n.email;
+    g.timeline.push({ channel: "Email", notifiedAt: n.notifiedAt.toISOString(), status: n.status, triggerKey: n.triggerKey });
+  }
+
+  // Oldest-first WITHIN each order so the timeline reads top-to-bottom
+  // the way it actually happened; the orders themselves are sorted by
+  // whichever had the most recent activity, so actively-changing orders
+  // surface first.
+  for (const g of orderGroups.values()) {
+    g.timeline.sort((a, b) => new Date(a.notifiedAt).getTime() - new Date(b.notifiedAt).getTime());
+  }
+
+  // Live order status (fulfilled/cancelled/etc.) isn't something either
+  // notification table stores -- it's the ORDER's own current state,
+  // fetched fresh here via one batched GraphQL call (nodes() accepts
+  // many ids at once) rather than one request per order.
+  const orderIds = [...orderGroups.keys()];
+  if (orderIds.length) {
+    try {
+      const res = await admin.graphql(
+        `#graphql
+        query OrderStatusesForEventsPage($ids: [ID!]!) {
+          nodes(ids: $ids) {
+            ... on Order {
+              legacyResourceId
+              name
+              displayFulfillmentStatus
+              displayFinancialStatus
+              cancelledAt
+            }
+          }
+        }`,
+        { variables: { ids: orderIds.map((id) => `gid://shopify/Order/${id}`) } }
+      );
+      const json = await res.json();
+      const nodes = json?.data?.nodes || [];
+      for (const node of nodes) {
+        if (!node) continue;
+        const g = orderGroups.get(String(node.legacyResourceId));
+        if (!g) continue;
+        g.orderName = node.name || g.orderName;
+        g.fulfillmentStatus = node.displayFulfillmentStatus || null;
+        g.financialStatus = node.displayFinancialStatus || null;
+        g.cancelledAt = node.cancelledAt || null;
+      }
+    } catch (err) {
+      console.error("[app.whatsapp-events] failed to fetch live order statuses:", err);
+      // Non-fatal -- the timeline itself (the main point of this
+      // section) still renders fine without the live status badge.
+    }
+  }
+
+  const orderGroupsSorted = [...orderGroups.values()].sort((a, b) => {
+    const aLatest = a.timeline[a.timeline.length - 1]?.notifiedAt || "";
+    const bLatest = b.timeline[b.timeline.length - 1]?.notifiedAt || "";
+    return bLatest.localeCompare(aLatest);
+  });
+
   return {
-    messages: enriched,
+    messages: otherMessages,
+    orderGroups: orderGroupsSorted,
     summary: {
       total: enriched.length,
       delivered: enriched.filter((m) => m.deliveredAt).length,
@@ -315,7 +405,142 @@ function MessageRow({ m }) {
   );
 }
 
-const KIND_OPTIONS = ["All types", "Gem Recommendation", "Order Processing", "Wishlist"];
+// Live order status -- cancelledAt wins outright (an order can show
+// e.g. "UNFULFILLED" and still be cancelled), otherwise mapped from
+// GraphQL's displayFulfillmentStatus enum to a friendlier label.
+function orderStatusInfo(g) {
+  if (g.cancelledAt) return { label: "Cancelled", color: "#DC2626" };
+  const map = {
+    FULFILLED: { label: "Fulfilled", color: "#16A34A" },
+    PARTIALLY_FULFILLED: { label: "Partially fulfilled", color: "#B45309" },
+    UNFULFILLED: { label: "Unfulfilled", color: "#6B7280" },
+    ON_HOLD: { label: "On hold", color: "#B45309" },
+    SCHEDULED: { label: "Scheduled", color: "#6B7280" },
+    IN_PROGRESS: { label: "In progress", color: "#2563EB" },
+    PARTIALLY_FULFILLED_OVERSHOOT: { label: "Overshot fulfillment", color: "#B45309" },
+    RESTOCKED: { label: "Restocked", color: "#6B7280" },
+    PENDING_FULFILLMENT: { label: "Pending fulfillment", color: "#6B7280" },
+    REQUEST_DECLINED: { label: "Fulfillment declined", color: "#DC2626" },
+  };
+  if (g.fulfillmentStatus && map[g.fulfillmentStatus]) return map[g.fulfillmentStatus];
+  if (g.fulfillmentStatus) {
+    // Unmapped enum value (Shopify adds these occasionally) -- still
+    // show something readable instead of silently rendering blank.
+    const label = g.fulfillmentStatus.replace(/_/g, " ").toLowerCase().replace(/^./, (c) => c.toUpperCase());
+    return { label, color: "#6B7280" };
+  }
+  return { label: "Unknown", color: "#9CA3AF" };
+}
+
+// Same "OK/threw/skipped/sending" status-string convention used
+// everywhere else this app logs a send outcome (Server page, etc.).
+function timelineStatusInfo(status) {
+  if (!status) return { label: "—", color: "#9CA3AF" };
+  if (status.startsWith("OK")) return { label: "Sent", color: "#16A34A" };
+  if (status.startsWith("threw") || status.startsWith("failed to claim")) return { label: "Failed", color: "#DC2626" };
+  if (status.startsWith("skipped")) return { label: "Skipped", color: "#6B7280" };
+  if (status.startsWith("sending")) return { label: "Sending…", color: "#B45309" };
+  return { label: status.slice(0, 40), color: "#6B7280" };
+}
+
+// One order's full history: current live status up top, then every
+// WhatsApp/email attempt ever made for it, oldest first, so it reads
+// as an actual timeline of what happened rather than disconnected rows
+// -- exactly the case a flat per-message table couldn't show cleanly
+// (the same order notifying twice for two genuinely different "marked
+// as in progress" occurrences looked like unrelated duplicates before).
+function OrderProcessingCard({ g }) {
+  const status = orderStatusInfo(g);
+  return (
+    <div style={{ background: "#fff", border: `1px solid ${"#E5E7EB"}`, borderRadius: "12px", boxShadow: "0 1px 2px rgba(16,24,40,0.05)", marginBottom: "14px", overflow: "hidden" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px", padding: "14px 18px", background: "#F9FAFB", borderBottom: "1px solid #EDEEF1" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+          <span style={{ fontWeight: 600, fontSize: "13.5px", color: "#1E3A8A" }}>#{g.orderName}</span>
+          <Pill label={status.label} active color={status.color} />
+          {g.phone && <span style={{ fontSize: "12px", color: "#6B7280" }}>📱 {g.phone}</span>}
+          {g.email && <span style={{ fontSize: "12px", color: "#6B7280" }}>✉️ {g.email}</span>}
+        </div>
+        <span style={{ fontSize: "11.5px", color: "#9CA3AF" }}>
+          {g.timeline.length} notification{g.timeline.length === 1 ? "" : "s"} sent
+        </span>
+      </div>
+      <div style={{ padding: "6px 18px 14px" }}>
+        {g.timeline.map((t, i) => {
+          const s = timelineStatusInfo(t.status);
+          return (
+            <div
+              key={i}
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "10px",
+                padding: "8px 0",
+                borderTop: i === 0 ? "none" : "1px dashed #EDEEF1",
+              }}
+            >
+              <span style={{ fontSize: "11px", color: "#9CA3AF", minWidth: "150px" }}>
+                {new Date(t.notifiedAt).toLocaleString()}
+              </span>
+              <span style={{ fontSize: "12px", minWidth: "70px", fontWeight: 500, color: t.channel === "WhatsApp" ? "#16A34A" : "#2563EB" }}>
+                {t.channel === "WhatsApp" ? "💬 WhatsApp" : "✉️ Email"}
+              </span>
+              <Pill label={s.label} active color={s.color} />
+              <span style={{ fontSize: "11.5px", color: "#9CA3AF", flex: 1, wordBreak: "break-word" }} title={t.status || ""}>
+                {t.status && t.status.length > 60 ? t.status.slice(0, 60) + "…" : t.status}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function OrderProcessingSection({ orderGroups }) {
+  const [q, setQ] = useState("");
+  const filtered = orderGroups.filter((g) => {
+    const query = q.trim().toLowerCase();
+    if (!query) return true;
+    return (
+      String(g.orderName).toLowerCase().includes(query) ||
+      (g.phone || "").toLowerCase().includes(query) ||
+      (g.email || "").toLowerCase().includes(query)
+    );
+  });
+
+  return (
+    <div style={{ marginBottom: "28px" }}>
+      <h2 style={{ fontSize: "15px", fontWeight: 600, color: "#1E3A8A", margin: "0 0 4px" }}>
+        Order Processing ({orderGroups.length} order{orderGroups.length === 1 ? "" : "s"})
+      </h2>
+      <p style={{ fontSize: "12px", color: "#6B7280", margin: "0 0 12px" }}>
+        One card per order, with its current live status and every "marked as in progress" WhatsApp/email attempt
+        ever sent for it — including if it fired more than once for genuinely separate occurrences.
+      </p>
+      {orderGroups.length > 0 && (
+        <input
+          type="text"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search order #, phone, email…"
+          style={{ padding: "8px 12px", borderRadius: "10px", border: "1px solid #E5E7EB", fontSize: "12.5px", color: "#374151", minWidth: "240px", marginBottom: "12px" }}
+        />
+      )}
+      {orderGroups.length === 0 ? (
+        <p style={{ fontSize: "12.5px", color: "#6B7280" }}>No order-processing notifications sent yet.</p>
+      ) : filtered.length === 0 ? (
+        <p style={{ fontSize: "12.5px", color: "#6B7280" }}>No orders match "{q}".</p>
+      ) : (
+        filtered.map((g) => <OrderProcessingCard key={g.orderId} g={g} />)
+      )}
+    </div>
+  );
+}
+
+// "Order Processing" is deliberately absent here -- it now has its own
+// order-centric section (see OrderProcessingSection below) instead of
+// living in this flat table.
+const KIND_OPTIONS = ["All types", "Gem Recommendation", "Wishlist"];
 const STATUS_OPTIONS = [
   { value: "all", label: "Any status" },
   { value: "sent", label: "Sent only" },
@@ -334,7 +559,7 @@ function matchesStatus(m, filter) {
 }
 
 export default function WhatsAppEventsPage() {
-  const { messages, summary } = useLoaderData();
+  const { messages, summary, orderGroups } = useLoaderData();
   const revalidator = useRevalidator();
   const isRefreshing = revalidator.state === "loading";
 
@@ -378,6 +603,12 @@ export default function WhatsAppEventsPage() {
           <StatTile label="Failed" value={summary.failed} color="#DC2626" />
         </div>
 
+        <OrderProcessingSection orderGroups={orderGroups} />
+
+        <h2 style={{ fontSize: "15px", fontWeight: 600, color: "#1E3A8A", margin: "0 0 12px" }}>
+          Gem Recommendation &amp; Wishlist
+        </h2>
+
         <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center", marginBottom: "14px" }}>
           <input
             type="text"
@@ -420,8 +651,8 @@ export default function WhatsAppEventsPage() {
 
         {messages.length === 0 ? (
           <s-paragraph>
-            No WhatsApp events logged yet — either the webhook isn't registered yet, or no message has been sent
-            since it was.
+            No Gem Recommendation or Wishlist WhatsApp events logged yet — either the webhook isn't registered
+            yet, or no message has been sent since it was. (Order Processing has its own section above.)
           </s-paragraph>
         ) : filteredMessages.length === 0 ? (
           <s-paragraph>No events match the current filters.</s-paragraph>
