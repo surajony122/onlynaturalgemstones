@@ -620,8 +620,23 @@ export default function SettingsPage() {
         // into the database as a permanent "customization" the user
         // never asked for, and a future improvement to the built-in
         // default would then never reach this shop again.
+        //
+        // Normalizing \r\n -> \n on BOTH sides before comparing is not
+        // optional -- confirmed live that a plain strict === comparison
+        // fails here even when nothing was actually edited: browsers
+        // normalize a <textarea>'s line endings to \r\n internally the
+        // moment it's interacted with at all (even just focusing and
+        // blurring it, no typing), while the server-rendered default
+        // string keeps whatever the source file's own line endings
+        // happen to be. The result was a real, saved "customization"
+        // that was actually byte-identical content to the default,
+        // just with different line-ending bytes -- which would have
+        // permanently opted this shop out of future default-template
+        // improvements for no reason a merchant could see or intended.
         orderProcessingEmailTemplate:
-          orderProcessingEmailTemplate === data.defaultOrderProcessingEmailTemplate ? "" : orderProcessingEmailTemplate,
+          orderProcessingEmailTemplate.replace(/\r\n/g, "\n") === data.defaultOrderProcessingEmailTemplate.replace(/\r\n/g, "\n")
+            ? ""
+            : orderProcessingEmailTemplate,
         interaktWishlistTemplateName,
         whatsappIntervalValue,
         whatsappIntervalUnit,

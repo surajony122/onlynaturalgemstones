@@ -22,6 +22,17 @@ export const loader = async ({ request }) => {
     return Response.json({ error: "No shop installed" }, { status: 500 });
   }
 
+  // One-time cleanup: an earlier version of the Settings-page save
+  // logic had a CRLF/LF comparison bug that saved a byte-different
+  // (but content-identical) copy of the default template as a
+  // "customization" the merchant never intended -- see the fix in
+  // app.settings.jsx. Clearing it back to null restores "tracks future
+  // default improvements" for this shop.
+  if (url.searchParams.get("reset") === "1") {
+    await db.appSettings.update({ where: { shop: session.shop }, data: { orderProcessingEmailTemplate: null } });
+    return Response.json({ reset: true });
+  }
+
   const settings = await getAppSettings(session.shop);
   const template = getOrderProcessingEmailTemplate(settings);
   const trueDefault = getOrderProcessingEmailTemplate({});
