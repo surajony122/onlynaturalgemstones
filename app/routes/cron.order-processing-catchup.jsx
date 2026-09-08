@@ -25,9 +25,12 @@
  * and is treated as "already claimed", not an error.
  *
  * Same free-tier pattern as cron.health-check.jsx / cron.cleanup.jsx:
- * hit this URL every 15-30 minutes from an external scheduler
- * (cron-job.org, GitHub Actions, etc.) rather than a paid Render Cron
- * Job.
+ * hit this URL from an external scheduler (cron-job.org, GitHub
+ * Actions, etc.) rather than a paid Render Cron Job. Set to every 5
+ * minutes per explicit request (traded closer-to-instant detection for
+ * ~3x the GraphQL/compute cost of the originally-recommended 15 min --
+ * MAX_ORDERS_PER_RUN below keeps each individual run's cost bounded
+ * regardless of the interval chosen).
  *
  *   GET /cron/order-processing-catchup?secret=<CRON_SECRET>
  */
