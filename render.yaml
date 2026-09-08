@@ -42,11 +42,18 @@ services:
         value: write_products,read_products,read_themes,write_inventory,read_orders,write_metaobjects,write_metaobject_definitions,write_publications,write_customers,read_customers
       - key: SHOPIFY_APP_URL
         sync: false
-      # Shared secret for GET /cron/cleanup — set this to any random
-      # string, then use the SAME value in whatever free external
-      # scheduler hits that URL daily. See DEPLOYMENT.md. Render doesn't
-      # offer a free plan for its own Cron Job service type, so this
-      # avoids that cost entirely for something this cheap to run.
+      # Shared secret for every GET /cron/* route (cleanup, health-check,
+      # wishlist-email, order-processing-catchup). cron.cleanup /
+      # cron.health-check / cron.wishlist-email are still meant to be
+      # hit from a free external scheduler (cron-job.org etc.) daily --
+      # cheap enough that paying for a dedicated Render Cron Job isn't
+      # worth it for those. order-processing-catchup is different: it
+      # needs to run every 5 minutes, and now runs as a real Render Cron
+      # Job below instead (per explicit request, now that Render Cron
+      # Jobs bill per-minute with only a ~$1/mo minimum rather than a
+      # larger fixed plan fee) -- that job's own CRON_SECRET env var
+      # (set manually in the Dashboard) must be the SAME value as this
+      # one.
       - key: CRON_SECRET
         generateValue: true
       # --- Astro Advice / gem-recommendation lead pipeline (merged in
@@ -61,4 +68,41 @@ services:
       - key: GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY
         sync: false
       - key: ASTRO_LEADS_SPREADSHEET_ID
+        sync: false
+
+  # Runs the "order processing" WhatsApp/email catch-up poll every 5
+  # minutes (see cron.order-processing-catchup.jsx for why this exists
+  # -- marking an order "in progress" often never fires the orders/
+  # updated webhook at all, confirmed live on real orders). Shares the
+  # main app's own Node runtime rather than a Docker image specifically
+  # to avoid Docker CMD's shell-quoting/env-var-expansion pitfalls for
+  # something this trivial -- the buildCommand skips `npm install`
+  # entirely since the one-line script below uses only native Node
+  # features (global fetch, process.env) with zero external
+  # dependencies, keeping each run's billed time as small as possible.
+  - type: cron
+    name: order-processing-catchup-cron
+    runtime: node
+    schedule: "*/5 * * * *"
+    buildCommand: echo "no dependencies needed -- see startCommand"
+    # encodeURIComponent(...) around the secret is not optional -- it
+    # contains "+" and "=" characters, which get corrupted (silently
+    # interpreted as a space and a param delimiter) if concatenated
+    # into the query string raw, causing a 401 on every single run
+    # despite the "correct" secret being used. Confirmed by testing
+    # this exact command locally before relying on Render to run it --
+    # the raw-concatenation version failed with {"error":"Unauthorized"}
+    # even with the right secret. process.exitCode (not process.exit())
+    # so Render still gets an accurate success/fail signal without
+    # forcing an abrupt shutdown mid-I/O.
+    startCommand: >-
+      node -e "fetch('https://shubh-gems-customizer-app.onrender.com/cron/order-processing-catchup?secret=' + encodeURIComponent(process.env.CRON_SECRET)).then(r => r.text()).then(t => { console.log(t); process.exitCode = 0; }).catch(e => { console.error(e); process.exitCode = 1; })"
+    envVars:
+      - key: NODE_VERSION
+        value: 20.19.0
+      # MUST be set to the exact same value as the web service's own
+      # CRON_SECRET above (copy it from the web service's Environment
+      # tab in the Dashboard) -- this job authenticates to that same
+      # endpoint with it.
+      - key: CRON_SECRET
         sync: false
