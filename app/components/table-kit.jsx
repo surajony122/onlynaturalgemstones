@@ -254,6 +254,112 @@ export function RowMenu({ items }) {
   );
 }
 
+// ---- Bulk selection ---------------------------------------------------
+
+// Checkbox-select-and-bulk-delete, shared across every leads-style page
+// (Astro Leads, Wishlist Leads, WhatsApp Events' message log) -- added
+// after real test data piled up across a long session and deleting one
+// row at a time via each row's "..." menu became impractical. `rows` is
+// whatever's currently visible (already search/filter/sorted) so
+// "select all" only selects what's on screen, not the full unfiltered
+// table -- selecting after narrowing down a search is the common case
+// this exists for.
+export function useBulkSelect(rows, idKey = "id") {
+  const [selected, setSelected] = useState(() => new Set());
+  const visibleIds = rows.map((r) => r[idKey]);
+  const visibleIdSet = new Set(visibleIds);
+  // Only count/act on selections that are still actually visible --
+  // narrowing a filter after selecting shouldn't silently carry hidden
+  // rows into a later "delete selected" click.
+  const activeSelected = [...selected].filter((id) => visibleIdSet.has(id));
+  const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
+
+  const toggle = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const toggleAll = () => {
+    setSelected((prev) => {
+      if (allSelected) {
+        const next = new Set(prev);
+        visibleIds.forEach((id) => next.delete(id));
+        return next;
+      }
+      return new Set([...prev, ...visibleIds]);
+    });
+  };
+  const clear = () => setSelected(new Set());
+  const isSelected = (id) => selected.has(id);
+
+  return { selectedIds: activeSelected, count: activeSelected.length, allSelected, toggle, toggleAll, clear, isSelected };
+}
+
+/** Header checkbox column cell -- a native checkbox has no built-in
+ * "some but not all" visual, so this sets the DOM indeterminate flag
+ * imperatively via a ref (the one thing a plain `checked` prop can't
+ * express) whenever some, but not all, visible rows are selected. */
+export function SelectAllTh({ checked, indeterminate, onChange }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = indeterminate;
+  }, [indeterminate]);
+  return (
+    <th style={{ ...thStyle, width: "36px" }}>
+      <input ref={ref} type="checkbox" checked={checked} onChange={onChange} style={{ cursor: "pointer" }} />
+    </th>
+  );
+}
+
+/** One bulk-actions bar, shown only once something's selected --
+ * appears above the table, matching the same "nothing to see until
+ * it's relevant" pattern as this app's other conditional UI (Explain
+ * toggles, etc.). `busy` disables the button mid-delete so a slow
+ * request can't be double-submitted by an extra click. */
+export function BulkActionsBar({ count, onDelete, busy, noun = "lead" }) {
+  if (count === 0) return null;
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "12px",
+        padding: "10px 14px",
+        background: brand.accentTint,
+        border: `1px solid ${brand.accent}`,
+        borderRadius: "10px",
+        marginBottom: "12px",
+      }}
+    >
+      <span style={{ fontSize: "12.5px", fontWeight: 600, color: brand.heading }}>
+        {count} {noun}
+        {count === 1 ? "" : "s"} selected
+      </span>
+      <button
+        type="button"
+        onClick={onDelete}
+        disabled={busy}
+        style={{
+          fontSize: "12px",
+          fontWeight: 600,
+          color: "#fff",
+          background: brand.danger,
+          border: "none",
+          borderRadius: "8px",
+          padding: "6px 14px",
+          cursor: busy ? "default" : "pointer",
+          opacity: busy ? 0.6 : 1,
+        }}
+      >
+        {busy ? "Deleting…" : `Delete Selected (${count})`}
+      </button>
+    </div>
+  );
+}
+
 // ---- Icons -----------------------------------------------------------
 
 // Stroke-based line icons, one consistent style, replacing the emoji

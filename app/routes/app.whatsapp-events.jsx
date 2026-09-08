@@ -24,7 +24,7 @@
  * order-number already stored on this event log row, no DB lookup
  * needed.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useFetcher, useLoaderData, useRevalidator } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
@@ -33,7 +33,7 @@ import { getAppSettings } from "../utils/appSettings.server";
 import { sendWhatsAppForLead } from "../utils/astroAdvice.server";
 import { sendOrderProcessingWhatsApp } from "../utils/interakt.server";
 import { resendWishlistWhatsapp } from "../utils/wishlist.server";
-import { tableWrapStyle, tableStyle, thStyle, tdStyle, TableGlobalStyles, useSort, SortTh, Pill, RowMenu, Icon } from "../components/table-kit";
+import { tableWrapStyle, tableStyle, thStyle, tdStyle, TableGlobalStyles, useSort, SortTh, Pill, RowMenu, Icon, useBulkSelect, SelectAllTh, BulkActionsBar } from "../components/table-kit";
 import { FriendlyErrorInline } from "../components/friendly-error";
 
 const PAGE_SIZE = 500;
@@ -96,6 +96,29 @@ export const action = async ({ request }) => {
       return { intent, ok: true, messageId };
     } catch (err) {
       return { intent, ok: false, messageId, error: String(err?.message || err) };
+    }
+  }
+
+  // Bulk delete for the "Gem Recommendation & Wishlist" table below --
+  // same shape as the single "delete" above but for a whole batch of
+  // rows at once. Each entry carries its own deleteKey/deleteKeyType
+  // since a row's identity can be either a real messageId (deletes the
+  // whole Sent/Delivered/Read group) or the raw event's own id.
+  if (intent === "bulkDelete") {
+    const items = JSON.parse(formData.get("items") || "[]");
+    if (!items.length) return { intent, ok: false, error: "No events selected" };
+    try {
+      const messageIdKeys = items.filter((i) => i.deleteKeyType === "messageId").map((i) => i.deleteKey);
+      const idKeys = items.filter((i) => i.deleteKeyType === "id").map((i) => i.deleteKey);
+      if (messageIdKeys.length) {
+        await prisma.whatsAppMessageEvent.deleteMany({ where: { messageId: { in: messageIdKeys } } });
+      }
+      if (idKeys.length) {
+        await prisma.whatsAppMessageEvent.deleteMany({ where: { id: { in: idKeys } } });
+      }
+      return { intent, ok: true, count: items.length };
+    } catch (err) {
+      return { intent, ok: false, error: String(err?.message || err) };
     }
   }
 
@@ -325,7 +348,7 @@ function StatTile({ label, value, color }) {
   );
 }
 
-function MessageRow({ m }) {
+function MessageRow({ m, selected, onToggleSelect }) {
   const fetcher = useFetcher();
   const busy = fetcher.state !== "idle";
 
@@ -357,6 +380,9 @@ function MessageRow({ m }) {
 
   return (
     <tr className="dt-row" style={{ opacity: busy ? 0.6 : 1 }}>
+      <td style={tdStyle}>
+        <input type="checkbox" checked={selected} onChange={onToggleSelect} style={{ cursor: "pointer" }} />
+      </td>
       <td style={tdStyle}>{m.sentAt ? new Date(m.sentAt).toLocaleString() : "—"}</td>
       <td style={tdStyle}>{m.kind}</td>
       <td style={tdStyle}>
@@ -591,6 +617,26 @@ export default function WhatsAppEventsPage() {
 
   const { sorted: sortedMessages, sortKey, sortDir, onSort } = useSort(filteredMessages, "sentAt", "desc");
 
+  const bulk = useBulkSelect(sortedMessages, "messageId");
+  const bulkFetcher = useFetcher();
+  const bulkBusy = bulkFetcher.state !== "idle";
+
+  useEffect(() => {
+    if (bulkFetcher.data?.intent === "bulkDelete" && bulkFetcher.data.ok) {
+      bulk.clear();
+      revalidator.revalidate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bulkFetcher.data]);
+
+  const handleBulkDelete = () => {
+    if (!window.confirm(`Delete ${bulk.count} selected event${bulk.count === 1 ? "" : "s"}? This only removes the log entries, not the underlying leads/orders.`)) return;
+    const items = sortedMessages
+      .filter((m) => bulk.isSelected(m.messageId))
+      .map((m) => ({ deleteKey: m.messageId, deleteKeyType: m.isRealMessageId ? "messageId" : "id" }));
+    bulkFetcher.submit({ intent: "bulkDelete", items: JSON.stringify(items) }, { method: "POST" });
+  };
+
   return (
     <s-page heading={`WhatsApp Events (${summary.total})`} inlineSize="large">
       <s-section>
@@ -658,6 +704,8 @@ export default function WhatsAppEventsPage() {
           </span>
         </div>
 
+        <BulkActionsBar count={bulk.count} onDelete={handleBulkDelete} busy={bulkBusy} noun="event" />
+
         {messages.length === 0 ? (
           <s-paragraph>
             No Gem Recommendation or Wishlist WhatsApp events logged yet — either the webhook isn't registered
@@ -670,6 +718,7 @@ export default function WhatsAppEventsPage() {
             <table style={tableStyle}>
               <thead>
                 <tr>
+                  <SelectAllTh checked={bulk.allSelected} indeterminate={bulk.count > 0 && !bulk.allSelected} onChange={bulk.toggleAll} />
                   <SortTh label="Sent" sortKey="sentAt" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
                   <SortTh label="Type" sortKey="kind" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
                   <th style={thStyle}>Name / Order # / Item</th>
@@ -684,7 +733,7 @@ export default function WhatsAppEventsPage() {
               </thead>
               <tbody>
                 {sortedMessages.map((m) => (
-                  <MessageRow key={m.messageId} m={m} />
+                  <MessageRow key={m.messageId} m={m} selected={bulk.isSelected(m.messageId)} onToggleSelect={() => bulk.toggle(m.messageId)} />
                 ))}
               </tbody>
             </table>

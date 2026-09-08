@@ -13,7 +13,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { processDueWishlistEmails, resendWishlistLeadEmail, resendWishlistWhatsapp } from "../utils/wishlist.server";
-import { tableWrapStyle, tableStyle, thStyle, tdStyle, TableGlobalStyles, useSort, SortTh, Pill, RowMenu } from "../components/table-kit";
+import { tableWrapStyle, tableStyle, thStyle, tdStyle, TableGlobalStyles, useSort, SortTh, Pill, RowMenu, useBulkSelect, SelectAllTh, BulkActionsBar } from "../components/table-kit";
 import { FriendlyErrorInline } from "../components/friendly-error";
 
 const PAGE_SIZE = 100;
@@ -27,6 +27,25 @@ export const action = async ({ request }) => {
     try {
       const result = await processDueWishlistEmails(admin, session.shop);
       return { intent, ok: true, ...result };
+    } catch (err) {
+      return { intent, ok: false, error: String(err?.message || err) };
+    }
+  }
+
+  // Bulk delete -- checked before the single-leadId guard below since
+  // this intent works off a whole array (leadIds) instead. Mirrors
+  // app.astro-leads.jsx's own bulkDelete exactly.
+  if (intent === "bulkDelete") {
+    const ids = JSON.parse(formData.get("leadIds") || "[]");
+    if (!ids.length) return { intent, ok: false, error: "No leads selected" };
+    try {
+      const toDelete = await prisma.wishlistLead.findMany({ where: { id: { in: ids } }, select: { trackingId: true } });
+      await prisma.wishlistLead.deleteMany({ where: { id: { in: ids } } });
+      const trackingIds = toDelete.map((l) => l.trackingId).filter(Boolean);
+      if (trackingIds.length) {
+        await prisma.emailEvent.deleteMany({ where: { trackingId: { in: trackingIds } } });
+      }
+      return { intent, ok: true, deletedIds: ids, count: ids.length };
     } catch (err) {
       return { intent, ok: false, error: String(err?.message || err) };
     }
@@ -127,7 +146,7 @@ const smallBtn = {
   marginBottom: "4px",
 };
 
-function LeadRow({ lead }) {
+function LeadRow({ lead, selected, onToggleSelect }) {
   const fetcher = useFetcher();
   const [notes, setNotes] = useState(lead.notes || "");
   const [dirty, setDirty] = useState(false);
@@ -156,6 +175,9 @@ function LeadRow({ lead }) {
 
   return (
     <tr className="dt-row" style={{ opacity: busy ? 0.6 : 1 }}>
+      <td style={tdStyle}>
+        <input type="checkbox" checked={selected} onChange={onToggleSelect} style={{ cursor: "pointer" }} />
+      </td>
       <td style={tdStyle}>{new Date(lead.createdAt).toLocaleString()}</td>
       <td style={tdStyle}>{lead.email || "—"}</td>
       <td style={tdStyle}>{lead.phone || "—"}</td>
@@ -347,6 +369,23 @@ export default function WishlistLeadsPage() {
 
   const { sorted: sortedLeads, sortKey, sortDir, onSort } = useSort(filteredLeads, "createdAt", "desc");
 
+  const bulk = useBulkSelect(sortedLeads, "id");
+  const bulkFetcher = useFetcher();
+  const bulkBusy = bulkFetcher.state !== "idle";
+
+  useEffect(() => {
+    if (bulkFetcher.data?.intent === "bulkDelete" && bulkFetcher.data.ok) {
+      bulk.clear();
+      revalidator.revalidate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bulkFetcher.data]);
+
+  const handleBulkDelete = () => {
+    if (!window.confirm(`Delete ${bulk.count} selected lead${bulk.count === 1 ? "" : "s"}? This can't be undone.`)) return;
+    bulkFetcher.submit({ intent: "bulkDelete", leadIds: JSON.stringify(bulk.selectedIds) }, { method: "POST" });
+  };
+
   useEffect(() => {
     if (!fetcher.data || fetcher.data.intent !== "sendDueNow") return;
     if (fetcher.data.ok) {
@@ -420,6 +459,8 @@ export default function WishlistLeadsPage() {
           </span>
         </div>
 
+        <BulkActionsBar count={bulk.count} onDelete={handleBulkDelete} busy={bulkBusy} noun="lead" />
+
         {leads.length === 0 ? (
           <s-paragraph>No wishlist syncs yet.</s-paragraph>
         ) : filteredLeads.length === 0 ? (
@@ -429,6 +470,7 @@ export default function WishlistLeadsPage() {
             <table style={tableStyle}>
               <thead>
                 <tr>
+                  <SelectAllTh checked={bulk.allSelected} indeterminate={bulk.count > 0 && !bulk.allSelected} onChange={bulk.toggleAll} />
                   <SortTh label="When" sortKey="createdAt" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
                   <SortTh label="Email" sortKey="email" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
                   <SortTh label="Phone" sortKey="phone" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
@@ -442,7 +484,7 @@ export default function WishlistLeadsPage() {
               </thead>
               <tbody>
                 {sortedLeads.map((lead) => (
-                  <LeadRow key={lead.id} lead={lead} />
+                  <LeadRow key={lead.id} lead={lead} selected={bulk.isSelected(lead.id)} onToggleSelect={() => bulk.toggle(lead.id)} />
                 ))}
               </tbody>
             </table>
