@@ -13,7 +13,6 @@
 import crypto from "node:crypto";
 import { useEffect, useState } from "react";
 import { useFetcher, useLoaderData } from "react-router";
-import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import {
@@ -32,7 +31,8 @@ import { FALLBACK_LOGO_URL } from "../utils/astroAdvice.server";
 import { sendGemRecommendationWhatsApp, getOrCreateInteraktCampaignId, sendOrderProcessingWhatsApp, sendWishlistWhatsApp } from "../utils/interakt.server";
 import { checkGmail, checkGoogleSheets, checkInterakt, checkGooglePlaces } from "../utils/serviceHealth.server";
 import { getOrderProcessingEmailTemplate, ORDER_PROCESSING_EMAIL_PLACEHOLDERS } from "../utils/orderProcessingEmail.server";
-import { Icon } from "../components/table-kit";
+import { brand, Icon, Card, PageHeader, PageIn } from "../components/table-kit";
+import { useToast } from "../components/toast";
 
 export const loader = async ({ request }) => {
   const { session } = await authenticate.admin(request);
@@ -250,10 +250,10 @@ export const action = async ({ request }) => {
 // Server page's checks, just rendered as a compact pill instead of a
 // table row.
 const STATUS_STYLE = {
-  true: { bg: "#ECFDF5", border: "#A7F3D0", color: "#16A34A", label: "● Connected" },
-  false: { bg: "#FEF2F2", border: "#FECACA", color: "#DC2626", label: "● Failing" },
-  warn: { bg: "#FFFBEB", border: "#FDE68A", color: "#B45309", label: "● Connected (see note)" },
-  none: { bg: "#F9FAFB", border: "#E5E7EB", color: "#6B7280", label: "○ Not connected" },
+  true: { bg: brand.successBg, border: brand.successLine, color: brand.success, label: "● Connected" },
+  false: { bg: brand.dangerBg, border: brand.dangerLine, color: brand.danger, label: "● Failing" },
+  warn: { bg: brand.warnBg, border: brand.warnLine, color: brand.warn, label: "● Connected (see note)" },
+  none: { bg: brand.panel, border: brand.border, color: brand.muted, label: "○ Not connected" },
 };
 
 function StatusBadge({ status }) {
@@ -263,18 +263,7 @@ function StatusBadge({ status }) {
   return (
     <span
       title={status.detail}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        fontSize: "11.5px",
-        fontWeight: 600,
-        padding: "3px 10px",
-        borderRadius: "999px",
-        background: s.bg,
-        border: `1px solid ${s.border}`,
-        color: s.color,
-        whiteSpace: "nowrap",
-      }}
+      style={{ display: "inline-flex", alignItems: "center", fontSize: "12px", fontWeight: 600, padding: "4px 11px", borderRadius: "999px", background: s.bg, border: `1px solid ${s.border}`, color: s.color, whiteSpace: "nowrap" }}
     >
       {s.label}
     </span>
@@ -284,38 +273,19 @@ function StatusBadge({ status }) {
 // One visual "card" per external service — icon + title on the left,
 // live connection badge on the right, so at a glance you can tell which
 // services are actually working without reading a single field. Purely
-// a layout wrapper around each s-section below; doesn't change any
-// field behavior.
+// a layout wrapper; doesn't change any field behavior.
 function ServiceCard({ icon, title, status, children }) {
   return (
-    <div
-      style={{
-        background: "#fff",
-        border: "1px solid #E5E7EB",
-        borderRadius: "14px",
-        marginBottom: "16px",
-        overflow: "hidden",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: "10px",
-          padding: "14px 18px",
-          background: "#FAFAFA",
-          borderBottom: "1px solid #EDEEF1",
-        }}
-      >
+    <Card padding="0" style={{ marginBottom: "16px", overflow: "hidden" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", padding: "14px 18px", background: brand.panel, borderBottom: `1px solid ${brand.divider}` }}>
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <span style={{ fontSize: "20px", lineHeight: 1 }}>{icon}</span>
-          <span style={{ fontSize: "14px", fontWeight: 600, color: "#111827" }}>{title}</span>
+          {icon}
+          <span style={{ fontSize: "14px", fontWeight: 700, color: brand.ink }}>{title}</span>
         </div>
         <StatusBadge status={status} />
       </div>
       <div style={{ padding: "18px" }}>{children}</div>
-    </div>
+    </Card>
   );
 }
 
@@ -324,7 +294,7 @@ function ServiceCard({ icon, title, status, children }) {
 function TestResult({ fetcherData, intent }) {
   if (fetcherData?.intent !== intent) return null;
   return (
-    <p style={{ ...hintStyle, marginTop: "8px", color: fetcherData.ok ? "#16A34A" : "#DC2626" }}>
+    <p style={{ ...hintStyle, marginTop: "8px", color: fetcherData.ok ? brand.success : brand.danger }}>
       {fetcherData.status || fetcherData.error}
     </p>
   );
@@ -335,25 +305,9 @@ function TestResult({ fetcherData, intent }) {
 // its own, since all three share the WhatsApp card's single Connected/
 // Failing status above them), so three of these read as "one connection,
 // three templates" instead of three more independent-looking services.
-// Small numbered circle, used where a TemplateCard's "icon" is really a
-// step number (1/2/3) rather than a category glyph -- an SVG icon
-// wouldn't mean anything there, unlike a genuine mail/gear/message icon.
 function NumberBadge({ n }) {
   return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        width: "18px",
-        height: "18px",
-        borderRadius: "50%",
-        background: "#EFF4FF",
-        color: "#2563EB",
-        fontSize: "11px",
-        fontWeight: 700,
-      }}
-    >
+    <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "18px", height: "18px", borderRadius: "50%", background: brand.accentTint, color: brand.accent, fontSize: "11px", fontWeight: 700 }}>
       {n}
     </span>
   );
@@ -361,15 +315,8 @@ function NumberBadge({ n }) {
 
 function TemplateCard({ icon, title, children }) {
   return (
-    <div
-      style={{
-        background: "#F9FAFB",
-        border: "1px solid #EDEEF1",
-        borderRadius: "12px",
-        padding: "14px",
-      }}
-    >
-      <div style={{ fontSize: "13px", fontWeight: 600, color: "#111827", marginBottom: "8px" }}>
+    <div style={{ background: brand.panel, border: `1px solid ${brand.divider}`, borderRadius: "12px", padding: "16px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13.5px", fontWeight: 700, color: brand.ink, marginBottom: "10px" }}>
         {icon} {title}
       </div>
       {children}
@@ -386,18 +333,8 @@ function TemplateCard({ icon, title, children }) {
 function Explain({ summary, children, defaultOpen }) {
   return (
     <details open={defaultOpen || undefined} style={{ marginBottom: "14px" }}>
-      <summary
-        style={{
-          cursor: "pointer",
-          fontSize: "12px",
-          fontWeight: 500,
-          color: "#6B7280",
-          userSelect: "none",
-        }}
-      >
-        {summary}
-      </summary>
-      <div style={{ marginTop: "8px" }}>{children}</div>
+      <summary style={{ cursor: "pointer", fontSize: "12.5px", fontWeight: 500, color: brand.muted, userSelect: "none" }}>{summary}</summary>
+      <div style={{ marginTop: "8px", fontSize: "13px", color: brand.body, lineHeight: 1.6 }}>{children}</div>
     </details>
   );
 }
@@ -470,15 +407,7 @@ function SecretField({ id, label, fieldName, isSet, value, onChange, placeholder
     revealFetcher.submit({ intent: "revealSecret", field: fieldName }, { method: "POST" });
   };
 
-  const eyeBtnStyle = {
-    fontSize: "11px",
-    padding: "3px 9px",
-    borderRadius: "8px",
-    border: "1px solid #E5E7EB",
-    background: "#fff",
-    cursor: "pointer",
-    color: "#374151",
-  };
+  const eyeBtnStyle = { fontSize: "11.5px", padding: "4px 10px", borderRadius: "8px", border: `1px solid ${brand.border}`, background: "#fff", cursor: "pointer", color: brand.body };
 
   return (
     <>
@@ -488,14 +417,14 @@ function SecretField({ id, label, fieldName, isSet, value, onChange, placeholder
         </label>
         {isSet && (
           <button type="button" onClick={toggle} disabled={revealing} style={eyeBtnStyle}>
-            {revealing ? "Loading…" : visible ? "🙈 Hide" : "👁 Show & verify"}
+            {revealing ? "Loading…" : visible ? "Hide" : "Show & verify"}
           </button>
         )}
       </div>
       {multiline ? (
         <textarea
           id={id}
-          style={{ ...fieldStyle, minHeight: "90px", fontFamily: "monospace", fontSize: "12px" }}
+          style={{ ...fieldStyle, minHeight: "90px", fontFamily: brand.mono, fontSize: "12px" }}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={isSet && !visible ? "•••• already set ••••" : placeholder}
@@ -519,19 +448,32 @@ function SecretField({ id, label, fieldName, isSet, value, onChange, placeholder
 const fieldStyle = {
   display: "block",
   width: "100%",
-  padding: "9px 11px",
+  padding: "10px 12px",
   marginTop: "5px",
   marginBottom: "16px",
-  border: "1px solid #E5E7EB",
+  border: `1px solid ${brand.border}`,
   borderRadius: "10px",
   fontSize: "13px",
   fontFamily: "inherit",
-  color: "#374151",
+  color: brand.body,
   background: "#fff",
   boxSizing: "border-box",
 };
-const labelStyle = { fontWeight: 500, fontSize: "12.5px", color: "#374151" };
-const hintStyle = { fontSize: "11.5px", color: "#6B7280", marginTop: "-12px", marginBottom: "16px" };
+const labelStyle = { fontWeight: 500, fontSize: "12.5px", color: brand.body };
+const hintStyle = { fontSize: "12px", color: brand.muted, marginTop: "-12px", marginBottom: "16px" };
+
+const primaryBtn = { padding: "10px 18px", borderRadius: "9px", border: "none", background: brand.accent, color: "#fff", fontSize: "13px", fontWeight: 600, cursor: "pointer" };
+const secondaryBtn = { padding: "10px 18px", borderRadius: "9px", border: `1px solid ${brand.border}`, background: "#fff", color: brand.body, fontSize: "13px", fontWeight: 500, cursor: "pointer" };
+
+function GroupBanner({ children, tone = "neutral" }) {
+  const styles =
+    tone === "info"
+      ? { background: brand.accentTint, borderColor: brand.accentLine, color: brand.heading }
+      : { background: brand.panel, borderColor: brand.border, color: brand.body };
+  return (
+    <div style={{ borderRadius: "10px", padding: "10px 14px", margin: "24px 0 12px", fontSize: "12.5px", fontWeight: 500, border: "1px solid transparent", ...styles }}>{children}</div>
+  );
+}
 
 export default function SettingsPage() {
   const data = useLoaderData();
@@ -539,7 +481,7 @@ export default function SettingsPage() {
   const testFetcher = useFetcher();
   const testOrderFetcher = useFetcher();
   const testWishlistFetcher = useFetcher();
-  const shopify = useAppBridge();
+  const toast = useToast();
   const isSaving = fetcher.state === "submitting";
   const isSendingTest = testFetcher.state !== "idle";
   const isSendingOrderTest = testOrderFetcher.state !== "idle";
@@ -576,7 +518,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (fetcher.data?.intent === "save" && fetcher.data.ok) {
-      shopify.toast.show("Settings saved");
+      toast.show("Settings saved");
       setGmailAppPassword("");
       setGsaKey("");
       setInteraktApiKey("");
@@ -584,31 +526,29 @@ export default function SettingsPage() {
       setSheetsRelaySecret("");
       setGooglePlacesApiKey("");
     }
-  }, [fetcher.data, shopify]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetcher.data]);
 
   useEffect(() => {
     if (testFetcher.data?.intent === "sendTestWhatsapp") {
-      shopify.toast.show(testFetcher.data.status || (testFetcher.data.ok ? "Sent" : "Failed"), {
-        isError: !testFetcher.data.ok,
-      });
+      toast.show(testFetcher.data.status || (testFetcher.data.ok ? "Sent" : "Failed"), { isError: !testFetcher.data.ok });
     }
-  }, [testFetcher.data, shopify]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [testFetcher.data]);
 
   useEffect(() => {
     if (testOrderFetcher.data?.intent === "sendTestOrderWhatsapp") {
-      shopify.toast.show(testOrderFetcher.data.status || (testOrderFetcher.data.ok ? "Sent" : "Failed"), {
-        isError: !testOrderFetcher.data.ok,
-      });
+      toast.show(testOrderFetcher.data.status || (testOrderFetcher.data.ok ? "Sent" : "Failed"), { isError: !testOrderFetcher.data.ok });
     }
-  }, [testOrderFetcher.data, shopify]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [testOrderFetcher.data]);
 
   useEffect(() => {
     if (testWishlistFetcher.data?.intent === "sendTestWishlistWhatsapp") {
-      shopify.toast.show(testWishlistFetcher.data.status || (testWishlistFetcher.data.ok ? "Sent" : "Failed"), {
-        isError: !testWishlistFetcher.data.ok,
-      });
+      toast.show(testWishlistFetcher.data.status || (testWishlistFetcher.data.ok ? "Sent" : "Failed"), { isError: !testWishlistFetcher.data.ok });
     }
-  }, [testWishlistFetcher.data, shopify]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [testWishlistFetcher.data]);
 
   const sendTestOrderWhatsapp = () => {
     testOrderFetcher.submit({ intent: "sendTestOrderWhatsapp", testOrderPhone }, { method: "POST" });
@@ -653,11 +593,7 @@ export default function SettingsPage() {
         // moment it's interacted with at all (even just focusing and
         // blurring it, no typing), while the server-rendered default
         // string keeps whatever the source file's own line endings
-        // happen to be. The result was a real, saved "customization"
-        // that was actually byte-identical content to the default,
-        // just with different line-ending bytes -- which would have
-        // permanently opted this shop out of future default-template
-        // improvements for no reason a merchant could see or intended.
+        // happen to be.
         orderProcessingEmailTemplate:
           orderProcessingEmailTemplate.replace(/\r\n/g, "\n") === data.defaultOrderProcessingEmailTemplate.replace(/\r\n/g, "\n")
             ? ""
@@ -672,69 +608,49 @@ export default function SettingsPage() {
     );
   };
 
-  const groupBannerStyle = {
-    borderRadius: "10px",
-    padding: "10px 14px",
-    margin: "24px 0 12px",
-    fontSize: "12.5px",
-    fontWeight: 500,
-    border: "1px solid transparent",
-  };
-
   return (
-    <s-page heading="Astro Advice — Settings" inlineSize="large">
-      <s-section heading="Connections at a glance">
-        <s-paragraph>
-          Live status, checked just now — the same checks the <s-link href="/app/server-health">Server</s-link> page
-          runs. Reload this page any time to re-check.
-        </s-paragraph>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", marginTop: "10px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "6px 12px", background: "#F9FAFB", border: "1px solid #EDEEF1", borderRadius: "10px" }}>
-            <span>✉️</span> <span style={{ fontSize: "12.5px", fontWeight: 500 }}>Gmail</span> <StatusBadge status={data.serviceStatus.gmail} />
+    <PageIn>
+      <PageHeader title="Settings" description="Connect and manage every external service this app uses." />
+
+      <Card style={{ marginBottom: "20px" }}>
+        <p style={{ fontSize: "13px", color: brand.body, margin: "0 0 10px" }}>
+          Live status, checked just now — the same checks the <a href="/app/server-health" style={{ color: brand.accent }}>Server</a> page runs. Reload
+          this page any time to re-check.
+        </p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "7px", padding: "6px 12px", background: brand.panel, border: `1px solid ${brand.divider}`, borderRadius: "10px" }}>
+            <Icon name="mail" size={14} color={brand.accent} /> <span style={{ fontSize: "12.5px", fontWeight: 500 }}>Gmail</span> <StatusBadge status={data.serviceStatus.gmail} />
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "6px 12px", background: "#F9FAFB", border: "1px solid #EDEEF1", borderRadius: "10px" }}>
-            <span>💬</span> <span style={{ fontSize: "12.5px", fontWeight: 500 }}>WhatsApp</span> <StatusBadge status={data.serviceStatus.interakt} />
+          <div style={{ display: "flex", alignItems: "center", gap: "7px", padding: "6px 12px", background: brand.panel, border: `1px solid ${brand.divider}`, borderRadius: "10px" }}>
+            <Icon name="message" size={14} color={brand.success} /> <span style={{ fontSize: "12.5px", fontWeight: 500 }}>WhatsApp</span> <StatusBadge status={data.serviceStatus.interakt} />
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "6px 12px", background: "#F9FAFB", border: "1px solid #EDEEF1", borderRadius: "10px" }}>
-            <span>📊</span> <span style={{ fontSize: "12.5px", fontWeight: 500 }}>Google Sheets</span> <StatusBadge status={data.serviceStatus.sheets} />
+          <div style={{ display: "flex", alignItems: "center", gap: "7px", padding: "6px 12px", background: brand.panel, border: `1px solid ${brand.divider}`, borderRadius: "10px" }}>
+            <Icon name="sheet" size={14} color={brand.success} /> <span style={{ fontSize: "12.5px", fontWeight: 500 }}>Google Sheets</span> <StatusBadge status={data.serviceStatus.sheets} />
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "6px 12px", background: "#F9FAFB", border: "1px solid #EDEEF1", borderRadius: "10px" }}>
-            <span>📍</span> <span style={{ fontSize: "12.5px", fontWeight: 500 }}>Google Places</span> <StatusBadge status={data.serviceStatus.places} />
+          <div style={{ display: "flex", alignItems: "center", gap: "7px", padding: "6px 12px", background: brand.panel, border: `1px solid ${brand.divider}`, borderRadius: "10px" }}>
+            <Icon name="pin" size={14} color={brand.danger} /> <span style={{ fontSize: "12.5px", fontWeight: 500 }}>Google Places</span> <StatusBadge status={data.serviceStatus.places} />
           </div>
         </div>
-      </s-section>
+      </Card>
 
       <form onSubmit={submit}>
-        <div style={{ ...groupBannerStyle, margin: "4px 0 12px", background: "#EFF4FF", borderColor: "#DBEAFE", color: "#1E3A8A" }}>
-          ⏱️ Message behavior — safe to change any time
-        </div>
+        <GroupBanner tone="info">⏱️ Message behavior — safe to change any time</GroupBanner>
 
-        <s-section heading="Wishlist email timing">
+        <Card style={{ marginBottom: "16px" }}>
+          <h2 style={{ fontSize: "14px", fontWeight: 700, margin: "0 0 10px", color: brand.ink }}>Wishlist email timing</h2>
           <Explain summary="ℹ️ How this timing works">
-            <s-paragraph>
-              Hours to wait after a customer's <s-text>last</s-text> wishlist change before emailing them — each new
-              change pushes this out again, so someone actively adding items all day gets one email once they've
-              gone quiet, not one per add. See the <s-link href="/app/wishlist-leads">Wishlist Leads</s-link> page's
-              "Send Due Emails Now" button to run a check immediately instead of waiting.
-            </s-paragraph>
+            Hours to wait after a customer's <strong>last</strong> wishlist change before emailing them — each new
+            change pushes this out again, so someone actively adding items all day gets one email once they've gone
+            quiet, not one per add. See the <a href="/app/wishlist-leads" style={{ color: brand.accent }}>Wishlist Leads</a> page's
+            "Send Due Emails Now" button to run a check immediately instead of waiting.
           </Explain>
           <label style={labelStyle} htmlFor="wishlistInterval">Wait time (hours)</label>
-          <input
-            id="wishlistInterval"
-            style={{ ...fieldStyle, maxWidth: "120px" }}
-            type="number"
-            min="0"
-            step="0.5"
-            value={wishlistInterval}
-            onChange={(e) => setWishlistInterval(e.target.value)}
-          />
-        </s-section>
+          <input id="wishlistInterval" style={{ ...fieldStyle, maxWidth: "120px" }} type="number" min="0" step="0.5" value={wishlistInterval} onChange={(e) => setWishlistInterval(e.target.value)} />
+        </Card>
 
-        <div style={{ ...groupBannerStyle, background: "#F9FAFB", borderColor: "#E5E7EB", color: "#374151" }}>
-          🔑 Connect your accounts — one-time technical setup
-        </div>
+        <GroupBanner>🔑 Connect your accounts — one-time technical setup</GroupBanner>
 
-        <ServiceCard icon={<Icon name="message" size={19} color="#16A34A" />} title="WhatsApp (Interakt)" status={data.serviceStatus.interakt}>
+        <ServiceCard icon={<Icon name="message" size={19} color={brand.success} />} title="WhatsApp (Interakt)" status={data.serviceStatus.interakt}>
           <SecretField
             id="interaktApiKey"
             label="Secret Key"
@@ -747,29 +663,19 @@ export default function SettingsPage() {
           />
 
           <Explain summary="ℹ️ Every template below needs Meta approval first">
-            <s-paragraph>
-              One Interakt account powers all three templates below. Each needs its own template created and{" "}
-              <s-text fontWeight="bold">Meta-approved</s-text> in Interakt (green dot, Catalog &amp; Templates →
-              Templates Library) before it'll actually send.
-            </s-paragraph>
+            One Interakt account powers all three templates below. Each needs its own template created and{" "}
+            <strong>Meta-approved</strong> in Interakt (green dot, Catalog &amp; Templates → Templates Library)
+            before it'll actually send.
           </Explain>
 
           {testFetcher.data?.campaignStatus && (
-            <p
-              style={{
-                ...hintStyle,
-                marginTop: "-4px",
-                color: testFetcher.data.campaignStatus.startsWith("OK") ? "#16A34A" : "#DC2626",
-              }}
-            >
+            <p style={{ ...hintStyle, marginTop: "-4px", color: testFetcher.data.campaignStatus.startsWith("OK") ? brand.success : brand.danger }}>
               API Campaign: {testFetcher.data.campaignStatus}
             </p>
           )}
         </ServiceCard>
 
-        <div style={{ ...groupBannerStyle, margin: "0 0 12px", background: "#F9FAFB", borderColor: "#E5E7EB", color: "#374151" }}>
-          💬 Message templates — one card per WhatsApp message
-        </div>
+        <GroupBanner>💬 Message templates — one card per WhatsApp message</GroupBanner>
 
         <div style={{ display: "grid", gap: "14px", marginBottom: "16px" }}>
           <TemplateCard icon={<NumberBadge n={1} />} title="Gem Recommendation">
@@ -784,25 +690,17 @@ export default function SettingsPage() {
             />
             <label style={labelStyle} htmlFor="testPhone">Send test message</label>
             <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "5px" }}>
-              <input
-                id="testPhone"
-                style={{ ...fieldStyle, marginBottom: 0, maxWidth: "220px" }}
-                type="tel"
-                value={testPhone}
-                onChange={(e) => setTestPhone(e.target.value)}
-                placeholder="9876543210 or +919876543210"
-              />
-              <s-button {...(isSendingTest ? { loading: true } : {})} onClick={sendTestWhatsapp}>
-                Send Test
-              </s-button>
+              <input id="testPhone" style={{ ...fieldStyle, marginBottom: 0, maxWidth: "220px" }} type="tel" value={testPhone} onChange={(e) => setTestPhone(e.target.value)} placeholder="9876543210 or +919876543210" />
+              <button type="button" onClick={sendTestWhatsapp} disabled={isSendingTest} style={{ ...secondaryBtn, padding: "9px 16px", fontSize: "12.5px" }}>
+                {isSendingTest ? "Sending…" : "Send Test"}
+              </button>
             </div>
             <TestResult fetcherData={testFetcher.data} intent="sendTestWhatsapp" />
           </TemplateCard>
 
           <TemplateCard icon={<NumberBadge n={2} />} title="Order Processing">
             <p style={{ ...hintStyle, marginTop: 0 }}>
-              Sends once per order, the first time it's <s-text fontWeight="bold">tagged</s-text> with the trigger
-              tag below.
+              Sends once per order, the first time it's <strong>tagged</strong> with the trigger tag below.
             </p>
             <label style={labelStyle} htmlFor="orderProcessingTriggerTag">Trigger tag</label>
             <input
@@ -824,32 +722,24 @@ export default function SettingsPage() {
             />
             <label style={labelStyle} htmlFor="testOrderPhone">Send test message</label>
             <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "5px" }}>
-              <input
-                id="testOrderPhone"
-                style={{ ...fieldStyle, marginBottom: 0, maxWidth: "220px" }}
-                type="tel"
-                value={testOrderPhone}
-                onChange={(e) => setTestOrderPhone(e.target.value)}
-                placeholder="9876543210 or +919876543210"
-              />
-              <s-button {...(isSendingOrderTest ? { loading: true } : {})} onClick={sendTestOrderWhatsapp}>
-                Send Test
-              </s-button>
+              <input id="testOrderPhone" style={{ ...fieldStyle, marginBottom: 0, maxWidth: "220px" }} type="tel" value={testOrderPhone} onChange={(e) => setTestOrderPhone(e.target.value)} placeholder="9876543210 or +919876543210" />
+              <button type="button" onClick={sendTestOrderWhatsapp} disabled={isSendingOrderTest} style={{ ...secondaryBtn, padding: "9px 16px", fontSize: "12.5px" }}>
+                {isSendingOrderTest ? "Sending…" : "Send Test"}
+              </button>
             </div>
             <TestResult fetcherData={testOrderFetcher.data} intent="sendTestOrderWhatsapp" />
           </TemplateCard>
 
-          <TemplateCard icon={<Icon name="mail" size={15} color="#2563EB" />} title="Order Processing — Email">
+          <TemplateCard icon={<Icon name="mail" size={15} color={brand.accent} />} title="Order Processing — Email">
             <p style={{ ...hintStyle, marginTop: 0 }}>
               Sends alongside the WhatsApp message above, to the same order. Edit the raw HTML below, or leave it
               as-is to keep using the built-in design.
             </p>
             <Explain summary="ℹ️ Available placeholders (substituted automatically when the email actually sends)">
-              <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "12px", color: "#6B7280", lineHeight: 1.8 }}>
+              <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "12px", color: brand.muted, lineHeight: 1.8 }}>
                 {data.orderProcessingEmailPlaceholders.map((p) => (
                   <li key={p.token}>
-                    <code style={{ background: "#F3F4F6", padding: "1px 5px", borderRadius: "4px" }}>{`{{${p.token}}}`}</code>{" "}
-                    — {p.description}
+                    <code style={{ background: brand.panel, padding: "1px 5px", borderRadius: "4px" }}>{`{{${p.token}}}`}</code> — {p.description}
                   </li>
                 ))}
               </ul>
@@ -859,32 +749,30 @@ export default function SettingsPage() {
               value={orderProcessingEmailTemplate}
               onChange={(e) => setOrderProcessingEmailTemplate(e.target.value)}
               spellCheck={false}
-              style={{ ...fieldStyle, fontFamily: "Menlo, Consolas, monospace", fontSize: "11.5px", lineHeight: 1.5, height: "260px", resize: "vertical", whiteSpace: "pre" }}
+              style={{ ...fieldStyle, fontFamily: brand.mono, fontSize: "11.5px", lineHeight: 1.5, height: "260px", resize: "vertical", whiteSpace: "pre" }}
             />
             <div style={{ display: "flex", gap: "8px", marginTop: "6px", flexWrap: "wrap" }}>
-              <s-button onClick={() => setShowEmailPreview((v) => !v)}>
+              <button type="button" onClick={() => setShowEmailPreview((v) => !v)} style={{ ...primaryBtn, padding: "8px 16px", fontSize: "12.5px" }}>
                 {showEmailPreview ? "Hide preview" : "Preview"}
-              </s-button>
-              <s-button
+              </button>
+              <button
+                type="button"
                 onClick={() => {
                   if (window.confirm("Reset to the built-in default template? This discards your current edits (not saved until you click Save settings).")) {
                     setOrderProcessingEmailTemplate(data.defaultOrderProcessingEmailTemplate);
                   }
                 }}
+                style={{ ...secondaryBtn, padding: "8px 16px", fontSize: "12.5px" }}
               >
                 Reset to default
-              </s-button>
+              </button>
             </div>
             {showEmailPreview && (
-              <div style={{ marginTop: "10px", border: "1px solid #E5E7EB", borderRadius: "10px", overflow: "hidden" }}>
-                <div style={{ padding: "6px 10px", background: "#F9FAFB", borderBottom: "1px solid #EDEEF1", fontSize: "11px", color: "#6B7280" }}>
+              <div style={{ marginTop: "10px", border: `1px solid ${brand.border}`, borderRadius: "10px", overflow: "hidden" }}>
+                <div style={{ padding: "6px 10px", background: brand.panel, borderBottom: `1px solid ${brand.divider}`, fontSize: "11px", color: brand.muted }}>
                   Preview with sample data — this reflects what's in the box above right now, even if unsaved.
                 </div>
-                <iframe
-                  title="Order processing email preview"
-                  srcDoc={renderEmailPreview(orderProcessingEmailTemplate)}
-                  style={{ width: "100%", height: "500px", border: "none", display: "block" }}
-                />
+                <iframe title="Order processing email preview" srcDoc={renderEmailPreview(orderProcessingEmailTemplate)} style={{ width: "100%", height: "500px", border: "none", display: "block" }} />
               </div>
             )}
           </TemplateCard>
@@ -892,7 +780,7 @@ export default function SettingsPage() {
           <TemplateCard icon={<NumberBadge n={3} />} title="Wishlist Reminder">
             <p style={{ ...hintStyle, marginTop: 0 }}>
               Sends alongside the wishlist reminder email, on the timing set below. Per-lead status on{" "}
-              <s-link href="/app/wishlist-leads">Wishlist Leads</s-link>.
+              <a href="/app/wishlist-leads" style={{ color: brand.accent }}>Wishlist Leads</a>.
             </p>
             <label style={labelStyle} htmlFor="interaktWishlistTemplateName">Template name</label>
             <input
@@ -905,50 +793,30 @@ export default function SettingsPage() {
             />
             <label style={labelStyle} htmlFor="testWishlistPhone">Send test message</label>
             <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "5px" }}>
-              <input
-                id="testWishlistPhone"
-                style={{ ...fieldStyle, marginBottom: 0, maxWidth: "220px" }}
-                type="tel"
-                value={testWishlistPhone}
-                onChange={(e) => setTestWishlistPhone(e.target.value)}
-                placeholder="9876543210 or +919876543210"
-              />
-              <s-button {...(isSendingWishlistTest ? { loading: true } : {})} onClick={sendTestWishlistWhatsapp}>
-                Send Test
-              </s-button>
+              <input id="testWishlistPhone" style={{ ...fieldStyle, marginBottom: 0, maxWidth: "220px" }} type="tel" value={testWishlistPhone} onChange={(e) => setTestWishlistPhone(e.target.value)} placeholder="9876543210 or +919876543210" />
+              <button type="button" onClick={sendTestWishlistWhatsapp} disabled={isSendingWishlistTest} style={{ ...secondaryBtn, padding: "9px 16px", fontSize: "12.5px" }}>
+                {isSendingWishlistTest ? "Sending…" : "Send Test"}
+              </button>
             </div>
             <TestResult fetcherData={testWishlistFetcher.data} intent="sendTestWishlistWhatsapp" />
           </TemplateCard>
         </div>
 
-        <ServiceCard icon={<Icon name="gear" size={19} color="#6B7280" />} title="WhatsApp — advanced">
+        <ServiceCard icon={<Icon name="gear" size={19} color={brand.muted} />} title="WhatsApp — advanced">
           <label style={labelStyle}>Follow-up reminder timing</label>
           <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "5px" }}>
-            <input
-              style={{ ...fieldStyle, marginBottom: 0, maxWidth: "100px" }}
-              type="number"
-              min="0"
-              step="1"
-              value={whatsappIntervalValue}
-              onChange={(e) => setWhatsappIntervalValue(e.target.value)}
-            />
-            <select
-              style={{ ...fieldStyle, marginBottom: 0, width: "auto", padding: "8px 10px" }}
-              value={whatsappIntervalUnit}
-              onChange={(e) => setWhatsappIntervalUnit(e.target.value)}
-            >
+            <input style={{ ...fieldStyle, marginBottom: 0, maxWidth: "100px" }} type="number" min="0" step="1" value={whatsappIntervalValue} onChange={(e) => setWhatsappIntervalValue(e.target.value)} />
+            <select style={{ ...fieldStyle, marginBottom: 0, width: "auto", padding: "9px 10px" }} value={whatsappIntervalUnit} onChange={(e) => setWhatsappIntervalUnit(e.target.value)}>
               <option value="minutes">Minutes</option>
               <option value="hours">Hours</option>
               <option value="days">Days</option>
             </select>
           </div>
           <Explain summary="ℹ️ How the follow-up reminder works">
-            <p style={hintStyle}>
-              The first message always sends <s-text>instantly</s-text> on submission — this adds an optional SECOND
-              message (same template, resent) after this much time. <s-text>0</s-text> turns follow-ups off. Needs
-              an external scheduler hitting <s-text>/cron/whatsapp-queue?secret=…</s-text>, or use{" "}
-              <s-link href="/app/astro-leads">Astro Leads</s-link>' "Process Follow-ups Now" button manually.
-            </p>
+            The first message always sends <strong>instantly</strong> on submission — this adds an optional SECOND
+            message (same template, resent) after this much time. <strong>0</strong> turns follow-ups off. Needs an
+            external scheduler hitting <code>/cron/whatsapp-queue?secret=…</code>, or use{" "}
+            <a href="/app/astro-leads" style={{ color: brand.accent }}>Astro Leads</a>' "Process Follow-ups Now" button manually.
           </Explain>
 
           <label style={labelStyle}>Delivery/read tracking (webhook)</label>
@@ -962,97 +830,50 @@ export default function SettingsPage() {
             placeholder="any secret string — pick one, match it in Interakt"
           />
           <Explain summary="ℹ️ Where to register the webhook URL">
-            <p style={hintStyle}>
-              Interakt has no API to fetch campaign stats — register this URL in Interakt → Settings → Developer
-              Setting → Webhooks (pick any secret, match it above) to see real sent/delivered/read status on{" "}
-              <s-link href="/app/whatsapp-events">WhatsApp Events</s-link>:
-              <br />
-              <s-text>https://shubh-gems-customizer-app.onrender.com/public/interakt-webhook</s-text>
-            </p>
+            Interakt has no API to fetch campaign stats — register this URL in Interakt → Settings → Developer
+            Setting → Webhooks (pick any secret, match it above) to see real sent/delivered/read status on{" "}
+            <a href="/app/whatsapp-events" style={{ color: brand.accent }}>WhatsApp Events</a>:
+            <br />
+            <code>https://shubh-gems-customizer-app.onrender.com/public/interakt-webhook</code>
           </Explain>
         </ServiceCard>
 
-        <ServiceCard icon={<Icon name="mail" size={19} color="#2563EB" />} title="Email sending (Gmail)" status={data.serviceStatus.gmail}>
+        <ServiceCard icon={<Icon name="mail" size={19} color={brand.accent} />} title="Email sending (Gmail)" status={data.serviceStatus.gmail}>
           <Explain summary="ℹ️ What this is for">
-            <s-paragraph>
-              The account the gem-recommendation email sends from. Needs a Gmail App Password (Google account →
-              Security → 2-Step Verification → App Passwords), not the account's real password.
-            </s-paragraph>
+            The account the gem-recommendation email sends from. Needs a Gmail App Password (Google account →
+            Security → 2-Step Verification → App Passwords), not the account's real password.
           </Explain>
 
           <label style={labelStyle} htmlFor="gmailUser">Gmail address</label>
-          <input
-            id="gmailUser"
-            style={fieldStyle}
-            type="email"
-            value={gmailUser}
-            onChange={(e) => setGmailUser(e.target.value)}
-            placeholder="info@onlynaturalgemstones.com"
-          />
+          <input id="gmailUser" style={fieldStyle} type="email" value={gmailUser} onChange={(e) => setGmailUser(e.target.value)} placeholder="info@onlynaturalgemstones.com" />
 
-          <SecretField
-            id="gmailAppPassword"
-            label="App Password"
-            fieldName="gmailAppPassword"
-            isSet={data.gmailAppPasswordSet}
-            value={gmailAppPassword}
-            onChange={setGmailAppPassword}
-            placeholder="16-character App Password"
-          />
-          {!data.gmailUser && data.envFallback.gmailUser && (
-            <p style={hintStyle}>Currently falling back to the GMAIL_USER env var on Render.</p>
-          )}
+          <SecretField id="gmailAppPassword" label="App Password" fieldName="gmailAppPassword" isSet={data.gmailAppPasswordSet} value={gmailAppPassword} onChange={setGmailAppPassword} placeholder="16-character App Password" />
+          {!data.gmailUser && data.envFallback.gmailUser && <p style={hintStyle}>Currently falling back to the GMAIL_USER env var on Render.</p>}
         </ServiceCard>
 
-        <ServiceCard icon={<Icon name="sheet" size={19} color="#16A34A" />} title="Google Sheets mirror (optional)" status={data.serviceStatus.sheets}>
+        <ServiceCard icon={<Icon name="sheet" size={19} color={brand.success} />} title="Google Sheets mirror (optional)" status={data.serviceStatus.sheets}>
           <Explain summary="ℹ️ What this is for, and which fields to use">
-            <s-paragraph>
-              Mirrors every lead/email-event row into a Google Sheet, in addition to this app's own database. Leave
-              everything below blank to skip — nothing else depends on this.
-            </s-paragraph>
-            <s-paragraph>
-              <s-text fontWeight="bold">Sheets relay (recommended)</s-text> — a tiny Apps Script Web App deployed
-              inside your own Sheet under your own Google account. No service account or key needed at all, which is
-              why this is the way to go if you ever hit a "service account key creation is disabled" error trying to
-              set up the fields below. Ask for the <s-text fontWeight="bold">sheets-relay.gs</s-text> file and the
-              5-minute setup steps if you haven't deployed it yet. If a Relay URL is set here, it's used instead of
-              the service-account fields below — no need to fill in both.
-            </s-paragraph>
+            Mirrors every lead/email-event row into a Google Sheet, in addition to this app's own database. Leave
+            everything below blank to skip — nothing else depends on this.
+            <br />
+            <br />
+            <strong>Sheets relay (recommended)</strong> — a tiny Apps Script Web App deployed inside your own Sheet
+            under your own Google account. No service account or key needed at all, which is why this is the way to
+            go if you ever hit a "service account key creation is disabled" error trying to set up the fields below.
+            Ask for the <strong>sheets-relay.gs</strong> file and the 5-minute setup steps if you haven't deployed it
+            yet. If a Relay URL is set here, it's used instead of the service-account fields below — no need to fill
+            in both.
           </Explain>
 
           <label style={labelStyle} htmlFor="sheetsRelayUrl">Sheets relay URL</label>
-          <input
-            id="sheetsRelayUrl"
-            style={fieldStyle}
-            type="text"
-            value={sheetsRelayUrl}
-            onChange={(e) => setSheetsRelayUrl(e.target.value)}
-            placeholder="https://script.google.com/macros/s/.../exec"
-          />
+          <input id="sheetsRelayUrl" style={fieldStyle} type="text" value={sheetsRelayUrl} onChange={(e) => setSheetsRelayUrl(e.target.value)} placeholder="https://script.google.com/macros/s/.../exec" />
 
-          <SecretField
-            id="sheetsRelaySecret"
-            label="Sheets relay secret"
-            fieldName="sheetsRelaySecret"
-            isSet={data.sheetsRelaySecretSet}
-            value={sheetsRelaySecret}
-            onChange={setSheetsRelaySecret}
-            placeholder="must match SHARED_SECRET in the script"
-          />
+          <SecretField id="sheetsRelaySecret" label="Sheets relay secret" fieldName="sheetsRelaySecret" isSet={data.sheetsRelaySecretSet} value={sheetsRelaySecret} onChange={setSheetsRelaySecret} placeholder="must match SHARED_SECRET in the script" />
 
-          <label style={{ ...labelStyle, display: "block", marginTop: "6px", marginBottom: "4px" }}>
-            Service account (fallback, only used if no relay URL is set above)
-          </label>
+          <label style={{ ...labelStyle, display: "block", marginTop: "6px", marginBottom: "4px" }}>Service account (fallback, only used if no relay URL is set above)</label>
 
           <label style={labelStyle} htmlFor="gsaEmail">Service account email</label>
-          <input
-            id="gsaEmail"
-            style={fieldStyle}
-            type="email"
-            value={gsaEmail}
-            onChange={(e) => setGsaEmail(e.target.value)}
-            placeholder="xxxx@xxxx.iam.gserviceaccount.com"
-          />
+          <input id="gsaEmail" style={fieldStyle} type="email" value={gsaEmail} onChange={(e) => setGsaEmail(e.target.value)} placeholder="xxxx@xxxx.iam.gserviceaccount.com" />
 
           <SecretField
             id="gsaKey"
@@ -1066,30 +887,21 @@ export default function SettingsPage() {
           />
 
           <label style={labelStyle} htmlFor="sheetId">Spreadsheet ID</label>
-          <input
-            id="sheetId"
-            style={fieldStyle}
-            type="text"
-            value={sheetId}
-            onChange={(e) => setSheetId(e.target.value)}
-            placeholder="the long ID in the Sheet's URL"
-          />
+          <input id="sheetId" style={fieldStyle} type="text" value={sheetId} onChange={(e) => setSheetId(e.target.value)} placeholder="the long ID in the Sheet's URL" />
         </ServiceCard>
 
-        <ServiceCard icon={<Icon name="pin" size={19} color="#DC2626" />} title="Location Autocomplete (Google Places)" status={data.serviceStatus.places}>
+        <ServiceCard icon={<Icon name="pin" size={19} color={brand.danger} />} title="Location Autocomplete (Google Places)" status={data.serviceStatus.places}>
           <Explain summary="ℹ️ What this is for, and how to get a key">
-            <s-paragraph>
-              Powers the city suggestions on the storefront's "Place of Birth" field (Personalised Pooja form). The
-              key is only ever used server-side by this app — the theme calls our own endpoint, never Google
-              directly, so the key never reaches the customer's browser. Leave blank to keep using the free
-              (Photon/OpenStreetMap) lookup instead.
-            </s-paragraph>
-            <s-paragraph>
-              Get a key from Google Cloud Console: enable the <s-text fontWeight="bold">Places API</s-text>, then
-              create an API key under Credentials. Since this key is only called from our server, restricting it to
-              this store's domain isn't necessary the way it would be for a client-side integration — an IP or API
-              restriction in Google Cloud Console is still good practice, but optional.
-            </s-paragraph>
+            Powers the city suggestions on the storefront's "Place of Birth" field (Personalised Pooja form). The
+            key is only ever used server-side by this app — the theme calls our own endpoint, never Google
+            directly, so the key never reaches the customer's browser. Leave blank to keep using the free
+            (Photon/OpenStreetMap) lookup instead.
+            <br />
+            <br />
+            Get a key from Google Cloud Console: enable the <strong>Places API</strong>, then create an API key
+            under Credentials. Since this key is only called from our server, restricting it to this store's domain
+            isn't necessary the way it would be for a client-side integration — an IP or API restriction in Google
+            Cloud Console is still good practice, but optional.
           </Explain>
 
           <SecretField
@@ -1105,22 +917,20 @@ export default function SettingsPage() {
         </ServiceCard>
 
         <div style={{ margin: "24px 0" }}>
-          <s-button {...(isSaving ? { loading: true } : {})} onClick={submit}>
-            Save settings
-          </s-button>
+          <button type="submit" disabled={isSaving} style={{ ...primaryBtn, opacity: isSaving ? 0.7 : 1, cursor: isSaving ? "default" : "pointer" }}>
+            {isSaving ? "Saving…" : "Save settings"}
+          </button>
         </div>
       </form>
 
-      {/* No slot="aside" -- an aside forces the page into a narrower
-          two-column layout, which is the opposite of the full-width,
-          single-column boxed look this page should have. */}
-      <s-section heading="Where this data goes">
-        <s-paragraph>
+      <Card>
+        <h2 style={{ fontSize: "14px", fontWeight: 700, margin: "0 0 8px", color: brand.ink }}>Where this data goes</h2>
+        <p style={{ fontSize: "13px", color: brand.body, margin: 0 }}>
           Leads and email open/click/sent events are viewable on the{" "}
-          <s-link href="/app/astro-leads">Astro Leads</s-link> page.
-        </s-paragraph>
-      </s-section>
-    </s-page>
+          <a href="/app/astro-leads" style={{ color: brand.accent }}>Astro Leads</a> page.
+        </p>
+      </Card>
+    </PageIn>
   );
 }
 

@@ -10,31 +10,167 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 // ---- Layout tokens -------------------------------------------------
 
-// ---- Shared brand tokens (matches the reference dashboard design) ---
+// ---- Shared brand tokens (ONG Controls design pass, 2026-09) ---------
 // Kept here since table-kit is the one file every data-list page already
 // imports — other pages pull individual tokens in rather than duplicate
-// the palette.
+// the palette. Every existing key name is preserved (so nothing that
+// already reads brand.accent/brand.heading/etc. breaks) — only the
+// VALUES changed, to the warmer purple-accent palette from the ONG
+// Controls UI redesign; new keys were added alongside for the states
+// (ok/warn/danger, each with a bg/line/color triple) that design
+// introduced. `accentHover`/`accentTint`/`accentLine` are fixed-hex
+// approximations of that design's `color-mix()` CSS tints, since plain
+// JS call sites (Pill colors, computed template strings) can't evaluate
+// color-mix() themselves — GlobalStyles below defines the real
+// color-mix() custom properties for anything written as inline CSS.
 export const brand = {
-  accent: "#2563EB",
-  accentHover: "#1D4ED8",
-  accentTint: "#EFF4FF",
-  heading: "#1E3A8A",
-  body: "#374151",
-  muted: "#6B7280",
-  faint: "#9CA3AF",
-  success: "#16A34A",
-  danger: "#DC2626",
-  border: "#E5E7EB",
-  divider: "#EDEEF1",
-  panel: "#F9FAFB",
-  page: "#F3F4F6",
-  shadow: "0 1px 2px rgba(16,24,40,0.05)",
+  accent: "#5B45D6",
+  accentHover: "#4934B8",
+  accentTint: "#F1EEFB",
+  accentLine: "#DAD1F5",
+  ink: "#16141F",
+  heading: "#241F33",
+  body: "#4A4557",
+  muted: "#7A7488",
+  faint: "#A39DB2",
+  success: "#0F8A5F",
+  successBg: "#E9F7F1",
+  successLine: "#BFE6D5",
+  warn: "#9A5B08",
+  warnBg: "#FDF5E7",
+  warnLine: "#F2DDB4",
+  danger: "#CE2247",
+  dangerBg: "#FDEEF1",
+  dangerLine: "#F6C9D4",
+  border: "#E8E5F0",
+  divider: "#F1EFF6",
+  panel: "#FAF9FC",
+  page: "#F6F5FA",
+  shadow: "0 1px 2px rgba(22,20,31,0.05)",
+  lift: "0 8px 24px -10px rgba(22,20,31,0.18)",
+  mono: "'IBM Plex Mono', Menlo, Consolas, monospace",
 };
+
+// One {bg, line, color} triple per semantic state, so pages read
+// `statusTone("ok")` instead of re-hardcoding the same hex three
+// different ways across three different files. "read" is the one
+// WhatsApp-specific extra state (a message that's been read, shown in
+// the accent color rather than green/red/amber).
+export function statusTone(kind) {
+  switch (kind) {
+    case "ok":
+      return { bg: brand.successBg, line: brand.successLine, color: brand.success };
+    case "warn":
+      return { bg: brand.warnBg, line: brand.warnLine, color: brand.warn };
+    case "danger":
+      return { bg: brand.dangerBg, line: brand.dangerLine, color: brand.danger };
+    case "read":
+      return { bg: brand.accentTint, line: brand.accentLine, color: brand.accent };
+    default:
+      return { bg: brand.panel, line: brand.border, color: brand.muted };
+  }
+}
+
+// Root design tokens + Google Fonts + shared keyframes/scrollbar — one
+// <style> tag, rendered once from the app shell (app.jsx), not per page.
+// CSS custom properties here are the "real" version of the brand.* hex
+// approximations above -- anything written as inline CSS (gradients,
+// box-shadows, :hover rules elsewhere in this file) can reference
+// var(--accent-soft) etc. directly instead of the fixed hex.
+export function GlobalStyles() {
+  return (
+    <style>{`
+      @import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+      :root {
+        --accent: ${brand.accent}; --accent-soft: color-mix(in srgb, var(--accent) 9%, #fff);
+        --accent-line: color-mix(in srgb, var(--accent) 22%, #fff);
+        --ink: ${brand.ink}; --heading: ${brand.heading}; --body: ${brand.body};
+        --muted: ${brand.muted}; --faint: ${brand.faint};
+        --border: ${brand.border}; --divider: ${brand.divider}; --panel: ${brand.panel}; --page: ${brand.page};
+        --ok: ${brand.success}; --ok-bg: ${brand.successBg}; --ok-line: ${brand.successLine};
+        --warn: ${brand.warn}; --warn-bg: ${brand.warnBg}; --warn-line: ${brand.warnLine};
+        --danger: ${brand.danger}; --danger-bg: ${brand.dangerBg}; --danger-line: ${brand.dangerLine};
+        --card: ${brand.shadow}; --lift: ${brand.lift};
+      }
+      body, s-page, s-section { font-family: 'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important; }
+      @keyframes ongIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+      @keyframes ongPop { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
+      @keyframes ongFade { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes ongShimmer { from { background-position: -420px 0; } to { background-position: 420px 0; } }
+      @keyframes ongSpin { to { transform: rotate(360deg); } }
+      @keyframes ongPulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+      ::-webkit-scrollbar { width: 11px; height: 11px; }
+      ::-webkit-scrollbar-thumb { background: #DAD6E4; border-radius: 8px; border: 3px solid transparent; background-clip: content-box; }
+      ::-webkit-scrollbar-thumb:hover { background: #C4BED4; background-clip: content-box; }
+      .dt-row { transition: background 0.13s ease; }
+      .dt-row:hover { background: var(--panel); }
+      .dt-th-sort { cursor: pointer; user-select: none; }
+      .dt-th-sort:hover { color: var(--body); }
+    `}</style>
+  );
+}
+
+// Deprecated -- the hover/sort CSS this used to render per-page now lives
+// in GlobalStyles above (rendered once, from the app shell), since every
+// page needs it and duplicating one <style> tag per page was pointless.
+// Kept as a no-op so any page that still calls it doesn't need touching
+// just for that.
+export function TableGlobalStyles() {
+  return null;
+}
+
+// Bordered white rounded card, the base unit almost every page's content
+// is built from now — optional hover-lift (used for clickable cards like
+// Overview's section grid) and a padding override for cards that need
+// their own inner header band instead of uniform padding.
+export function Card({ children, hover, padding = "18px 20px", style }) {
+  const [hovering, setHovering] = useState(false);
+  return (
+    <div
+      onMouseEnter={hover ? () => setHovering(true) : undefined}
+      onMouseLeave={hover ? () => setHovering(false) : undefined}
+      style={{
+        background: "#fff",
+        border: `1px solid ${brand.border}`,
+        borderRadius: "14px",
+        boxShadow: hover && hovering ? brand.lift : brand.shadow,
+        transform: hover && hovering ? "translateY(-2px)" : "none",
+        transition: "box-shadow 0.18s, transform 0.18s",
+        padding,
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+// Page-top heading block — every rewritten page opens with this instead
+// of Shopify's own <s-page heading="…">, now that the app shell (sidebar
+// + breadcrumb header) owns the page chrome instead of App Bridge's
+// Polaris-style page wrapper.
+export function PageHeader({ title, description, action }) {
+  return (
+    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "20px", flexWrap: "wrap", marginBottom: "22px" }}>
+      <div>
+        <h1 style={{ margin: "0 0 5px", fontSize: "24px", fontWeight: 700, letterSpacing: "-0.02em", color: brand.ink }}>{title}</h1>
+        {description && <p style={{ margin: 0, fontSize: "14px", color: brand.muted }}>{description}</p>}
+      </div>
+      {action}
+    </div>
+  );
+}
+
+// Wraps a page's whole body in the same fade-in-and-rise entrance used
+// for every tab switch in the ONG Controls design pass.
+export function PageIn({ children }) {
+  return <div style={{ animation: "ongIn 0.3s cubic-bezier(.22,.8,.3,1) both" }}>{children}</div>;
+}
 
 export const tableWrapStyle = {
   overflowX: "auto",
   border: `1px solid ${brand.border}`,
-  borderRadius: "12px",
+  borderRadius: "14px",
   boxShadow: brand.shadow,
   width: "100%",
 };
@@ -62,19 +198,6 @@ export const tdStyle = {
   color: brand.body,
 };
 
-// One shared <style> block (hover state needs a real CSS rule, not an
-// inline style, since inline styles can't express :hover) — each page
-// renders this once near the top of its table section.
-export function TableGlobalStyles() {
-  return (
-    <style>{`
-      .dt-row { transition: background 0.1s ease; }
-      .dt-row:hover { background: ${brand.panel}; }
-      .dt-th-sort { cursor: pointer; user-select: none; }
-      .dt-th-sort:hover { color: ${brand.body}; }
-    `}</style>
-  );
-}
 
 // ---- Sorting ---------------------------------------------------------
 
@@ -392,6 +515,13 @@ const ICON_PATHS = {
   "check-circle": <><circle cx="12" cy="12" r="9" /><polyline points="8 12 11 15 16 9" /></>,
   "x-circle": <><circle cx="12" cy="12" r="9" /><line x1="9" y1="9" x2="15" y2="15" /><line x1="15" y1="9" x2="9" y2="15" /></>,
   package_box: <path d="M3 8 12 4 21 8 12 12 3 8Z" />,
+  "chevron-right": <polyline points="9 6 15 12 9 18" />,
+  heart: <path d="M12 20s-8-4.9-8-10a4.6 4.6 0 0 1 8-3 4.6 4.6 0 0 1 8 3c0 5.1-8 10-8 10Z" />,
+  tag: <><path d="M3 3h8l10 10-8 8L3 11V3Z" /><circle cx="7.5" cy="7.5" r="1.4" /></>,
+  grid: <><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></>,
+  alert: <><path d="M12 3 22 20 2 20Z" /><line x1="12" y1="9" x2="12" y2="14" /><circle cx="12" cy="17" r="0.7" fill="currentColor" stroke="none" /></>,
+  x: <><line x1="5" y1="5" x2="19" y2="19" /><line x1="19" y1="5" x2="5" y2="19" /></>,
+  undo: <><polyline points="9 5 4 10 9 15" /><path d="M4 10h9a6 6 0 0 1 0 12h-3" /></>,
 };
 
 /** A single stroke icon from the shared set above. `name` picks the

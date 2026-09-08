@@ -1,93 +1,41 @@
-import { Outlet, useLoaderData, useRouteError, NavLink } from "react-router";
+import { Outlet, useLoaderData, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 import { authenticate } from "../shopify.server";
-import { Icon, brand } from "../components/table-kit";
+import { getAttentionSummary } from "../utils/attention.server";
+import { GlobalStyles } from "../components/table-kit";
+import { AppShell } from "../components/app-shell";
+import { ToastProvider } from "../components/toast";
 
 export const loader = async ({ request }) => {
   await authenticate.admin(request);
 
+  // Cheap, DB-only "does anything need attention" signal (see
+  // attention.server.js) — drives the sidebar's badge counts/health dot
+  // and the header's banner. Wrapped so a query hiccup here never takes
+  // down every page in the app (this loader runs on every navigation).
+  let attention = { items: [], badges: {}, healthy: true };
+  try {
+    attention = await getAttentionSummary();
+  } catch (err) {
+    console.error("[app.jsx] getAttentionSummary failed:", err);
+  }
+
   // eslint-disable-next-line no-undef
-  return { apiKey: process.env.SHOPIFY_API_KEY || "" };
+  return { apiKey: process.env.SHOPIFY_API_KEY || "", attention };
 };
 
-// Same 8 destinations that used to live in <s-app-nav> (Shopify's OWN
-// sidebar, nested under the app's name in Shopify's admin chrome) --
-// moved to an in-app tab bar instead, per explicit request. Shopify's
-// sidebar now just shows this app as a single entry with no sub-items;
-// clicking it lands on the root route (Jewelry Pricing) same as
-// before, and every page navigates from here on out.
-const NAV_ITEMS = [
-  { href: "/app/overview", label: "Overview" },
-  { href: "/app", label: "Jewelry Pricing", end: true },
-  { href: "/app/astro-leads", label: "Astro Leads" },
-  { href: "/app/wishlist-leads", label: "Wishlist Leads" },
-  { href: "/app/whatsapp-events", label: "WhatsApp Events" },
-  { href: "/app/server-health", label: "Server" },
-  { href: "/app/settings", label: "Settings" },
-  { href: "/app/additional", label: "Additional page" },
-];
-
-function InAppNav() {
-  return (
-    <nav
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "2px",
-        overflowX: "auto",
-        padding: "0 20px",
-        background: "#ffffff",
-        borderBottom: "1px solid #E5E7EB",
-        position: "sticky",
-        top: 0,
-        zIndex: 10,
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "8px",
-          paddingRight: "18px",
-          marginRight: "8px",
-          borderRight: `1px solid ${brand.divider}`,
-        }}
-      >
-        <Icon name="diamond" size={18} color={brand.heading} />
-        <span style={{ fontSize: "13.5px", fontWeight: 700, color: brand.heading, letterSpacing: "-0.01em", whiteSpace: "nowrap" }}>
-          ONG Controls
-        </span>
-      </div>
-      {NAV_ITEMS.map((item) => (
-        <NavLink
-          key={item.href}
-          to={item.href}
-          end={item.end}
-          style={({ isActive }) => ({
-            padding: "12px 14px",
-            fontSize: "13px",
-            fontWeight: isActive ? 600 : 500,
-            color: isActive ? "#1E3A8A" : "#6B7280",
-            borderBottom: isActive ? "2px solid #1E3A8A" : "2px solid transparent",
-            textDecoration: "none",
-            whiteSpace: "nowrap",
-          })}
-        >
-          {item.label}
-        </NavLink>
-      ))}
-    </nav>
-  );
-}
-
 export default function App() {
-  const { apiKey } = useLoaderData();
+  const { apiKey, attention } = useLoaderData();
 
   return (
     <AppProvider embedded apiKey={apiKey}>
-      <InAppNav />
-      <Outlet />
+      <GlobalStyles />
+      <ToastProvider>
+        <AppShell attention={attention}>
+          <Outlet />
+        </AppShell>
+      </ToastProvider>
     </AppProvider>
   );
 }

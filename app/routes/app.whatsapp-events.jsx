@@ -33,7 +33,25 @@ import { getAppSettings } from "../utils/appSettings.server";
 import { sendWhatsAppForLead } from "../utils/astroAdvice.server";
 import { sendOrderProcessingWhatsApp } from "../utils/interakt.server";
 import { resendWishlistWhatsapp } from "../utils/wishlist.server";
-import { tableWrapStyle, tableStyle, thStyle, tdStyle, TableGlobalStyles, useSort, SortTh, Pill, RowMenu, Icon, useBulkSelect, SelectAllTh, BulkActionsBar } from "../components/table-kit";
+import {
+  tableWrapStyle,
+  tableStyle,
+  thStyle,
+  tdStyle,
+  Pill,
+  RowMenu,
+  Icon,
+  useSort,
+  SortTh,
+  useBulkSelect,
+  SelectAllTh,
+  BulkActionsBar,
+  brand,
+  Card,
+  PageHeader,
+  PageIn,
+} from "../components/table-kit";
+import { useToast } from "../components/toast";
 import { FriendlyErrorInline } from "../components/friendly-error";
 
 const PAGE_SIZE = 500;
@@ -332,24 +350,37 @@ export const loader = async ({ request }) => {
 const smallBtn = {
   fontSize: "12px",
   padding: "6px 14px",
-  borderRadius: "8px",
-  border: "1px solid #E5E7EB",
-  background: "#ffffff",
+  borderRadius: "9px",
+  border: `1px solid ${brand.border}`,
+  background: "#fff",
   cursor: "pointer",
-  marginBottom: "10px",
+  color: brand.body,
+  fontWeight: 500,
+};
+
+const inputStyle = {
+  padding: "9px 12px",
+  borderRadius: "10px",
+  border: `1px solid ${brand.border}`,
+  fontSize: "12.5px",
+  color: brand.ink,
+  background: "#fff",
+  minWidth: "220px",
 };
 
 function StatTile({ label, value, color }) {
   return (
-    <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: "12px", boxShadow: "0 1px 2px rgba(16,24,40,0.05)", padding: "14px 18px", minWidth: "120px" }}>
-      <div style={{ fontSize: "12px", color: "#374151", marginBottom: "8px" }}>{label}</div>
-      <div style={{ fontSize: "22px", fontWeight: 500, letterSpacing: "-0.02em", color: color || "#1E3A8A" }}>{value}</div>
-    </div>
+    <Card padding="14px 18px" style={{ minWidth: "120px" }}>
+      <div style={{ fontSize: "12.5px", color: brand.muted, marginBottom: "8px" }}>{label}</div>
+      <div style={{ fontSize: "22px", fontWeight: 700, letterSpacing: "-0.02em", color: color || brand.ink }}>{value}</div>
+    </Card>
   );
 }
 
 function MessageRow({ m, selected, onToggleSelect }) {
   const fetcher = useFetcher();
+  const toast = useToast();
+  const [confirming, setConfirming] = useState(false);
   const busy = fetcher.state !== "idle";
 
   const retry = () => {
@@ -365,12 +396,13 @@ function MessageRow({ m, selected, onToggleSelect }) {
     }
   };
 
-  const deleteEntry = () => {
-    if (!window.confirm("Delete this event log entry? This only removes the log row, not the underlying lead/order.")) return;
+  const confirmDelete = () => {
+    setConfirming(false);
     fetcher.submit(
       { intent: "delete", messageId: m.messageId, deleteKey: m.messageId, deleteKeyType: m.isRealMessageId ? "messageId" : "id" },
       { method: "POST" }
     );
+    toast.show("Event log entry deleted");
   };
 
   const canRetry = m.kind === "Gem Recommendation" || m.kind === "Order Processing" || m.kind === "Wishlist";
@@ -391,40 +423,52 @@ function MessageRow({ m, selected, onToggleSelect }) {
       <td style={tdStyle}>{m.lead?.email || m.wishlistLead?.email || "—"}</td>
       <td style={tdStyle}>{m.phone || "—"}</td>
       <td style={tdStyle}>
-        {m.lead
-          ? [m.lead.lifeStoneGem, m.lead.beneficStoneGem, m.lead.luckyStoneGem].filter(Boolean).join(" / ") || "—"
-          : "—"}
+        {m.lead ? [m.lead.lifeStoneGem, m.lead.beneficStoneGem, m.lead.luckyStoneGem].filter(Boolean).join(" / ") || "—" : "—"}
       </td>
       <td style={tdStyle} title={m.failureReason || ""}>
         {m.failedAt ? (
-          <Pill label="Failed" active color="#DC2626" />
+          <Pill label="Failed" active color={brand.danger} />
         ) : m.readAt ? (
-          <Pill label="Read" active color="#6b5ce0" />
+          <Pill label="Read" active color={brand.accent} />
         ) : m.deliveredAt ? (
-          <Pill label="Delivered" active color="#16A34A" />
+          <Pill label="Delivered" active color={brand.success} />
         ) : m.sentAt ? (
-          <Pill label="Sent" active color="#8c7a4e" />
+          <Pill label="Sent" active color={brand.warn} />
         ) : (
-          <Pill label="—" color="#6B7280" />
+          <Pill label="—" color={brand.muted} />
         )}
       </td>
       <td style={tdStyle}>{m.deliveredAt ? new Date(m.deliveredAt).toLocaleString() : "—"}</td>
       <td style={tdStyle}>{m.readAt ? new Date(m.readAt).toLocaleString() : "—"}</td>
-      <td style={{ ...tdStyle, minWidth: "90px" }}>
-        <RowMenu
-          items={[
-            canRetry && { label: "Retry", onClick: retry, disabled: busy },
-            { label: "Delete", onClick: deleteEntry, tone: "danger", disabled: busy },
-          ]}
-        />
-        {result && result.intent !== "delete" && (
-          <div style={{ marginTop: "4px", maxWidth: "160px" }}>
-            {result.ok ? (
-              <span style={{ fontSize: "10px", color: "#16A34A" }}>Resent</span>
-            ) : (
-              <FriendlyErrorInline message="Couldn't resend" detail={result.status || result.error} />
-            )}
+      <td style={{ ...tdStyle, minWidth: "150px", textAlign: "right" }}>
+        {confirming ? (
+          <div style={{ display: "inline-flex", alignItems: "center", gap: "8px", animation: "ongFade 0.15s ease both" }}>
+            <span style={{ fontSize: "12px", color: brand.danger, fontWeight: 600 }}>Delete?</span>
+            <button type="button" onClick={confirmDelete} style={{ padding: "5px 11px", borderRadius: "8px", border: "none", background: brand.danger, color: "#fff", fontSize: "12px", fontWeight: 600, cursor: "pointer" }}>
+              Delete
+            </button>
+            <button type="button" onClick={() => setConfirming(false)} style={{ padding: "5px 11px", borderRadius: "8px", border: `1px solid ${brand.border}`, background: "#fff", color: brand.body, fontSize: "12px", cursor: "pointer" }}>
+              Cancel
+            </button>
           </div>
+        ) : (
+          <>
+            <RowMenu
+              items={[
+                canRetry && { label: "Retry", onClick: retry, disabled: busy },
+                { label: "Delete", onClick: () => setConfirming(true), tone: "danger", disabled: busy },
+              ]}
+            />
+            {result && result.intent !== "delete" && (
+              <div style={{ marginTop: "4px", maxWidth: "160px", textAlign: "left", marginLeft: "auto" }}>
+                {result.ok ? (
+                  <span style={{ fontSize: "10px", color: brand.success }}>Resent</span>
+                ) : (
+                  <FriendlyErrorInline message="Couldn't resend" detail={result.status || result.error} />
+                )}
+              </div>
+            )}
+          </>
         )}
       </td>
     </tr>
@@ -435,38 +479,38 @@ function MessageRow({ m, selected, onToggleSelect }) {
 // e.g. "UNFULFILLED" and still be cancelled), otherwise mapped from
 // GraphQL's displayFulfillmentStatus enum to a friendlier label.
 function orderStatusInfo(g) {
-  if (g.cancelledAt) return { label: "Cancelled", color: "#DC2626" };
+  if (g.cancelledAt) return { label: "Cancelled", color: brand.danger };
   const map = {
-    FULFILLED: { label: "Fulfilled", color: "#16A34A" },
-    PARTIALLY_FULFILLED: { label: "Partially fulfilled", color: "#B45309" },
-    UNFULFILLED: { label: "Unfulfilled", color: "#6B7280" },
-    ON_HOLD: { label: "On hold", color: "#B45309" },
-    SCHEDULED: { label: "Scheduled", color: "#6B7280" },
-    IN_PROGRESS: { label: "In progress", color: "#2563EB" },
-    PARTIALLY_FULFILLED_OVERSHOOT: { label: "Overshot fulfillment", color: "#B45309" },
-    RESTOCKED: { label: "Restocked", color: "#6B7280" },
-    PENDING_FULFILLMENT: { label: "Pending fulfillment", color: "#6B7280" },
-    REQUEST_DECLINED: { label: "Fulfillment declined", color: "#DC2626" },
+    FULFILLED: { label: "Fulfilled", color: brand.success },
+    PARTIALLY_FULFILLED: { label: "Partially fulfilled", color: brand.warn },
+    UNFULFILLED: { label: "Unfulfilled", color: brand.muted },
+    ON_HOLD: { label: "On hold", color: brand.warn },
+    SCHEDULED: { label: "Scheduled", color: brand.muted },
+    IN_PROGRESS: { label: "In progress", color: brand.accent },
+    PARTIALLY_FULFILLED_OVERSHOOT: { label: "Overshot fulfillment", color: brand.warn },
+    RESTOCKED: { label: "Restocked", color: brand.muted },
+    PENDING_FULFILLMENT: { label: "Pending fulfillment", color: brand.muted },
+    REQUEST_DECLINED: { label: "Fulfillment declined", color: brand.danger },
   };
   if (g.fulfillmentStatus && map[g.fulfillmentStatus]) return map[g.fulfillmentStatus];
   if (g.fulfillmentStatus) {
     // Unmapped enum value (Shopify adds these occasionally) -- still
     // show something readable instead of silently rendering blank.
     const label = g.fulfillmentStatus.replace(/_/g, " ").toLowerCase().replace(/^./, (c) => c.toUpperCase());
-    return { label, color: "#6B7280" };
+    return { label, color: brand.muted };
   }
-  return { label: "Unknown", color: "#9CA3AF" };
+  return { label: "Unknown", color: brand.faint };
 }
 
 // Same "OK/threw/skipped/sending" status-string convention used
 // everywhere else this app logs a send outcome (Server page, etc.).
 function timelineStatusInfo(status) {
-  if (!status) return { label: "—", color: "#9CA3AF" };
-  if (status.startsWith("OK")) return { label: "Sent", color: "#16A34A" };
-  if (status.startsWith("threw") || status.startsWith("failed to claim")) return { label: "Failed", color: "#DC2626" };
-  if (status.startsWith("skipped")) return { label: "Skipped", color: "#6B7280" };
-  if (status.startsWith("sending")) return { label: "Sending…", color: "#B45309" };
-  return { label: status.slice(0, 40), color: "#6B7280" };
+  if (!status) return { label: "—", color: brand.faint };
+  if (status.startsWith("OK")) return { label: "Sent", color: brand.success };
+  if (status.startsWith("threw") || status.startsWith("failed to claim")) return { label: "Failed", color: brand.danger };
+  if (status.startsWith("skipped")) return { label: "Skipped", color: brand.muted };
+  if (status.startsWith("sending")) return { label: "Sending…", color: brand.warn };
+  return { label: status.slice(0, 40), color: brand.muted };
 }
 
 // One order's full history: current live status up top, then every
@@ -478,23 +522,23 @@ function timelineStatusInfo(status) {
 function OrderProcessingCard({ g }) {
   const status = orderStatusInfo(g);
   return (
-    <div style={{ background: "#fff", border: `1px solid ${"#E5E7EB"}`, borderRadius: "12px", boxShadow: "0 1px 2px rgba(16,24,40,0.05)", marginBottom: "14px", overflow: "hidden" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px", padding: "14px 18px", background: "#F9FAFB", borderBottom: "1px solid #EDEEF1" }}>
+    <Card padding="0" style={{ marginBottom: "12px", overflow: "hidden" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px", padding: "14px 18px", background: brand.panel, borderBottom: `1px solid ${brand.divider}` }}>
         <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-          <span style={{ fontWeight: 600, fontSize: "13.5px", color: "#1E3A8A" }}>#{g.orderName}</span>
+          <span style={{ fontWeight: 700, fontSize: "14px", color: brand.ink, fontFamily: brand.mono }}>#{g.orderName}</span>
           <Pill label={status.label} active color={status.color} />
           {g.phone && (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "12px", color: "#6B7280" }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "12px", color: brand.muted, fontFamily: brand.mono }}>
               <Icon name="phone" size={12} /> {g.phone}
             </span>
           )}
           {g.email && (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "12px", color: "#6B7280" }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "12px", color: brand.muted }}>
               <Icon name="mail" size={12} /> {g.email}
             </span>
           )}
         </div>
-        <span style={{ fontSize: "11.5px", color: "#9CA3AF" }}>
+        <span style={{ fontSize: "11.5px", color: brand.faint }}>
           {g.timeline.length} notification{g.timeline.length === 1 ? "" : "s"} sent
         </span>
       </div>
@@ -502,32 +546,21 @@ function OrderProcessingCard({ g }) {
         {g.timeline.map((t, i) => {
           const s = timelineStatusInfo(t.status);
           return (
-            <div
-              key={i}
-              style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: "10px",
-                padding: "8px 0",
-                borderTop: i === 0 ? "none" : "1px dashed #EDEEF1",
-              }}
-            >
-              <span style={{ fontSize: "11px", color: "#9CA3AF", minWidth: "150px" }}>
-                {new Date(t.notifiedAt).toLocaleString()}
-              </span>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", fontSize: "12px", minWidth: "78px", fontWeight: 500, color: t.channel === "WhatsApp" ? "#16A34A" : "#2563EB" }}>
+            <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: "10px", padding: "8px 0", borderTop: i === 0 ? "none" : `1px dashed ${brand.divider}` }}>
+              <span style={{ fontSize: "11px", color: brand.faint, minWidth: "150px", fontFamily: brand.mono }}>{new Date(t.notifiedAt).toLocaleString()}</span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", fontSize: "12px", minWidth: "78px", fontWeight: 500, color: t.channel === "WhatsApp" ? brand.success : brand.accent }}>
                 <Icon name={t.channel === "WhatsApp" ? "message" : "mail"} size={12} />
                 {t.channel === "WhatsApp" ? "WhatsApp" : "Email"}
               </span>
               <Pill label={s.label} active color={s.color} />
-              <span style={{ fontSize: "11.5px", color: "#9CA3AF", flex: 1, wordBreak: "break-word" }} title={t.status || ""}>
+              <span style={{ fontSize: "11.5px", color: brand.faint, flex: 1, wordBreak: "break-word" }} title={t.status || ""}>
                 {t.status && t.status.length > 60 ? t.status.slice(0, 60) + "…" : t.status}
               </span>
             </div>
           );
         })}
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -545,26 +578,20 @@ function OrderProcessingSection({ orderGroups }) {
 
   return (
     <div style={{ marginBottom: "28px" }}>
-      <h2 style={{ fontSize: "15px", fontWeight: 600, color: "#1E3A8A", margin: "0 0 4px" }}>
+      <h2 style={{ fontSize: "15px", fontWeight: 700, color: brand.ink, margin: "0 0 4px" }}>
         Order Processing ({orderGroups.length} order{orderGroups.length === 1 ? "" : "s"})
       </h2>
-      <p style={{ fontSize: "12px", color: "#6B7280", margin: "0 0 12px" }}>
+      <p style={{ fontSize: "12.5px", color: brand.muted, margin: "0 0 12px" }}>
         One card per order, with its current live status and every "marked as in progress" WhatsApp/email attempt
         ever sent for it — including if it fired more than once for genuinely separate occurrences.
       </p>
       {orderGroups.length > 0 && (
-        <input
-          type="text"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search order #, phone, email…"
-          style={{ padding: "8px 12px", borderRadius: "10px", border: "1px solid #E5E7EB", fontSize: "12.5px", color: "#374151", minWidth: "240px", marginBottom: "12px" }}
-        />
+        <input type="text" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search order #, phone, email…" style={{ ...inputStyle, marginBottom: "12px" }} />
       )}
       {orderGroups.length === 0 ? (
-        <p style={{ fontSize: "12.5px", color: "#6B7280" }}>No order-processing notifications sent yet.</p>
+        <p style={{ fontSize: "12.5px", color: brand.muted }}>No order-processing notifications sent yet.</p>
       ) : filtered.length === 0 ? (
-        <p style={{ fontSize: "12.5px", color: "#6B7280" }}>No orders match "{q}".</p>
+        <p style={{ fontSize: "12.5px", color: brand.muted }}>No orders match "{q}".</p>
       ) : (
         filtered.map((g) => <OrderProcessingCard key={g.orderId} g={g} />)
       )}
@@ -596,6 +623,7 @@ function matchesStatus(m, filter) {
 export default function WhatsAppEventsPage() {
   const { messages, summary, orderGroups } = useLoaderData();
   const revalidator = useRevalidator();
+  const toast = useToast();
   const isRefreshing = revalidator.state === "loading";
 
   const [searchText, setSearchText] = useState("");
@@ -623,8 +651,10 @@ export default function WhatsAppEventsPage() {
 
   useEffect(() => {
     if (bulkFetcher.data?.intent === "bulkDelete" && bulkFetcher.data.ok) {
+      const count = bulkFetcher.data.count;
       bulk.clear();
       revalidator.revalidate();
+      toast.show(`${count} event${count === 1 ? "" : "s"} deleted`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bulkFetcher.data]);
@@ -638,109 +668,89 @@ export default function WhatsAppEventsPage() {
   };
 
   return (
-    <s-page heading={`WhatsApp Events (${summary.total})`} inlineSize="large">
-      <s-section>
-        <TableGlobalStyles />
-        <button type="button" style={smallBtn} onClick={() => revalidator.revalidate()} disabled={isRefreshing}>
-          {isRefreshing ? "Refreshing…" : "↻ Refresh"}
-        </button>
-        <p style={{ margin: "0 0 14px", fontSize: "12px", color: "#6B7280" }}>
-          Real delivered/read status from Interakt's own webhook — Interakt has no API to fetch this, so nothing
-          shows here until the webhook is registered (see{" "}
-          <s-link href="/app/settings">Settings → Delivery/read tracking</s-link>) and a message has actually gone
-          through end to end. Each row's "..." menu has Retry (resend) and Delete (removes this log entry only).
-        </p>
+    <PageIn>
+      <PageHeader title={`Messages & order notifications`} description="Delivered and read status comes straight from Interakt's webhook." />
 
-        <div style={{ display: "flex", gap: "12px", marginBottom: "20px", flexWrap: "wrap" }}>
-          <StatTile label="Total messages" value={summary.total} />
-          <StatTile label="Delivered" value={summary.delivered} color="#16A34A" />
-          <StatTile label="Read" value={summary.read} color="#6b5ce0" />
-          <StatTile label="Failed" value={summary.failed} color="#DC2626" />
-        </div>
+      <button type="button" onClick={() => revalidator.revalidate()} disabled={isRefreshing} style={{ ...smallBtn, marginBottom: "12px" }}>
+        {isRefreshing ? "Refreshing…" : "↻ Refresh"}
+      </button>
+      <p style={{ margin: "0 0 14px", fontSize: "12.5px", color: brand.muted }}>
+        Real delivered/read status from Interakt's own webhook — Interakt has no API to fetch this, so nothing
+        shows here until the webhook is registered (see{" "}
+        <a href="/app/settings" style={{ color: brand.accent }}>Settings → Delivery/read tracking</a>) and a message
+        has actually gone through end to end. Each row's "..." menu has Retry (resend) and Delete (removes this log
+        entry only).
+      </p>
 
-        <OrderProcessingSection orderGroups={orderGroups} />
+      <div style={{ display: "flex", gap: "12px", marginBottom: "20px", flexWrap: "wrap" }}>
+        <StatTile label="Total messages" value={summary.total} />
+        <StatTile label="Delivered" value={summary.delivered} color={brand.success} />
+        <StatTile label="Read" value={summary.read} color={brand.accent} />
+        <StatTile label="Failed" value={summary.failed} color={brand.danger} />
+      </div>
 
-        <h2 style={{ fontSize: "15px", fontWeight: 600, color: "#1E3A8A", margin: "0 0 12px" }}>
-          Gem Recommendation &amp; Wishlist
-        </h2>
+      <OrderProcessingSection orderGroups={orderGroups} />
 
-        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center", marginBottom: "14px" }}>
-          <input
-            type="text"
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-            placeholder="Search phone, email, name, order #, item…"
-            style={{ padding: "8px 12px", borderRadius: "10px", border: "1px solid #E5E7EB", fontSize: "12.5px", color: "#374151", minWidth: "240px" }}
-          />
-          <select
-            value={kindFilter}
-            onChange={(e) => setKindFilter(e.target.value)}
-            style={{ padding: "8px 12px", borderRadius: "10px", border: "1px solid #E5E7EB", fontSize: "12.5px", color: "#374151" }}
-          >
-            {KIND_OPTIONS.map((k) => (
-              <option key={k} value={k}>{k}</option>
-            ))}
-          </select>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            style={{ padding: "8px 12px", borderRadius: "10px", border: "1px solid #E5E7EB", fontSize: "12.5px", color: "#374151" }}
-          >
-            {STATUS_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-          {(searchText || kindFilter !== "All types" || statusFilter !== "all") && (
-            <button
-              type="button"
-              onClick={() => { setSearchText(""); setKindFilter("All types"); setStatusFilter("all"); }}
-              style={{ ...smallBtn, marginBottom: 0, fontSize: "12px", padding: "6px 12px" }}
-            >
-              Clear filters
-            </button>
-          )}
-          <span style={{ fontSize: "12px", color: "#6B7280" }}>
-            Showing {filteredMessages.length} of {messages.length}
-          </span>
-        </div>
+      <h2 style={{ fontSize: "15px", fontWeight: 700, color: brand.ink, margin: "0 0 12px" }}>Gem Recommendation &amp; Wishlist</h2>
 
-        <BulkActionsBar count={bulk.count} onDelete={handleBulkDelete} busy={bulkBusy} noun="event" />
-
-        {messages.length === 0 ? (
-          <s-paragraph>
-            No Gem Recommendation or Wishlist WhatsApp events logged yet — either the webhook isn't registered
-            yet, or no message has been sent since it was. (Order Processing has its own section above.)
-          </s-paragraph>
-        ) : filteredMessages.length === 0 ? (
-          <s-paragraph>No events match the current filters.</s-paragraph>
-        ) : (
-          <div style={tableWrapStyle}>
-            <table style={tableStyle}>
-              <thead>
-                <tr>
-                  <SelectAllTh checked={bulk.allSelected} indeterminate={bulk.count > 0 && !bulk.allSelected} onChange={bulk.toggleAll} />
-                  <SortTh label="Sent" sortKey="sentAt" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
-                  <SortTh label="Type" sortKey="kind" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
-                  <th style={thStyle}>Name / Order # / Item</th>
-                  <th style={thStyle}>Email</th>
-                  <SortTh label="Phone" sortKey="phone" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
-                  <th style={thStyle}>Life / Benefic / Lucky</th>
-                  <th style={thStyle}>Status</th>
-                  <SortTh label="Delivered" sortKey="deliveredAt" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
-                  <SortTh label="Read" sortKey="readAt" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
-                  <th style={thStyle}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedMessages.map((m) => (
-                  <MessageRow key={m.messageId} m={m} selected={bulk.isSelected(m.messageId)} onToggleSelect={() => bulk.toggle(m.messageId)} />
-                ))}
-              </tbody>
-            </table>
-          </div>
+      <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center", marginBottom: "14px" }}>
+        <input type="text" value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Search phone, email, name, order #, item…" style={{ ...inputStyle, minWidth: "240px" }} />
+        <select value={kindFilter} onChange={(e) => setKindFilter(e.target.value)} style={{ ...inputStyle, minWidth: "auto" }}>
+          {KIND_OPTIONS.map((k) => (
+            <option key={k} value={k}>{k}</option>
+          ))}
+        </select>
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ ...inputStyle, minWidth: "auto" }}>
+          {STATUS_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+        {(searchText || kindFilter !== "All types" || statusFilter !== "all") && (
+          <button type="button" onClick={() => { setSearchText(""); setKindFilter("All types"); setStatusFilter("all"); }} style={smallBtn}>
+            Clear filters
+          </button>
         )}
-      </s-section>
-    </s-page>
+        <span style={{ fontSize: "12.5px", color: brand.muted, marginLeft: "auto" }}>
+          Showing {filteredMessages.length} of {messages.length}
+        </span>
+      </div>
+
+      <BulkActionsBar count={bulk.count} onDelete={handleBulkDelete} busy={bulkBusy} noun="event" />
+
+      {messages.length === 0 ? (
+        <p style={{ fontSize: "13px", color: brand.muted }}>
+          No Gem Recommendation or Wishlist WhatsApp events logged yet — either the webhook isn't registered yet, or
+          no message has been sent since it was. (Order Processing has its own section above.)
+        </p>
+      ) : filteredMessages.length === 0 ? (
+        <p style={{ fontSize: "13px", color: brand.muted }}>No events match the current filters.</p>
+      ) : (
+        <div style={tableWrapStyle}>
+          <table style={tableStyle}>
+            <thead>
+              <tr>
+                <SelectAllTh checked={bulk.allSelected} indeterminate={bulk.count > 0 && !bulk.allSelected} onChange={bulk.toggleAll} />
+                <SortTh label="Sent" sortKey="sentAt" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                <SortTh label="Type" sortKey="kind" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                <th style={thStyle}>Name / Order # / Item</th>
+                <th style={thStyle}>Email</th>
+                <SortTh label="Phone" sortKey="phone" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                <th style={thStyle}>Life / Benefic / Lucky</th>
+                <th style={thStyle}>Status</th>
+                <SortTh label="Delivered" sortKey="deliveredAt" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                <SortTh label="Read" sortKey="readAt" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                <th style={thStyle}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedMessages.map((m) => (
+                <MessageRow key={m.messageId} m={m} selected={bulk.isSelected(m.messageId)} onToggleSelect={() => bulk.toggle(m.messageId)} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </PageIn>
   );
 }
 

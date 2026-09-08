@@ -8,12 +8,27 @@
  */
 import { useEffect, useState } from "react";
 import { useFetcher, useLoaderData, useRevalidator } from "react-router";
-import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { processDueWishlistEmails, resendWishlistLeadEmail, resendWishlistWhatsapp } from "../utils/wishlist.server";
-import { tableWrapStyle, tableStyle, thStyle, tdStyle, TableGlobalStyles, useSort, SortTh, Pill, RowMenu, useBulkSelect, SelectAllTh, BulkActionsBar } from "../components/table-kit";
+import {
+  tableWrapStyle,
+  tableStyle,
+  thStyle,
+  tdStyle,
+  Pill,
+  RowMenu,
+  useSort,
+  SortTh,
+  useBulkSelect,
+  SelectAllTh,
+  BulkActionsBar,
+  brand,
+  PageHeader,
+  PageIn,
+} from "../components/table-kit";
+import { useToast } from "../components/toast";
 import { FriendlyErrorInline } from "../components/friendly-error";
 
 const PAGE_SIZE = 100;
@@ -136,20 +151,32 @@ export const loader = async ({ request }) => {
 };
 
 const smallBtn = {
-  fontSize: "11px",
-  padding: "4px 10px",
-  borderRadius: "8px",
-  border: "1px solid #E5E7EB",
-  background: "#ffffff",
+  fontSize: "12px",
+  padding: "6px 14px",
+  borderRadius: "9px",
+  border: `1px solid ${brand.border}`,
+  background: "#fff",
   cursor: "pointer",
-  marginRight: "4px",
-  marginBottom: "4px",
+  color: brand.body,
+  fontWeight: 500,
+};
+
+const inputStyle = {
+  padding: "9px 12px",
+  borderRadius: "10px",
+  border: `1px solid ${brand.border}`,
+  fontSize: "12.5px",
+  color: brand.ink,
+  background: "#fff",
+  minWidth: "220px",
 };
 
 function LeadRow({ lead, selected, onToggleSelect }) {
   const fetcher = useFetcher();
+  const toast = useToast();
   const [notes, setNotes] = useState(lead.notes || "");
   const [dirty, setDirty] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const busy = fetcher.state !== "idle";
 
   useEffect(() => {
@@ -159,9 +186,10 @@ function LeadRow({ lead, selected, onToggleSelect }) {
   const sendNow = () => fetcher.submit({ intent: "sendNow", leadId: lead.id }, { method: "POST" });
   const retryWhatsapp = () => fetcher.submit({ intent: "resendWhatsapp", leadId: lead.id }, { method: "POST" });
   const saveNotes = () => fetcher.submit({ intent: "saveNotes", leadId: lead.id, notes }, { method: "POST" });
-  const deleteLead = () => {
-    if (!window.confirm(`Delete this lead (${lead.email || "no email"})? This can't be undone.`)) return;
+  const confirmDelete = () => {
+    setConfirming(false);
     fetcher.submit({ intent: "delete", leadId: lead.id }, { method: "POST" });
+    toast.show(`${lead.email || "Lead"} deleted`);
   };
 
   if (fetcher.data?.intent === "delete" && fetcher.data.ok && fetcher.data.leadId === lead.id) {
@@ -188,35 +216,15 @@ function LeadRow({ lead, selected, onToggleSelect }) {
               <div
                 key={p.handle}
                 title={p.title}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  background: "#F9FAFB",
-                  border: "1px solid #EDEEF1",
-                  borderRadius: "10px",
-                  padding: "3px 8px 3px 3px",
-                }}
+                style={{ display: "flex", alignItems: "center", gap: "6px", background: brand.panel, border: `1px solid ${brand.divider}`, borderRadius: "10px", padding: "3px 8px 3px 3px" }}
               >
                 {p.imageUrl ? (
-                  <img
-                    src={p.imageUrl}
-                    alt={p.title}
-                    width={28}
-                    height={28}
-                    style={{ width: 28, height: 28, borderRadius: 6, objectFit: "cover", display: "block" }}
-                  />
+                  <img src={p.imageUrl} alt={p.title} width={28} height={28} style={{ width: 28, height: 28, borderRadius: 6, objectFit: "cover", display: "block" }} />
                 ) : (
-                  <div style={{ width: 28, height: 28, borderRadius: 6, background: "#EDEEF1" }} />
+                  <div style={{ width: 28, height: 28, borderRadius: 6, background: brand.divider }} />
                 )}
-                <span style={{ fontSize: "11.5px", color: "#374151", maxWidth: "140px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {p.title}
-                </span>
-                {p.price ? (
-                  <span style={{ fontSize: "11.5px", color: "#2563EB", fontWeight: 500 }}>
-                    ₹{Number(p.price).toLocaleString("en-IN")}
-                  </span>
-                ) : null}
+                <span style={{ fontSize: "11.5px", color: brand.body, maxWidth: "140px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.title}</span>
+                {p.price ? <span style={{ fontSize: "11.5px", color: brand.accent, fontWeight: 500 }}>₹{Number(p.price).toLocaleString("en-IN")}</span> : null}
               </div>
             ))}
           </div>
@@ -229,36 +237,33 @@ function LeadRow({ lead, selected, onToggleSelect }) {
         )}
       </td>
       <td style={tdStyle} title={lead.emailSendStatus || "pending — not due yet"}>
-        <Pill label="Sent" active={lead.emailStatus.sent > 0} color="#16A34A" />
+        <Pill label="Sent" active={lead.emailStatus.sent > 0} color={brand.success} />
         <Pill
           label={"Opened" + (lead.emailStatus.opened > 1 ? ` ×${lead.emailStatus.opened}` : "")}
           active={lead.emailStatus.opened > 0}
-          color="#6b5ce0"
+          color={brand.accent}
         />
         <Pill
           label={"Clicked" + (lead.emailStatus.clicked > 1 ? ` ×${lead.emailStatus.clicked}` : "")}
           active={lead.emailStatus.clicked > 0}
-          color="#2563EB"
+          color={brand.accent}
         />
       </td>
       <td style={tdStyle} title={lead.whatsappSendStatus || "pending — not due yet"}>
         {lead.whatsappSendStatus?.startsWith("OK") ? (
-          <Pill label="Sent" active color="#25d366" />
+          <Pill label="Sent" active color={brand.success} />
         ) : lead.whatsappSendStatus?.startsWith("skipped") ? (
-          <Pill label="Skipped" active color="#6B7280" />
+          <Pill label="Skipped" active color={brand.muted} />
         ) : lead.whatsappSendStatus ? (
-          <Pill label="Failed" active color="#DC2626" />
+          <Pill label="Failed" active color={brand.danger} />
         ) : (
-          <Pill label="—" color="#6B7280" />
+          <Pill label="—" color={brand.muted} />
         )}
       </td>
       <td style={{ ...tdStyle, whiteSpace: "normal", minWidth: "180px" }}>
         {lead.emailStatus.clickedLinks?.length
           ? lead.emailStatus.clickedLinks.map((link, i) => (
-              <span
-                key={i}
-                style={{ display: "inline-block", fontSize: "11px", color: "#2563EB", background: "#EFF4FF", padding: "2px 7px", borderRadius: "8px", margin: "1px 3px 1px 0" }}
-              >
+              <span key={i} style={{ display: "inline-block", fontSize: "11px", color: brand.accent, background: brand.accentTint, padding: "2px 7px", borderRadius: "8px", margin: "1px 3px 1px 0" }}>
                 {link}
               </span>
             ))
@@ -272,35 +277,49 @@ function LeadRow({ lead, selected, onToggleSelect }) {
             setDirty(true);
           }}
           placeholder="Internal note…"
-          style={{ width: "100%", minHeight: "50px", fontSize: "12px", padding: "5px", border: "1px solid #E5E7EB", borderRadius: "8px", boxSizing: "border-box", resize: "vertical", color: "#374151" }}
+          style={{ width: "100%", minHeight: "50px", fontSize: "12px", padding: "6px 8px", border: `1px solid ${brand.border}`, borderRadius: "8px", boxSizing: "border-box", resize: "vertical", color: brand.body }}
         />
         {dirty && (
-          <button type="button" style={{ ...smallBtn, marginTop: "4px" }} onClick={saveNotes} disabled={busy}>
+          <button type="button" style={{ ...smallBtn, marginTop: "4px", padding: "4px 10px", fontSize: "11px" }} onClick={saveNotes} disabled={busy}>
             Save note
           </button>
         )}
       </td>
-      <td style={{ ...tdStyle, minWidth: "90px" }}>
-        <RowMenu
-          items={[
-            { label: "Send Now (Email)", onClick: sendNow, disabled: busy },
-            { label: "Retry WhatsApp", onClick: retryWhatsapp, disabled: busy },
-            { label: "Delete", onClick: deleteLead, tone: "danger", disabled: busy },
-          ]}
-        />
-        {lastActionResult && (
-          <div style={{ marginTop: "4px", maxWidth: "160px" }}>
-            {lastActionResult.ok ? (
-              <span style={{ fontSize: "10px", color: "#16A34A", whiteSpace: "normal" }}>
-                {lastActionResult.intent === "sendNow" ? "Email sent" : "WhatsApp sent"}
-              </span>
-            ) : (
-              <FriendlyErrorInline
-                message={lastActionResult.intent === "sendNow" ? "Couldn't send the email" : "Couldn't send WhatsApp"}
-                detail={lastActionResult.status || lastActionResult.error}
-              />
-            )}
+      <td style={{ ...tdStyle, minWidth: "150px", textAlign: "right" }}>
+        {confirming ? (
+          <div style={{ display: "inline-flex", alignItems: "center", gap: "8px", animation: "ongFade 0.15s ease both" }}>
+            <span style={{ fontSize: "12px", color: brand.danger, fontWeight: 600 }}>Delete?</span>
+            <button type="button" onClick={confirmDelete} style={{ padding: "5px 11px", borderRadius: "8px", border: "none", background: brand.danger, color: "#fff", fontSize: "12px", fontWeight: 600, cursor: "pointer" }}>
+              Delete
+            </button>
+            <button type="button" onClick={() => setConfirming(false)} style={{ padding: "5px 11px", borderRadius: "8px", border: `1px solid ${brand.border}`, background: "#fff", color: brand.body, fontSize: "12px", cursor: "pointer" }}>
+              Cancel
+            </button>
           </div>
+        ) : (
+          <>
+            <RowMenu
+              items={[
+                { label: "Send Now (Email)", onClick: sendNow, disabled: busy },
+                { label: "Retry WhatsApp", onClick: retryWhatsapp, disabled: busy },
+                { label: "Delete", onClick: () => setConfirming(true), tone: "danger", disabled: busy },
+              ]}
+            />
+            {lastActionResult && (
+              <div style={{ marginTop: "4px", maxWidth: "160px", textAlign: "left", marginLeft: "auto" }}>
+                {lastActionResult.ok ? (
+                  <span style={{ fontSize: "10px", color: brand.success, whiteSpace: "normal" }}>
+                    {lastActionResult.intent === "sendNow" ? "Email sent" : "WhatsApp sent"}
+                  </span>
+                ) : (
+                  <FriendlyErrorInline
+                    message={lastActionResult.intent === "sendNow" ? "Couldn't send the email" : "Couldn't send WhatsApp"}
+                    detail={lastActionResult.status || lastActionResult.error}
+                  />
+                )}
+              </div>
+            )}
+          </>
         )}
       </td>
     </tr>
@@ -347,7 +366,7 @@ function matchesWhatsappStatus(lead, filter) {
 export default function WishlistLeadsPage() {
   const { leads } = useLoaderData();
   const fetcher = useFetcher();
-  const shopify = useAppBridge();
+  const toast = useToast();
   const revalidator = useRevalidator();
   const isSending = fetcher.state !== "idle" && fetcher.formData?.get("intent") === "sendDueNow";
   const isRefreshing = revalidator.state === "loading";
@@ -375,8 +394,10 @@ export default function WishlistLeadsPage() {
 
   useEffect(() => {
     if (bulkFetcher.data?.intent === "bulkDelete" && bulkFetcher.data.ok) {
+      const count = bulkFetcher.data.count;
       bulk.clear();
       revalidator.revalidate();
+      toast.show(`${count} lead${count === 1 ? "" : "s"} deleted`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bulkFetcher.data]);
@@ -389,109 +410,95 @@ export default function WishlistLeadsPage() {
   useEffect(() => {
     if (!fetcher.data || fetcher.data.intent !== "sendDueNow") return;
     if (fetcher.data.ok) {
-      shopify.toast.show(`Checked ${fetcher.data.checked} customer(s), sent ${fetcher.data.sent} email(s)`);
+      toast.show(`Checked ${fetcher.data.checked} customer(s), sent ${fetcher.data.sent} email(s)`);
     } else {
-      shopify.toast.show("Couldn't check for due emails — try again in a moment", { isError: true });
+      toast.show("Couldn't check for due emails — try again in a moment", { isError: true });
     }
-  }, [fetcher.data, shopify]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetcher.data]);
 
   const sendDueNow = () => fetcher.submit({ intent: "sendDueNow" }, { method: "POST" });
 
   return (
-    <s-page heading={`Wishlist — Leads (${leads.length})`} inlineSize="large">
-      <s-button slot="primary-action" onClick={sendDueNow} {...(isSending ? { loading: true } : {})}>
-        Send Due Emails Now
-      </s-button>
-
-      <s-section>
-        <TableGlobalStyles />
-        <button
-          type="button"
-          onClick={() => revalidator.revalidate()}
-          disabled={isRefreshing}
-          style={{ ...smallBtn, fontSize: "12px", padding: "6px 14px", marginBottom: "10px" }}
-        >
-          {isRefreshing ? "Refreshing…" : "↻ Refresh"}
-        </button>
-        <p style={{ margin: "0 0 14px", fontSize: "12px", color: "#6B7280" }}>
-          Most recent {PAGE_SIZE} wishlist syncs · emails don't send immediately — a customer gets one email once
-          they've gone quiet for the interval set on the Settings page (default 2h), using their latest wishlist
-          snapshot · each row's "..." menu has Send Now (email) / Retry WhatsApp / Delete.
-        </p>
-
-        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center", marginBottom: "14px" }}>
-          <input
-            type="text"
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-            placeholder="Search email, phone, or item…"
-            style={{ padding: "8px 12px", borderRadius: "10px", border: "1px solid #E5E7EB", fontSize: "12.5px", color: "#374151", minWidth: "220px" }}
-          />
-          <select
-            value={emailFilter}
-            onChange={(e) => setEmailFilter(e.target.value)}
-            style={{ padding: "8px 12px", borderRadius: "10px", border: "1px solid #E5E7EB", fontSize: "12.5px", color: "#374151" }}
+    <PageIn>
+      <PageHeader
+        title={`Wishlist leads (${leads.length})`}
+        description="Customers with saved wishlist items, and their reminder email status."
+        action={
+          <button
+            type="button"
+            onClick={sendDueNow}
+            disabled={isSending}
+            style={{ padding: "9px 16px", borderRadius: "9px", border: "none", background: brand.accent, color: "#fff", fontSize: "13px", fontWeight: 600, cursor: isSending ? "default" : "pointer", opacity: isSending ? 0.7 : 1 }}
           >
-            {EMAIL_STATUS_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-          <select
-            value={whatsappFilter}
-            onChange={(e) => setWhatsappFilter(e.target.value)}
-            style={{ padding: "8px 12px", borderRadius: "10px", border: "1px solid #E5E7EB", fontSize: "12.5px", color: "#374151" }}
-          >
-            {WHATSAPP_STATUS_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-          {(searchText || emailFilter !== "all" || whatsappFilter !== "all") && (
-            <button
-              type="button"
-              onClick={() => { setSearchText(""); setEmailFilter("all"); setWhatsappFilter("all"); }}
-              style={{ ...smallBtn, fontSize: "12px", padding: "6px 12px" }}
-            >
-              Clear filters
-            </button>
-          )}
-          <span style={{ fontSize: "12px", color: "#6B7280" }}>
-            Showing {filteredLeads.length} of {leads.length}
-          </span>
-        </div>
+            {isSending ? "Sending…" : "Send Due Emails Now"}
+          </button>
+        }
+      />
 
-        <BulkActionsBar count={bulk.count} onDelete={handleBulkDelete} busy={bulkBusy} noun="lead" />
+      <button type="button" onClick={() => revalidator.revalidate()} disabled={isRefreshing} style={{ ...smallBtn, marginBottom: "12px" }}>
+        {isRefreshing ? "Refreshing…" : "↻ Refresh"}
+      </button>
+      <p style={{ margin: "0 0 14px", fontSize: "12.5px", color: brand.muted }}>
+        Most recent {PAGE_SIZE} wishlist syncs · emails don't send immediately — a customer gets one email once
+        they've gone quiet for the interval set on the Settings page (default 2h), using their latest wishlist
+        snapshot · each row's "..." menu has Send Now (email) / Retry WhatsApp / Delete.
+      </p>
 
-        {leads.length === 0 ? (
-          <s-paragraph>No wishlist syncs yet.</s-paragraph>
-        ) : filteredLeads.length === 0 ? (
-          <s-paragraph>No wishlist syncs match the current filters.</s-paragraph>
-        ) : (
-          <div style={tableWrapStyle}>
-            <table style={tableStyle}>
-              <thead>
-                <tr>
-                  <SelectAllTh checked={bulk.allSelected} indeterminate={bulk.count > 0 && !bulk.allSelected} onChange={bulk.toggleAll} />
-                  <SortTh label="When" sortKey="createdAt" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
-                  <SortTh label="Email" sortKey="email" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
-                  <SortTh label="Phone" sortKey="phone" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
-                  <th style={thStyle}>Wishlist Items</th>
-                  <th style={thStyle}>Email</th>
-                  <th style={thStyle}>WhatsApp</th>
-                  <th style={thStyle}>Clicked Links</th>
-                  <th style={thStyle}>Notes</th>
-                  <th style={thStyle}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedLeads.map((lead) => (
-                  <LeadRow key={lead.id} lead={lead} selected={bulk.isSelected(lead.id)} onToggleSelect={() => bulk.toggle(lead.id)} />
-                ))}
-              </tbody>
-            </table>
-          </div>
+      <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center", marginBottom: "14px" }}>
+        <input type="text" value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Search email, phone, or item…" style={inputStyle} />
+        <select value={emailFilter} onChange={(e) => setEmailFilter(e.target.value)} style={{ ...inputStyle, minWidth: "auto" }}>
+          {EMAIL_STATUS_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+        <select value={whatsappFilter} onChange={(e) => setWhatsappFilter(e.target.value)} style={{ ...inputStyle, minWidth: "auto" }}>
+          {WHATSAPP_STATUS_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+        {(searchText || emailFilter !== "all" || whatsappFilter !== "all") && (
+          <button type="button" onClick={() => { setSearchText(""); setEmailFilter("all"); setWhatsappFilter("all"); }} style={smallBtn}>
+            Clear filters
+          </button>
         )}
-      </s-section>
-    </s-page>
+        <span style={{ fontSize: "12.5px", color: brand.muted, marginLeft: "auto" }}>
+          Showing {filteredLeads.length} of {leads.length}
+        </span>
+      </div>
+
+      <BulkActionsBar count={bulk.count} onDelete={handleBulkDelete} busy={bulkBusy} noun="lead" />
+
+      {leads.length === 0 ? (
+        <p style={{ fontSize: "13px", color: brand.muted }}>No wishlist syncs yet.</p>
+      ) : filteredLeads.length === 0 ? (
+        <p style={{ fontSize: "13px", color: brand.muted }}>No wishlist syncs match the current filters.</p>
+      ) : (
+        <div style={tableWrapStyle}>
+          <table style={tableStyle}>
+            <thead>
+              <tr>
+                <SelectAllTh checked={bulk.allSelected} indeterminate={bulk.count > 0 && !bulk.allSelected} onChange={bulk.toggleAll} />
+                <SortTh label="When" sortKey="createdAt" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                <SortTh label="Email" sortKey="email" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                <SortTh label="Phone" sortKey="phone" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                <th style={thStyle}>Wishlist Items</th>
+                <th style={thStyle}>Email</th>
+                <th style={thStyle}>WhatsApp</th>
+                <th style={thStyle}>Clicked Links</th>
+                <th style={thStyle}>Notes</th>
+                <th style={thStyle}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedLeads.map((lead) => (
+                <LeadRow key={lead.id} lead={lead} selected={bulk.isSelected(lead.id)} onToggleSelect={() => bulk.toggle(lead.id)} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </PageIn>
   );
 }
 

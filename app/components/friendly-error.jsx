@@ -11,10 +11,11 @@
  * Not a route — lives outside app/routes so fs-routes skips it.
  */
 import { useState } from "react";
+import { brand } from "./table-kit";
 
-const RED = "#DC2626";
-const RED_TINT = "#FEF2F2";
-const RED_BORDER = "#FBD5D5";
+const RED = brand.danger;
+const RED_TINT = brand.dangerBg;
+const RED_BORDER = brand.dangerLine;
 
 export function FriendlyError({ message, detail }) {
   const [showDetail, setShowDetail] = useState(false);
