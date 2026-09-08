@@ -17,7 +17,12 @@ services:
   - type: web
     name: shubh-gems-customizer-app
     runtime: node
-    plan: free
+    # Upgraded off "free" -- Render's free web-service plan blocks all
+    # outbound SMTP ports (25/465/587), which was silently breaking
+    # every email this app sends (Gmail auth itself was always fine --
+    # confirmed by the failure mode being a pure connection timeout, not
+    # a rejected login). Paid plans don't have this restriction.
+    plan: 0.5c-512mb
     buildCommand: npm install && npx prisma generate && npx prisma migrate deploy && npm run build
     startCommand: npm run start
     envVars:
