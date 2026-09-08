@@ -46,6 +46,7 @@ import {
   useBulkSelect,
   SelectAllTh,
   BulkActionsBar,
+  MultiSelect,
   brand,
   Card,
   PageHeader,
@@ -601,23 +602,29 @@ function OrderProcessingSection({ orderGroups }) {
 
 // "Order Processing" is deliberately absent here -- it now has its own
 // order-centric section (see OrderProcessingSection below) instead of
-// living in this flat table.
-const KIND_OPTIONS = ["All types", "Gem Recommendation", "Wishlist"];
+// living in this flat table. No "all"/"any" pseudo-option any more --
+// an EMPTY selection means "no filter" (MultiSelect shows "Any ..."
+// itself), and picking more than one value matches ANY of them.
+const KIND_OPTIONS = [
+  { value: "Gem Recommendation", label: "Gem Recommendation" },
+  { value: "Wishlist", label: "Wishlist" },
+];
 const STATUS_OPTIONS = [
-  { value: "all", label: "Any status" },
   { value: "sent", label: "Sent only" },
   { value: "delivered", label: "Delivered" },
   { value: "read", label: "Read" },
   { value: "failed", label: "Failed" },
 ];
 
-function matchesStatus(m, filter) {
-  if (filter === "all") return true;
-  if (filter === "failed") return !!m.failedAt;
-  if (filter === "read") return !!m.readAt;
-  if (filter === "delivered") return !!m.deliveredAt;
-  if (filter === "sent") return !!m.sentAt;
+function singleStatusMatch(m, value) {
+  if (value === "failed") return !!m.failedAt;
+  if (value === "read") return !!m.readAt;
+  if (value === "delivered") return !!m.deliveredAt;
+  if (value === "sent") return !!m.sentAt;
   return true;
+}
+function matchesStatus(m, filters) {
+  return filters.length === 0 || filters.some((f) => singleStatusMatch(m, f));
 }
 
 export default function WhatsAppEventsPage() {
@@ -627,8 +634,8 @@ export default function WhatsAppEventsPage() {
   const isRefreshing = revalidator.state === "loading";
 
   const [searchText, setSearchText] = useState("");
-  const [kindFilter, setKindFilter] = useState("All types");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [kindFilter, setKindFilter] = useState([]);
+  const [statusFilter, setStatusFilter] = useState([]);
 
   const filteredMessages = messages.filter((m) => {
     const q = searchText.trim().toLowerCase();
@@ -639,7 +646,7 @@ export default function WhatsAppEventsPage() {
       (m.lead?.name || "").toLowerCase().includes(q) ||
       (m.orderNumber || "").toLowerCase().includes(q) ||
       (m.wishlistHandle || "").toLowerCase().includes(q);
-    const matchesKind = kindFilter === "All types" || m.kind === kindFilter;
+    const matchesKind = kindFilter.length === 0 || kindFilter.includes(m.kind);
     return matchesSearch && matchesKind && matchesStatus(m, statusFilter);
   });
 
@@ -695,18 +702,10 @@ export default function WhatsAppEventsPage() {
 
       <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center", marginBottom: "14px" }}>
         <input type="text" value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Search phone, email, name, order #, item…" style={{ ...inputStyle, minWidth: "240px" }} />
-        <select value={kindFilter} onChange={(e) => setKindFilter(e.target.value)} style={{ ...inputStyle, minWidth: "auto" }}>
-          {KIND_OPTIONS.map((k) => (
-            <option key={k} value={k}>{k}</option>
-          ))}
-        </select>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ ...inputStyle, minWidth: "auto" }}>
-          {STATUS_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
-        {(searchText || kindFilter !== "All types" || statusFilter !== "all") && (
-          <button type="button" onClick={() => { setSearchText(""); setKindFilter("All types"); setStatusFilter("all"); }} style={smallBtn}>
+        <MultiSelect label="type" options={KIND_OPTIONS} selected={kindFilter} onChange={setKindFilter} />
+        <MultiSelect label="status" options={STATUS_OPTIONS} selected={statusFilter} onChange={setStatusFilter} />
+        {(searchText || kindFilter.length > 0 || statusFilter.length > 0) && (
+          <button type="button" onClick={() => { setSearchText(""); setKindFilter([]); setStatusFilter([]); }} style={smallBtn}>
             Clear filters
           </button>
         )}

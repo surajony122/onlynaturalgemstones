@@ -25,6 +25,7 @@ import {
   useBulkSelect,
   SelectAllTh,
   BulkActionsBar,
+  MultiSelect,
   brand,
   Icon,
   Card,
@@ -404,23 +405,24 @@ function WhatsAppQueueSection({ whatsappQueue }) {
   );
 }
 
-// Values used both as the <select> option and as the match test below —
-// kept in one place so the dropdown and the filter logic can't drift
-// out of sync with each other. Same pattern as app.wishlist-leads.jsx.
+// Values used both as the MultiSelect's options and as the match test
+// below — kept in one place so the dropdown and the filter logic can't
+// drift out of sync with each other. Same pattern as
+// app.wishlist-leads.jsx. No "all"/"any" pseudo-option any more — an
+// EMPTY selection now means "no filter" (MultiSelect shows "Any ..."
+// itself in that case), and picking more than one value matches ANY of
+// them (e.g. Failed + Skipped together) instead of exactly one.
 const CALC_STATUS_OPTIONS = [
-  { value: "all", label: "Any calculation status" },
   { value: "ok", label: "OK" },
   { value: "failed", label: "Failed" },
 ];
 const EMAIL_STATUS_OPTIONS = [
-  { value: "all", label: "Any email status" },
   { value: "sent", label: "Sent" },
   { value: "opened", label: "Opened" },
   { value: "clicked", label: "Clicked" },
   { value: "none", label: "Not sent" },
 ];
 const WHATSAPP_STATUS_OPTIONS = [
-  { value: "all", label: "Any WhatsApp status" },
   { value: "sent", label: "Sent" },
   { value: "queued", label: "Queued" },
   { value: "skipped", label: "Skipped" },
@@ -428,31 +430,37 @@ const WHATSAPP_STATUS_OPTIONS = [
   { value: "none", label: "Not sent" },
 ];
 
-function matchesCalcStatus(lead, filter) {
-  if (filter === "all") return true;
-  if (filter === "ok") return !!lead.calculationOk;
-  if (filter === "failed") return !lead.calculationOk;
+function singleCalcMatch(lead, value) {
+  if (value === "ok") return !!lead.calculationOk;
+  if (value === "failed") return !lead.calculationOk;
   return true;
 }
-
-function matchesEmailStatus(lead, filter) {
-  if (filter === "all") return true;
-  if (filter === "sent") return lead.emailStatus.sent > 0;
-  if (filter === "opened") return lead.emailStatus.opened > 0;
-  if (filter === "clicked") return lead.emailStatus.clicked > 0;
-  if (filter === "none") return lead.emailStatus.sent === 0;
-  return true;
+function matchesCalcStatus(lead, filters) {
+  return filters.length === 0 || filters.some((f) => singleCalcMatch(lead, f));
 }
 
-function matchesWhatsappStatus(lead, filter) {
-  if (filter === "all") return true;
+function singleEmailMatch(lead, value) {
+  if (value === "sent") return lead.emailStatus.sent > 0;
+  if (value === "opened") return lead.emailStatus.opened > 0;
+  if (value === "clicked") return lead.emailStatus.clicked > 0;
+  if (value === "none") return lead.emailStatus.sent === 0;
+  return true;
+}
+function matchesEmailStatus(lead, filters) {
+  return filters.length === 0 || filters.some((f) => singleEmailMatch(lead, f));
+}
+
+function singleWhatsappMatch(lead, value) {
   const status = lead.whatsappSendStatus || "";
-  if (filter === "sent") return status.startsWith("OK");
-  if (filter === "queued") return status.startsWith("queued");
-  if (filter === "skipped") return status.startsWith("skipped");
-  if (filter === "failed") return !!status && !status.startsWith("OK") && !status.startsWith("queued") && !status.startsWith("skipped");
-  if (filter === "none") return !status;
+  if (value === "sent") return status.startsWith("OK");
+  if (value === "queued") return status.startsWith("queued");
+  if (value === "skipped") return status.startsWith("skipped");
+  if (value === "failed") return !!status && !status.startsWith("OK") && !status.startsWith("queued") && !status.startsWith("skipped");
+  if (value === "none") return !status;
   return true;
+}
+function matchesWhatsappStatus(lead, filters) {
+  return filters.length === 0 || filters.some((f) => singleWhatsappMatch(lead, f));
 }
 
 export default function AstroLeadsPage() {
@@ -462,9 +470,9 @@ export default function AstroLeadsPage() {
   const isRefreshing = revalidator.state === "loading";
 
   const [searchText, setSearchText] = useState("");
-  const [calcFilter, setCalcFilter] = useState("all");
-  const [emailFilter, setEmailFilter] = useState("all");
-  const [whatsappFilter, setWhatsappFilter] = useState("all");
+  const [calcFilter, setCalcFilter] = useState([]);
+  const [emailFilter, setEmailFilter] = useState([]);
+  const [whatsappFilter, setWhatsappFilter] = useState([]);
 
   const filteredLeads = leads.filter((lead) => {
     const q = searchText.trim().toLowerCase();
@@ -529,23 +537,11 @@ export default function AstroLeadsPage() {
 
       <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center", marginBottom: "14px" }}>
         <input type="text" value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Search name, email, phone, or stone…" style={inputStyle} />
-        <select value={calcFilter} onChange={(e) => setCalcFilter(e.target.value)} style={{ ...inputStyle, minWidth: "auto" }}>
-          {CALC_STATUS_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
-        <select value={emailFilter} onChange={(e) => setEmailFilter(e.target.value)} style={{ ...inputStyle, minWidth: "auto" }}>
-          {EMAIL_STATUS_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
-        <select value={whatsappFilter} onChange={(e) => setWhatsappFilter(e.target.value)} style={{ ...inputStyle, minWidth: "auto" }}>
-          {WHATSAPP_STATUS_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
-        {(searchText || calcFilter !== "all" || emailFilter !== "all" || whatsappFilter !== "all") && (
-          <button type="button" onClick={() => { setSearchText(""); setCalcFilter("all"); setEmailFilter("all"); setWhatsappFilter("all"); }} style={smallBtn}>
+        <MultiSelect label="calculation status" options={CALC_STATUS_OPTIONS} selected={calcFilter} onChange={setCalcFilter} />
+        <MultiSelect label="email status" options={EMAIL_STATUS_OPTIONS} selected={emailFilter} onChange={setEmailFilter} />
+        <MultiSelect label="WhatsApp status" options={WHATSAPP_STATUS_OPTIONS} selected={whatsappFilter} onChange={setWhatsappFilter} />
+        {(searchText || calcFilter.length > 0 || emailFilter.length > 0 || whatsappFilter.length > 0) && (
+          <button type="button" onClick={() => { setSearchText(""); setCalcFilter([]); setEmailFilter([]); setWhatsappFilter([]); }} style={smallBtn}>
             Clear filters
           </button>
         )}

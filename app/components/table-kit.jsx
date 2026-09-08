@@ -24,10 +24,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 // color-mix() themselves — GlobalStyles below defines the real
 // color-mix() custom properties for anything written as inline CSS.
 export const brand = {
-  accent: "#5B45D6",
-  accentHover: "#4934B8",
-  accentTint: "#F1EEFB",
-  accentLine: "#DAD1F5",
+  // Site's own gold/bronze, not a generic purple/blue -- matches the
+  // storefront's real brand accent (see the "ONG Standard" section),
+  // confirmed already used elsewhere in this project's cart-page work.
+  accent: "#C8944A",
+  accentHover: "#A97A38",
+  accentTint: "#FBF3E5",
+  accentLine: "#EDD9B8",
   ink: "#16141F",
   heading: "#241F33",
   body: "#4A4557",
@@ -93,6 +96,10 @@ export function GlobalStyles() {
         --card: ${brand.shadow}; --lift: ${brand.lift};
       }
       body, s-page, s-section { font-family: 'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important; }
+      /* Explicit request: no bold anywhere in this app's UI -- every
+         inline fontWeight (500/600/700) this redesign set gets flattened
+         back to regular weight here rather than hand-editing each one. */
+      body, body * { font-weight: 400 !important; }
       @keyframes ongIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
       @keyframes ongPop { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
       @keyframes ongFade { from { opacity: 0; } to { opacity: 1; } }
@@ -198,6 +205,111 @@ export const tdStyle = {
   color: brand.body,
 };
 
+// ---- Multi-select filter dropdown -------------------------------------
+
+// Replaces a plain single-value <select> filter with a checkbox-list
+// popover, so e.g. "Failed" and "Skipped" can both be checked at once
+// instead of picking exactly one status. `selected` is an array of
+// values; an EMPTY array means "no filter" (matches everything), same
+// meaning "All"/"Any status" had as the native <select>'s default
+// option -- callers' match functions just check
+// `selected.length === 0 || selected.includes(x)`.
+export function MultiSelect({ label, options, selected, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+
+  const toggle = (value) => {
+    onChange(selected.includes(value) ? selected.filter((v) => v !== value) : [...selected, value]);
+  };
+
+  const summary =
+    selected.length === 0
+      ? `Any ${label}`
+      : selected.length === 1
+      ? options.find((o) => o.value === selected[0])?.label || `1 selected`
+      : `${selected.length} ${label} selected`;
+
+  return (
+    <div ref={ref} style={{ position: "relative", display: "inline-block" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "7px",
+          padding: "9px 12px",
+          borderRadius: "10px",
+          border: `1px solid ${selected.length ? brand.accentLine : brand.border}`,
+          background: selected.length ? brand.accentTint : "#fff",
+          fontSize: "12.5px",
+          color: selected.length ? brand.accent : brand.ink,
+          cursor: "pointer",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {summary}
+        <Icon name={open ? "chevron-up" : "chevron-down"} size={12} color="currentColor" />
+      </button>
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            left: 0,
+            top: "100%",
+            marginTop: "4px",
+            zIndex: 30,
+            background: "#fff",
+            border: `1px solid ${brand.border}`,
+            borderRadius: "10px",
+            boxShadow: "0 8px 24px -8px rgba(22,20,31,0.25)",
+            minWidth: "200px",
+            maxHeight: "280px",
+            overflowY: "auto",
+            padding: "6px",
+          }}
+        >
+          {options.map((o) => (
+            <label
+              key={o.value}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "9px",
+                padding: "7px 8px",
+                borderRadius: "8px",
+                fontSize: "12.5px",
+                color: brand.body,
+                cursor: "pointer",
+              }}
+            >
+              <input type="checkbox" checked={selected.includes(o.value)} onChange={() => toggle(o.value)} style={{ cursor: "pointer" }} />
+              {o.label}
+            </label>
+          ))}
+          {selected.length > 0 && (
+            <button
+              type="button"
+              onClick={() => onChange([])}
+              style={{ display: "block", width: "100%", textAlign: "left", marginTop: "4px", padding: "7px 8px", borderRadius: "8px", border: "none", background: "transparent", fontSize: "12px", color: brand.muted, cursor: "pointer" }}
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ---- Sorting ---------------------------------------------------------
 
