@@ -10,7 +10,7 @@ import {
   fetchCustomisationVariantsPreview,
 } from "../utils/gemstoneCustomisationMatrix.server";
 import { getAppSettings, saveMetalRates, ratesFromAppSettings } from "../utils/appSettings.server";
-import { tableWrapStyle, tableStyle, thStyle, tdStyle, TableGlobalStyles, Pill, brand } from "../components/table-kit";
+import { tableWrapStyle, tableStyle, thStyle, tdStyle, TableGlobalStyles, Pill, brand, Icon } from "../components/table-kit";
 import { FriendlyError } from "../components/friendly-error";
 
 export const loader = async ({ request }) => {
@@ -151,7 +151,7 @@ export default function Index() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
           <div>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.12)", padding: "4px 10px", borderRadius: 20, fontSize: 12, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: 12, backdropFilter: "blur(4px)" }}>
-              💎 Shubh Gems Customization Command Center
+              <Icon name="diamond" size={13} /> ONG Customization Command Center
             </div>
             <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em" }}>
               Daily Metal Rates, Live Health & Customisation Matrix
@@ -182,7 +182,7 @@ export default function Index() {
             <span>System Health: <strong>{allPassed ? "All Systems Operational" : "Healthy"}</strong></span>
           </div>
           <div style={{ background: "rgba(255,255,255,0.06)", padding: "6px 12px", borderRadius: 8, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
-            <span>🛒</span>
+            <Icon name="cart" size={13} />
             <span>Checkout Flow: <strong>Atomic (Qty: 1)</strong></span>
           </div>
         </div>
@@ -280,7 +280,7 @@ export default function Index() {
           {/* Target Product Summary Card */}
           <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 14, padding: 24, marginBottom: 28, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
             <h2 style={{ fontSize: 16, fontWeight: 700, margin: "0 0 16px", color: "#0f172a", display: "flex", alignItems: "center", gap: 8 }}>
-              <span>📦</span> Matrix Target Product
+              <Icon name="package" size={16} color="#0f172a" /> Matrix Target Product
             </h2>
             <div style={tableWrapStyle}>
               <table style={tableStyle}>

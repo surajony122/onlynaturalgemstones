@@ -256,7 +256,7 @@ const GEM_FALLBACK_TEXT = "Ask our expert";
  *
  *   Regards,
  *   Only Natural Gemstones
- *   from the House of Shubh Gems
+ *   from the House of ONG
  *
  * No footer, no buttons in the template itself — instead, each stone's
  * {{3}}/{{5}}/{{7}} variable carries ONLY that stone's collection link
@@ -415,7 +415,7 @@ export async function sendGemRecommendationWhatsApp(settings, data, recommendati
  *
  *   Regards,
  *   Only Natural Gemstones
- *   from the House of Shubh Gems
+ *   from the House of ONG
  *
  * No footer, no buttons.
  *
@@ -489,7 +489,7 @@ export async function sendOrderProcessingWhatsApp(settings, { phone, firstName, 
  *
  *   Regards,
  *   Only Natural Gemstones
- *   from the House of Shubh Gems
+ *   from the House of ONG
  *
  * No footer, no buttons. {{3}} and {{5}} MUST be pure URLs with nothing
  * else in the variable — learned live from the gem-recommendation

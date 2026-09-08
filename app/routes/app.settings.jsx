@@ -32,6 +32,7 @@ import { FALLBACK_LOGO_URL } from "../utils/astroAdvice.server";
 import { sendGemRecommendationWhatsApp, getOrCreateInteraktCampaignId, sendOrderProcessingWhatsApp, sendWishlistWhatsApp } from "../utils/interakt.server";
 import { checkGmail, checkGoogleSheets, checkInterakt, checkGooglePlaces } from "../utils/serviceHealth.server";
 import { getOrderProcessingEmailTemplate, ORDER_PROCESSING_EMAIL_PLACEHOLDERS } from "../utils/orderProcessingEmail.server";
+import { Icon } from "../components/table-kit";
 
 export const loader = async ({ request }) => {
   const { session } = await authenticate.admin(request);
@@ -334,6 +335,30 @@ function TestResult({ fetcherData, intent }) {
 // its own, since all three share the WhatsApp card's single Connected/
 // Failing status above them), so three of these read as "one connection,
 // three templates" instead of three more independent-looking services.
+// Small numbered circle, used where a TemplateCard's "icon" is really a
+// step number (1/2/3) rather than a category glyph -- an SVG icon
+// wouldn't mean anything there, unlike a genuine mail/gear/message icon.
+function NumberBadge({ n }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: "18px",
+        height: "18px",
+        borderRadius: "50%",
+        background: "#EFF4FF",
+        color: "#2563EB",
+        fontSize: "11px",
+        fontWeight: 700,
+      }}
+    >
+      {n}
+    </span>
+  );
+}
+
 function TemplateCard({ icon, title, children }) {
   return (
     <div
@@ -709,7 +734,7 @@ export default function SettingsPage() {
           🔑 Connect your accounts — one-time technical setup
         </div>
 
-        <ServiceCard icon="💬" title="WhatsApp (Interakt)" status={data.serviceStatus.interakt}>
+        <ServiceCard icon={<Icon name="message" size={19} color="#16A34A" />} title="WhatsApp (Interakt)" status={data.serviceStatus.interakt}>
           <SecretField
             id="interaktApiKey"
             label="Secret Key"
@@ -747,7 +772,7 @@ export default function SettingsPage() {
         </div>
 
         <div style={{ display: "grid", gap: "14px", marginBottom: "16px" }}>
-          <TemplateCard icon="1️⃣" title="Gem Recommendation">
+          <TemplateCard icon={<NumberBadge n={1} />} title="Gem Recommendation">
             <label style={labelStyle} htmlFor="interaktTemplateName">Template name</label>
             <input
               id="interaktTemplateName"
@@ -774,7 +799,7 @@ export default function SettingsPage() {
             <TestResult fetcherData={testFetcher.data} intent="sendTestWhatsapp" />
           </TemplateCard>
 
-          <TemplateCard icon="2️⃣" title="Order Processing">
+          <TemplateCard icon={<NumberBadge n={2} />} title="Order Processing">
             <p style={{ ...hintStyle, marginTop: 0 }}>
               Sends once per order, the first time it's <s-text fontWeight="bold">tagged</s-text> with the trigger
               tag below.
@@ -814,7 +839,7 @@ export default function SettingsPage() {
             <TestResult fetcherData={testOrderFetcher.data} intent="sendTestOrderWhatsapp" />
           </TemplateCard>
 
-          <TemplateCard icon="✉️" title="Order Processing — Email">
+          <TemplateCard icon={<Icon name="mail" size={15} color="#2563EB" />} title="Order Processing — Email">
             <p style={{ ...hintStyle, marginTop: 0 }}>
               Sends alongside the WhatsApp message above, to the same order. Edit the raw HTML below, or leave it
               as-is to keep using the built-in design.
@@ -864,7 +889,7 @@ export default function SettingsPage() {
             )}
           </TemplateCard>
 
-          <TemplateCard icon="3️⃣" title="Wishlist Reminder">
+          <TemplateCard icon={<NumberBadge n={3} />} title="Wishlist Reminder">
             <p style={{ ...hintStyle, marginTop: 0 }}>
               Sends alongside the wishlist reminder email, on the timing set below. Per-lead status on{" "}
               <s-link href="/app/wishlist-leads">Wishlist Leads</s-link>.
@@ -896,7 +921,7 @@ export default function SettingsPage() {
           </TemplateCard>
         </div>
 
-        <ServiceCard icon="⚙️" title="WhatsApp — advanced">
+        <ServiceCard icon={<Icon name="gear" size={19} color="#6B7280" />} title="WhatsApp — advanced">
           <label style={labelStyle}>Follow-up reminder timing</label>
           <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "5px" }}>
             <input
@@ -947,7 +972,7 @@ export default function SettingsPage() {
           </Explain>
         </ServiceCard>
 
-        <ServiceCard icon="✉️" title="Email sending (Gmail)" status={data.serviceStatus.gmail}>
+        <ServiceCard icon={<Icon name="mail" size={19} color="#2563EB" />} title="Email sending (Gmail)" status={data.serviceStatus.gmail}>
           <Explain summary="ℹ️ What this is for">
             <s-paragraph>
               The account the gem-recommendation email sends from. Needs a Gmail App Password (Google account →
@@ -979,7 +1004,7 @@ export default function SettingsPage() {
           )}
         </ServiceCard>
 
-        <ServiceCard icon="📊" title="Google Sheets mirror (optional)" status={data.serviceStatus.sheets}>
+        <ServiceCard icon={<Icon name="sheet" size={19} color="#16A34A" />} title="Google Sheets mirror (optional)" status={data.serviceStatus.sheets}>
           <Explain summary="ℹ️ What this is for, and which fields to use">
             <s-paragraph>
               Mirrors every lead/email-event row into a Google Sheet, in addition to this app's own database. Leave
@@ -1051,7 +1076,7 @@ export default function SettingsPage() {
           />
         </ServiceCard>
 
-        <ServiceCard icon="📍" title="Location Autocomplete (Google Places)" status={data.serviceStatus.places}>
+        <ServiceCard icon={<Icon name="pin" size={19} color="#DC2626" />} title="Location Autocomplete (Google Places)" status={data.serviceStatus.places}>
           <Explain summary="ℹ️ What this is for, and how to get a key">
             <s-paragraph>
               Powers the city suggestions on the storefront's "Place of Birth" field (Personalised Pooja form). The

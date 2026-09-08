@@ -16,7 +16,7 @@ import { useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
-import { brand } from "../components/table-kit";
+import { brand, Icon } from "../components/table-kit";
 
 export const loader = async ({ request }) => {
   await authenticate.admin(request);
@@ -69,7 +69,7 @@ function SectionCard({ icon, iconColor, title, description, links }) {
   return (
     <div style={{ background: "#ffffff", border: `1px solid ${brand.border}`, borderRadius: "12px", boxShadow: brand.shadow, padding: "18px 20px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-        <span style={{ fontSize: "16px", color: iconColor, lineHeight: 1 }}>{icon}</span>
+        <Icon name={icon} size={17} color={iconColor} />
         <p style={{ fontWeight: 500, fontSize: "14px", margin: 0, color: brand.heading }}>{title}</p>
       </div>
       <p style={{ fontSize: "12.5px", color: brand.muted, margin: "0 0 12px", lineHeight: 1.5 }}>{description}</p>
@@ -119,7 +119,7 @@ export default function OverviewPage() {
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "12px" }}>
           <SectionCard
-            icon="👥"
+            icon="users"
             iconColor={brand.accent}
             title="Leads"
             description="Everyone who filled the gem recommendation form or saved a wishlist item."
@@ -129,28 +129,28 @@ export default function OverviewPage() {
             ]}
           />
           <SectionCard
-            icon="💬"
+            icon="message"
             iconColor={brand.success}
             title="WhatsApp"
             description="Every message sent, and whether it was delivered or read."
             links={[{ href: "/app/whatsapp-events", label: "Message history" }]}
           />
           <SectionCard
-            icon="📦"
+            icon="package"
             iconColor="#B45309"
             title="Orders"
             description="Orders tagged to trigger a processing notification."
             links={[{ href: "/app/server-health", label: "Order notifications (on Server page)" }]}
           />
           <SectionCard
-            icon="⚙️"
+            icon="gear"
             iconColor={brand.muted}
             title="Settings"
             description="Email, WhatsApp templates, Google Sheets, order trigger tag."
             links={[{ href: "/app/settings", label: "Open settings" }]}
           />
           <SectionCard
-            icon="🩺"
+            icon="activity"
             iconColor={brand.danger}
             title="System health"
             description="Checks every connection this app depends on."

@@ -141,7 +141,7 @@ function getDefaultOrderProcessingEmailTemplate() {
 
           <tr>
             <td class="footer-section">
-              <p class="footer-title">Thanks for choosing {{shop_name}} from the House of Shubh Gems.</p>
+              <p class="footer-title">Thanks for choosing {{shop_name}} from the House of ONG.</p>
 
               <p class="address">
                 <a href="https://maps.app.goo.gl/vffRkrDyMiM9q895A">

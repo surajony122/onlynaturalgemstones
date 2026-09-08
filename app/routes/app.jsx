@@ -2,6 +2,7 @@ import { Outlet, useLoaderData, useRouteError, NavLink } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 import { authenticate } from "../shopify.server";
+import { Icon, brand } from "../components/table-kit";
 
 export const loader = async ({ request }) => {
   await authenticate.admin(request);
@@ -32,6 +33,7 @@ function InAppNav() {
     <nav
       style={{
         display: "flex",
+        alignItems: "center",
         gap: "2px",
         overflowX: "auto",
         padding: "0 20px",
@@ -42,6 +44,21 @@ function InAppNav() {
         zIndex: 10,
       }}
     >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          paddingRight: "18px",
+          marginRight: "8px",
+          borderRight: `1px solid ${brand.divider}`,
+        }}
+      >
+        <Icon name="diamond" size={18} color={brand.heading} />
+        <span style={{ fontSize: "13.5px", fontWeight: 700, color: brand.heading, letterSpacing: "-0.01em", whiteSpace: "nowrap" }}>
+          ONG Controls
+        </span>
+      </div>
       {NAV_ITEMS.map((item) => (
         <NavLink
           key={item.href}

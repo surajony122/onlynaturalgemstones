@@ -33,7 +33,7 @@ import { getAppSettings } from "../utils/appSettings.server";
 import { sendWhatsAppForLead } from "../utils/astroAdvice.server";
 import { sendOrderProcessingWhatsApp } from "../utils/interakt.server";
 import { resendWishlistWhatsapp } from "../utils/wishlist.server";
-import { tableWrapStyle, tableStyle, thStyle, tdStyle, TableGlobalStyles, useSort, SortTh, Pill, RowMenu } from "../components/table-kit";
+import { tableWrapStyle, tableStyle, thStyle, tdStyle, TableGlobalStyles, useSort, SortTh, Pill, RowMenu, Icon } from "../components/table-kit";
 import { FriendlyErrorInline } from "../components/friendly-error";
 
 const PAGE_SIZE = 500;
@@ -457,8 +457,16 @@ function OrderProcessingCard({ g }) {
         <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
           <span style={{ fontWeight: 600, fontSize: "13.5px", color: "#1E3A8A" }}>#{g.orderName}</span>
           <Pill label={status.label} active color={status.color} />
-          {g.phone && <span style={{ fontSize: "12px", color: "#6B7280" }}>📱 {g.phone}</span>}
-          {g.email && <span style={{ fontSize: "12px", color: "#6B7280" }}>✉️ {g.email}</span>}
+          {g.phone && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "12px", color: "#6B7280" }}>
+              <Icon name="phone" size={12} /> {g.phone}
+            </span>
+          )}
+          {g.email && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "12px", color: "#6B7280" }}>
+              <Icon name="mail" size={12} /> {g.email}
+            </span>
+          )}
         </div>
         <span style={{ fontSize: "11.5px", color: "#9CA3AF" }}>
           {g.timeline.length} notification{g.timeline.length === 1 ? "" : "s"} sent
@@ -481,8 +489,9 @@ function OrderProcessingCard({ g }) {
               <span style={{ fontSize: "11px", color: "#9CA3AF", minWidth: "150px" }}>
                 {new Date(t.notifiedAt).toLocaleString()}
               </span>
-              <span style={{ fontSize: "12px", minWidth: "70px", fontWeight: 500, color: t.channel === "WhatsApp" ? "#16A34A" : "#2563EB" }}>
-                {t.channel === "WhatsApp" ? "💬 WhatsApp" : "✉️ Email"}
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", fontSize: "12px", minWidth: "78px", fontWeight: 500, color: t.channel === "WhatsApp" ? "#16A34A" : "#2563EB" }}>
+                <Icon name={t.channel === "WhatsApp" ? "message" : "mail"} size={12} />
+                {t.channel === "WhatsApp" ? "WhatsApp" : "Email"}
               </span>
               <Pill label={s.label} active color={s.color} />
               <span style={{ fontSize: "11.5px", color: "#9CA3AF", flex: 1, wordBreak: "break-word" }} title={t.status || ""}>

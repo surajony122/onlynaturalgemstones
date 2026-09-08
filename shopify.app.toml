@@ -1,7 +1,7 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "24a6c503d46ca4f07024783f33b4b23d"
-name = "Shubh Gems varint options"
+name = "ONG Controls"
 application_url = "https://shubh-gems-customizer-app.onrender.com"
 embedded = true
 
