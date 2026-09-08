@@ -7,194 +7,244 @@
  * into, so this app sends it directly instead, reusing the exact same
  * trigger detection already built and hardened for the WhatsApp send
  * (tag OR order-timeline "in progress" event, see
- * webhooks.orders.updated.jsx) and the merchant's already-connected
+ * orderProcessingTrigger.server.js) and the merchant's already-connected
  * Gmail (Settings page) rather than inventing a new email channel.
  *
- * Content deliberately mirrors the order-confirmation email's own
- * bundle-card layout -- a gemstone + its linked "Gemstone Customisation"
- * charge line paired into one card, same rule the storefront cart
- * drawer/cart page and the order-confirmation email template all use:
- * the customisation line's hidden "_Linked Gemstone" property equals
- * its gemstone line's variant_id -- so a customer sees the same
- * familiar layout at every stage of the order, not a plain text notice.
+ * The HTML is a real, editable TEMPLATE, not generated markup -- per
+ * explicit request, a merchant can view/edit its raw HTML and preview it
+ * from the Settings page (see app.settings.jsx's "Order processing
+ * email template" section) instead of only ever being the hardcoded
+ * default below. AppSettings.orderProcessingEmailTemplate (null =
+ * "use the default") wins when set; getOrderProcessingEmailTemplate()
+ * is the ONE place that resolution happens, so the Settings page's own
+ * preview and the actual send path can never quietly drift apart by
+ * each keeping their own copy of the fallback.
+ *
+ * Design matches the store's own native Shopify notification templates
+ * (Order confirmation / cancelled / etc.) rather than the earlier
+ * bundle-card layout this used to have -- per explicit request, so
+ * every order-lifecycle email (native + this app-sent one) shares one
+ * visual identity instead of the "processing" email looking like a
+ * different product entirely.
  */
 import nodemailer from "nodemailer";
 import { getShopFooterInfo, esc } from "./astroAdvice.server";
 
-// Same three CDN files the order-confirmation email template (and the
-// product page's own Ring/Pendant/Bracelet type selector) already use --
-// not re-uploaded, just referenced, so there's exactly one copy of each
-// to ever go stale.
-const TYPE_ICON_URLS = {
-  ring: "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/ring.png",
-  pendant: "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/pendant.png",
-  bracelet: "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/bracelet.png",
-};
+// Documented once, here, so the Settings page's "available
+// placeholders" help text and the actual substitution logic below can
+// never drift apart from each other.
+export const ORDER_PROCESSING_EMAIL_PLACEHOLDERS = [
+  { token: "customer_first_name", description: "Customer's name (falls back to \"there\" if unknown)" },
+  { token: "order_number", description: "Order number, e.g. #1000031314" },
+  { token: "order_status_url", description: "Link to the customer's own order status page" },
+  { token: "shop_name", description: "Store name" },
+  { token: "shop_url", description: "Store URL" },
+  { token: "shop_email", description: "Store support email address" },
+  { token: "shop_logo_url", description: "Store logo image URL (a sensible fallback logo is used if the store has none set)" },
+];
 
-function getProp(line, name) {
-  const found = (line.properties || []).find((p) => p && p.name === name);
-  return found ? found.value : null;
+// The store's fixed contact details in the footer (address, WhatsApp,
+// phone, icon images) are baked in as literal HTML rather than
+// templated placeholders -- they're specific to this one store, not
+// something that varies per-order the way the fields above do. A
+// merchant can still change any of it by editing the template HTML
+// directly once it's customized from the Settings page.
+function getDefaultOrderProcessingEmailTemplate() {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Your order is being processed</title>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta name="viewport" content="width=device-width">
+  <style type="text/css">
+    body { margin: 0; padding: 0; width: 100%; background-color: #ffffff; font-family: Arial, Helvetica, sans-serif; color: #4f5965; }
+    table { border-spacing: 0; border-collapse: collapse; }
+    img { border: 0; display: block; }
+    .email-wrapper { width: 100%; background-color: #ffffff; }
+    .email-container { width: 100%; max-width: 500px; margin: 0 auto; background-color: #ffffff; }
+    .logo-section { padding: 35px 20px 30px; text-align: center; }
+    .logo-section img { max-width: 200px; width: auto; height: auto; margin: 0 auto; }
+    .logo-text { margin: 0; font-size: 30px; font-weight: normal; color: #a76642; }
+    .divider-cell { padding-left: 18px; padding-right: 18px; }
+    .divider { height: 1px; background-color: #b9b9b9; width: 100%; font-size: 1px; line-height: 1px; }
+    .content-section { padding: 30px 20px 20px; font-size: 17px; line-height: 1.6; color: #4f5965; }
+    .content-inner { width: 100%; max-width: 620px; margin: 0 auto; }
+    .content-section p { margin-top: 0; margin-bottom: 18px; }
+    .order-number { font-weight: bold; color: #3d4652; }
+    .button-container { margin-top: 8px; margin-bottom: 10px; }
+    .email-button { display: inline-block; background-color: #8C7A4E; color: #ffffff !important; text-decoration: none !important; padding: 10px 20px; font-size: 15px; font-weight: 400; border-radius: 3px; margin-right: 10px; margin-bottom: 5px; }
+    .secondary-button { background-color: #ffffff; color: #8C7A4E !important; border: 1px solid #8C7A4E; }
+    .footer-section { padding: 15px 18px 20px; text-align: center; color: #4f5965; }
+    .footer-title { margin: 0 0 6px; font-size: 16px; line-height: 1.5; color: #4f5965; }
+    .address { margin: 0 0 12px; font-size: 14px; line-height: 1.6; color: #000000 !important; text-decoration: none !important; font-weight: normal; }
+    .address, .address span, .address a, .address a:link, .address a:visited { color: #000000 !important; text-decoration: none !important; border-bottom: none !important; }
+    .contact-table { width: 100%; max-width: 600px; margin: 0 auto; table-layout: fixed; }
+    .contact-item { width: 50%; padding: 6px 5px; text-align: center; vertical-align: middle; font-size: 14px; }
+    .single-contact-item { padding: 6px 5px; text-align: center; vertical-align: middle; font-size: 14px; }
+    .contact-link { color: #000 !important; text-decoration: none !important; white-space: nowrap; }
+    .contact-icon { font-size: 17px; vertical-align: middle; color: #000; }
+    @media only screen and (max-width: 600px) {
+      .logo-section { padding-top: 25px; padding-bottom: 25px; }
+      .logo-section img { max-width: 200px; }
+      .content-section { padding: 25px 20px 15px; font-size: 16px; }
+      .content-inner { max-width: 100%; }
+      .contact-item, .single-contact-item { font-size: 11px; padding: 6px 2px; }
+      .email-button { padding: 11px 16px; font-size: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <table class="email-wrapper" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+      <td align="center">
+        <table class="email-container" width="100%" cellpadding="0" cellspacing="0" border="0">
+
+          <tr>
+            <td class="logo-section">
+              <img src="{{shop_logo_url}}" alt="{{shop_name}}" width="200">
+            </td>
+          </tr>
+
+          <tr>
+            <td class="divider-cell">
+              <div class="divider">&nbsp;</div>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="content-section">
+              <div class="content-inner">
+                <p>Hello {{customer_first_name}},</p>
+                <p>
+                  Your order number
+                  <span class="order-number">{{order_number}}</span>
+                  has been updated to: <strong>Order under Processing</strong>
+                </p>
+                <p>Once your order is shipped, We will send an email with details to track your order.</p>
+                <p>For more queries, Please feel free to contact us.</p>
+
+                <div class="button-container">
+                  <a href="{{order_status_url}}" class="email-button">View Your Order</a>
+                  <a href="{{shop_url}}" class="email-button secondary-button">Visit Our Store</a>
+                </div>
+
+                <p style="margin-top: 0; margin-bottom: 0;">Best Wishes &amp; Regards!</p>
+              </div>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="divider-cell">
+              <div class="divider">&nbsp;</div>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="footer-section">
+              <p class="footer-title">Thanks for choosing {{shop_name}} from the House of Shubh Gems.</p>
+
+              <p class="address">
+                <a href="https://maps.app.goo.gl/vffRkrDyMiM9q895A">
+                  L-75-76, Lajpat Nagar 2, New Delhi - Delhi - 110024, India
+                </a>
+              </p>
+
+              <table class="contact-table" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td class="single-contact-item" align="center">
+                    <table cellpadding="0" cellspacing="0" border="0" align="center">
+                      <tr>
+                        <td valign="middle" style="padding-right: 6px;"><span class="contact-icon">&#9678;</span></td>
+                        <td valign="middle"><a href="{{shop_url}}" class="contact-link">onlynaturalgemstones.com</a></td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <table class="contact-table" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td class="contact-item" align="center">
+                    <table cellpadding="0" cellspacing="0" border="0" align="center">
+                      <tr>
+                        <td valign="middle" style="padding-right: 6px;">
+                          <a href="https://wa.me/919310400152">
+                            <img src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/whatsapp-svg-icon.svg?v=1787318358" alt="WhatsApp" width="18" height="18" style="display:block; width:18px; height:18px; border:0;">
+                          </a>
+                        </td>
+                        <td valign="middle"><a href="https://wa.me/919310400152" class="contact-link">+91-9310-400-152</a></td>
+                      </tr>
+                    </table>
+                  </td>
+                  <td class="contact-item" align="center">
+                    <table cellpadding="0" cellspacing="0" border="0" align="center">
+                      <tr>
+                        <td valign="middle" style="padding-right: 6px;">
+                          <img src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/phone.png?v=1788597346" alt="Call" width="18" height="18" style="display:block; width:18px; height:18px; border:0;">
+                        </td>
+                        <td valign="middle"><a href="tel:+918010555111" class="contact-link">+91-8010-555-111</a></td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <table class="contact-table" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td class="single-contact-item" align="center">
+                    <table cellpadding="0" cellspacing="0" border="0" align="center">
+                      <tr>
+                        <td valign="middle" style="padding-right: 6px;">
+                          <img src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/Email.png?v=1788596216" alt="Email" width="18" height="18" style="display:block; width:auto; height:18px; border:0;">
+                        </td>
+                        <td valign="middle"><a href="mailto:{{shop_email}}" class="contact-link">{{shop_email}}</a></td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
 }
 
-function formatMoney(amount, currency) {
-  try {
-    return new Intl.NumberFormat("en-IN", { style: "currency", currency: currency || "INR", maximumFractionDigits: 2 }).format(Number(amount) || 0);
-  } catch {
-    return `₹${(Number(amount) || 0).toFixed(2)}`;
+/** Resolves which template HTML actually gets sent -- a saved
+ * AppSettings.orderProcessingEmailTemplate wins, the built-in default
+ * above otherwise. The ONE place this decision is made, so the
+ * Settings page's preview and the real send path never see different
+ * answers. */
+export function getOrderProcessingEmailTemplate(settings) {
+  return (settings && settings.orderProcessingEmailTemplate) || getDefaultOrderProcessingEmailTemplate();
+}
+
+/** Plain {{token}} substitution -- deliberately not a templating
+ * engine (no conditionals/loops): every value this template needs is
+ * always available by the time this runs (getShopFooterInfo always
+ * returns a real logoUrl, for instance), so there's nothing that
+ * actually needs branching, and keeping it to simple string
+ * replacement means a merchant editing the HTML on the Settings page
+ * can't break the send path with a syntax error the way a real
+ * templating language could. Tolerates both {{token}} and {{ token }}
+ * (with spaces), since someone hand-editing the HTML is likely to type
+ * it either way. */
+export function renderOrderProcessingEmailTemplate(templateHtml, vars) {
+  let html = templateHtml;
+  for (const [key, value] of Object.entries(vars)) {
+    const safe = value != null ? String(value) : "";
+    html = html.split(`{{${key}}}`).join(safe).split(`{{ ${key} }}`).join(safe);
   }
-}
-
-// REST order-webhook line items don't carry a precomputed "final line
-// price" the way the Liquid `line` drop does -- built the same way
-// Shopify's own storefront does: unit price x quantity, minus whatever
-// discount already landed on this specific line.
-function lineTotal(line) {
-  const price = parseFloat(line.price) || 0;
-  const qty = Number(line.quantity) || 0;
-  const discount = parseFloat(line.total_discount) || 0;
-  return price * qty - discount;
-}
-
-/**
- * Best-effort image fetch for the gemstone lines -- variant image,
- * falling back to the product's featured image. Never throws: an image
- * fetch failure just means the email sends without images, same as the
- * order-confirmation template's own `{% if line.image %}` fallback --
- * nothing a customer paid for should ever be blocked by a cosmetic
- * extra.
- */
-async function fetchLineImages(admin, lines) {
-  const images = {};
-  const withVariant = lines.filter((l) => l.variant_id);
-  if (!withVariant.length) return images;
-
-  try {
-    const queryParts = withVariant.map(
-      (l, i) => `v${i}: node(id: "gid://shopify/ProductVariant/${l.variant_id}") { ... on ProductVariant { image { url } product { featuredImage { url } } } }`
-    );
-    const res = await admin.graphql(`#graphql\nquery LineImages { ${queryParts.join(" ")} }`);
-    const json = await res.json();
-    withVariant.forEach((l, i) => {
-      const node = json?.data?.[`v${i}`];
-      const url = node?.image?.url || node?.product?.featuredImage?.url;
-      if (url) images[l.variant_id] = url;
-    });
-  } catch (err) {
-    console.error("[orderProcessingEmail] image fetch failed (non-fatal, email still sends without images):", err);
-  }
-  return images;
-}
-
-// One bundle "card" -- a root gemstone line, optionally paired with its
-// linked Gemstone Customisation charge line -- matching
-// shubh-gemstone-card.liquid's cart-drawer layout row for row (image /
-// title / price, then the customisation sub-row with its own price and
-// Type/Metal/Design/Size details, then a combined Total row) minus the
-// Remove/Edit footer, which doesn't apply to a placed order.
-function bundleCardHtml(line, custMatch, images, currency) {
-  const imgUrl = images[line.variant_id];
-  const combinedTotal = lineTotal(line) + (custMatch ? lineTotal(custMatch) : 0);
-
-  let html = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2dccf;border-radius:6px;margin-bottom:12px;">';
-
-  html += "<tr>";
-  html += `<td style="width:55px;padding:12px 8px 0 14px;vertical-align:top;">${
-    imgUrl ? `<img src="${esc(imgUrl)}" alt="${esc(line.title)}" width="42" height="42" style="width:42px;height:42px;object-fit:cover;display:block;border:0;">` : ""
-  }</td>`;
-  html += `<td style="padding:14px 8px 4px;vertical-align:top;">` +
-    `<div style="margin:0 0 3px;font-size:13px;color:#8C7A4E;">${esc(line.title)}</div>` +
-    `<div style="font-size:10px;line-height:1.5;color:#4f5965;">` +
-    (line.sku ? `SKU: ${esc(line.sku)}` : "") +
-    (line.quantity ? `&nbsp;&nbsp;Qty: ${line.quantity}` : "") +
-    (line.variant_title && line.variant_title !== "Default Title" ? `<br>${esc(line.variant_title)}` : "") +
-    "</div></td>";
-  html += `<td style="width:90px;padding:14px 14px 4px 0;text-align:right;vertical-align:top;font-size:12px;color:#4f5965;white-space:nowrap;">${formatMoney(lineTotal(line), currency)}</td>`;
-  html += "</tr>";
-
-  if (custMatch) {
-    const type = (getProp(custMatch, "Customization Type") || "").toLowerCase();
-    const iconUrl = TYPE_ICON_URLS[type];
-
-    html += "<tr>";
-    html += `<td style="width:55px;padding:6px 8px 0 14px;vertical-align:top;">${
-      iconUrl ? `<img src="${iconUrl}" alt="${esc(type)}" width="20" height="20" style="width:20px;height:20px;object-fit:contain;display:block;border:0;">` : ""
-    }</td>`;
-    html += `<td style="padding:6px 8px 0;vertical-align:top;"><div style="font-size:13px;color:#8C7A4E;">Gemstone Customisation</div></td>`;
-    html += `<td style="width:90px;padding:6px 14px 0 0;text-align:right;vertical-align:top;font-size:12px;color:#4f5965;white-space:nowrap;">${formatMoney(lineTotal(custMatch), currency)}</td>`;
-    html += "</tr>";
-
-    const details = [getProp(custMatch, "Customization Type"), getProp(custMatch, "Metal Type"), getProp(custMatch, "Design Code"), getProp(custMatch, "Size")]
-      .filter((v) => v != null && v !== "")
-      .map(esc)
-      .join(" &middot; ");
-    const cert = getProp(custMatch, "Lab Certification");
-    html += `<tr><td></td><td colspan="2" style="padding:2px 14px 14px 8px;vertical-align:top;"><div style="font-size:10px;line-height:1.6;color:#4f5965;">${details}${
-      cert ? `<br>${esc(cert)}` : ""
-    }</div></td></tr>`;
-
-    html +=
-      `<tr>` +
-      `<td style="border-top:1px solid #ece6d9;"></td>` +
-      `<td style="padding:8px 8px 14px;text-align:left;font-size:12px;font-weight:bold;color:#3d4652;border-top:1px solid #ece6d9;">Total</td>` +
-      `<td style="padding:8px 14px 14px 0;text-align:right;font-size:12px;font-weight:bold;color:#3d4652;white-space:nowrap;border-top:1px solid #ece6d9;">${formatMoney(combinedTotal, currency)}</td>` +
-      `</tr>`;
-  }
-
-  html += "</table>";
   return html;
-}
-
-function buildHtml({ shopInfo, firstName, orderNumber, itemsHtml, subtotalStr, shippingStr, totalStr, storeUrl }) {
-  const headerContent = shopInfo.logoUrl
-    ? `<img src="${esc(shopInfo.logoUrl)}" alt="${esc(shopInfo.name)}" style="max-height:44px;max-width:220px;">`
-    : `<span style="color:#3a2408;font-size:20px;font-weight:bold;letter-spacing:0.5px;">${esc(shopInfo.name)}</span>`;
-
-  return (
-    "<!DOCTYPE html><html><head><meta charset=\"UTF-8\">" +
-    '<meta name="viewport" content="width=device-width, initial-scale=1.0"></head>' +
-    '<body style="margin:0;padding:0;background:#f4f2ed;font-family:Arial,Helvetica,sans-serif;">' +
-    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f2ed;padding:24px 0;">' +
-    '<tr><td align="center">' +
-    '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;max-width:600px;width:100%;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(58,36,8,0.08);">' +
-    '<tr><td style="background:linear-gradient(90deg,#c8944a,#8c7a4e);height:5px;line-height:5px;font-size:0;">&nbsp;</td></tr>' +
-    '<tr><td style="background:#faf6f0;padding:22px 32px;text-align:center;border-bottom:1px solid #eadfd2;">' +
-    headerContent +
-    "</td></tr>" +
-    '<tr><td style="padding:32px 32px 8px;">' +
-    `<h1 style="margin:0 0 8px;font-size:21px;color:#3a2408;">Hi ${esc(firstName)},</h1>` +
-    `<p style="margin:0 0 6px;font-size:15px;line-height:1.6;color:#5c4a3d;">Good news — your order <strong>${esc(orderNumber)}</strong> is now being processed and prepared for shipment.</p>` +
-    '<p style="margin:0;font-size:13px;line-height:1.6;color:#8c7a4e;">We\'ll send you tracking details the moment it ships.</p>' +
-    "</td></tr>" +
-    '<tr><td style="padding:20px 32px 4px;">' +
-    itemsHtml +
-    "</td></tr>" +
-    '<tr><td style="padding:4px 32px 8px;">' +
-    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0">' +
-    `<tr><td style="padding:5px 0;text-align:right;font-size:12px;color:#4f5965;">Subtotal</td><td style="width:100px;padding:5px 0;text-align:right;font-size:12px;color:#4f5965;">${esc(subtotalStr)}</td></tr>` +
-    `<tr><td style="padding:5px 0;text-align:right;font-size:12px;color:#4f5965;">Shipping</td><td style="width:100px;padding:5px 0;text-align:right;font-size:12px;color:#4f5965;">${esc(shippingStr)}</td></tr>` +
-    `<tr><td style="padding:8px 0;text-align:right;font-size:14px;font-weight:bold;color:#3d4652;">Total</td><td style="width:100px;padding:8px 0;text-align:right;font-size:14px;font-weight:bold;color:#3d4652;">${esc(totalStr)}</td></tr>` +
-    "</table>" +
-    "</td></tr>" +
-    '<tr><td style="padding:8px 32px 32px;">' +
-    `<a href="${esc(storeUrl)}" style="display:inline-block;background:#8C7A4E;color:#ffffff;text-decoration:none;padding:12px 22px;font-size:14px;font-weight:bold;border-radius:3px;">Continue Shopping</a>` +
-    "</td></tr>" +
-    '<tr><td style="background:#faf6f0;padding:24px 32px;text-align:center;border-top:1px solid #eadfd2;">' +
-    `<p style="margin:0 0 14px;font-size:13px;color:#3a2408;">Thanks for choosing ${esc(shopInfo.name)}!</p>` +
-    `<p style="margin:0;font-size:12px;color:#8c7a4e;"><a href="${esc(shopInfo.url)}" style="color:#8c7a4e;text-decoration:none;">${esc(shopInfo.url.replace(/^https?:\/\//, ""))}</a>` +
-    ` &nbsp;&middot;&nbsp; <a href="mailto:${esc(shopInfo.email)}" style="color:#8c7a4e;text-decoration:none;">${esc(shopInfo.email)}</a>` +
-    (shopInfo.phone ? ` &nbsp;&middot;&nbsp; <a href="tel:${esc(shopInfo.phone)}" style="color:#8c7a4e;text-decoration:none;">${esc(shopInfo.phone)}</a>` : "") +
-    "</p>" +
-    "</td></tr>" +
-    "</table>" +
-    "</td></tr>" +
-    "</table>" +
-    "</body></html>"
-  );
 }
 
 /**
  * @param {object} admin - authenticated Admin GraphQL client (for the
- *   best-effort line-item image lookup)
+ *   shop footer info lookup)
  * @param {object} settings - getAppSettings(shop) result
  * @param {object} payload - the raw orders/updated REST webhook payload
  * @returns {Promise<string>} same "OK: .../skipped: ..." status-string
@@ -210,50 +260,39 @@ export async function sendOrderProcessingEmail(admin, settings, payload) {
     return "skipped: no email address on this order";
   }
 
-  const currency = payload?.currency || "INR";
   const orderNumber = payload?.name || `#${payload?.order_number || payload?.id}`;
-  const firstName = payload?.customer?.first_name || (payload?.shipping_address?.name || "").split(" ")[0] || "there";
-
-  const lines = payload?.line_items || [];
-  const rootLines = lines.filter((l) => !getProp(l, "_Linked Gemstone"));
-  const matchedCustIds = new Set();
-  const pairs = rootLines.map((line) => {
-    const custMatch = lines.find((l) => getProp(l, "_Linked Gemstone") === String(line.variant_id)) || null;
-    if (custMatch) matchedCustIds.add(custMatch.id);
-    return { line, custMatch };
-  });
-  // Defensive, same as the order-confirmation email template: a
-  // customisation line whose root gemstone wasn't found for any reason
-  // still gets its own card rather than silently vanishing from what
-  // the customer paid for.
-  const orphanCustLines = lines.filter((l) => getProp(l, "_Linked Gemstone") && !matchedCustIds.has(l.id));
-
-  const images = await fetchLineImages(admin, rootLines.concat(orphanCustLines));
-
-  const itemsHtml =
-    pairs.map(({ line, custMatch }) => bundleCardHtml(line, custMatch, images, currency)).join("") +
-    orphanCustLines.map((line) => bundleCardHtml(line, null, images, currency)).join("");
+  // Same fallback order as the reference template's own
+  // `customer.first_name | default: customer.name` -- some checkouts
+  // (COD orders on this store, seen repeatedly on real test orders)
+  // only ever populate one combined name field, not separate first/last.
+  const firstName = payload?.customer?.first_name || payload?.customer?.name || (payload?.shipping_address?.name || "").split(" ")[0] || "there";
 
   const shopInfo = await getShopFooterInfo(admin);
+  const orderStatusUrl = payload?.order_status_url || shopInfo.url;
 
-  const subtotalStr = formatMoney(payload?.subtotal_price ?? 0, currency);
-  const shippingStr = formatMoney(payload?.shipping_lines?.[0]?.price ?? 0, currency);
-  const totalStr = formatMoney(payload?.total_price ?? 0, currency);
+  const template = getOrderProcessingEmailTemplate(settings);
+  const html = renderOrderProcessingEmailTemplate(template, {
+    customer_first_name: esc(firstName),
+    order_number: esc(orderNumber),
+    order_status_url: esc(orderStatusUrl),
+    shop_name: esc(shopInfo.name),
+    shop_url: esc(shopInfo.url),
+    shop_email: esc(shopInfo.email),
+    shop_logo_url: esc(shopInfo.logoUrl),
+  });
 
-  const html = buildHtml({ shopInfo, firstName, orderNumber, itemsHtml, subtotalStr, shippingStr, totalStr, storeUrl: shopInfo.url });
   const text =
-    `Hi ${firstName},\n\n` +
-    `Good news -- your order ${orderNumber} at ${shopInfo.name} is now being processed and prepared for shipment.\n\n` +
-    `We'll send tracking details as soon as it ships.\n\n` +
-    `Subtotal: ${subtotalStr}\nShipping: ${shippingStr}\nTotal: ${totalStr}\n\n` +
-    shopInfo.name;
+    `Hello ${firstName},\n\n` +
+    `Your order ${orderNumber} has been updated to: Order under Processing\n\n` +
+    `Once your order is shipped, We will send an email with details to track your order.\n\n` +
+    `For more queries, Please feel free to contact us.`;
 
   const transporter = nodemailer.createTransport({
     service: "gmail",
     auth: { user: settings.gmailUser, pass: settings.gmailAppPassword },
     // Same bounded timeouts as every other Gmail send in this app
     // (astroAdvice.server.js) -- an unbounded hang here would otherwise
-    // be capable of stalling this webhook's response indefinitely.
+    // be capable of stalling indefinitely.
     connectionTimeout: 30000,
     greetingTimeout: 30000,
     socketTimeout: 30000,

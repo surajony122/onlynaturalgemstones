@@ -31,6 +31,7 @@ import {
 import { FALLBACK_LOGO_URL } from "../utils/astroAdvice.server";
 import { sendGemRecommendationWhatsApp, getOrCreateInteraktCampaignId, sendOrderProcessingWhatsApp, sendWishlistWhatsApp } from "../utils/interakt.server";
 import { checkGmail, checkGoogleSheets, checkInterakt, checkGooglePlaces } from "../utils/serviceHealth.server";
+import { getOrderProcessingEmailTemplate, ORDER_PROCESSING_EMAIL_PLACEHOLDERS } from "../utils/orderProcessingEmail.server";
 
 export const loader = async ({ request }) => {
   const { session } = await authenticate.admin(request);
@@ -76,6 +77,14 @@ export const loader = async ({ request }) => {
     whatsappIntervalUnit: row?.whatsappIntervalUnit || DEFAULT_WHATSAPP_INTERVAL_UNIT,
     interaktWebhookSecretSet: !!row?.interaktWebhookSecret,
     googlePlacesApiKeySet: !!row?.googlePlacesApiKey,
+    // Empty string means "using the built-in default" -- the textarea
+    // shows defaultOrderProcessingEmailTemplate as its starting value in
+    // that case (see getOrderProcessingEmailTemplate, the one place
+    // this same fallback decision is made server-side too), so what's
+    // shown here always matches what would actually send.
+    orderProcessingEmailTemplate: row?.orderProcessingEmailTemplate || "",
+    defaultOrderProcessingEmailTemplate: getOrderProcessingEmailTemplate({}),
+    orderProcessingEmailPlaceholders: ORDER_PROCESSING_EMAIL_PLACEHOLDERS,
     // So the page can say which env vars are filling in for anything
     // not saved here yet.
     envFallback: {
@@ -224,6 +233,7 @@ export const action = async ({ request }) => {
     interaktOrderTemplateName: formData.get("interaktOrderTemplateName")?.trim() || "",
     interaktWishlistTemplateName: formData.get("interaktWishlistTemplateName")?.trim() || "",
     orderProcessingTriggerTag: formData.get("orderProcessingTriggerTag")?.trim() || "",
+    orderProcessingEmailTemplate: formData.get("orderProcessingEmailTemplate")?.trim() || "",
     whatsappIntervalValue: formData.get("whatsappIntervalValue")?.trim() || "",
     whatsappIntervalUnit: formData.get("whatsappIntervalUnit")?.trim() || "",
     interaktWebhookSecret,
@@ -367,6 +377,38 @@ function Explain({ summary, children, defaultOpen }) {
   );
 }
 
+// Client-side copy of orderProcessingEmail.server.js's own
+// renderOrderProcessingEmailTemplate() -- duplicated (not imported)
+// because that file is a .server.js module: React Router strips
+// server-only files from the client bundle entirely, so importing it
+// here for a client-side live preview isn't possible. Kept in sync by
+// hand; if the real substitution logic ever changes there, mirror the
+// change here too. Sample values stand in for what a real order would
+// actually provide, purely for previewing the HTML's layout.
+const EMAIL_PREVIEW_SAMPLE_VALUES = {
+  customer_first_name: "Suraj Kumar",
+  order_number: "#1000031314",
+  order_status_url: "https://onlynaturalgemstones.com/",
+  shop_name: "Only Natural Gemstones",
+  shop_url: "https://onlynaturalgemstones.com",
+  shop_email: "info@onlynaturalgemstones.com",
+  // Literal, not the imported FALLBACK_LOGO_URL constant -- that's
+  // exported from a .server.js file, and this constant sits at module
+  // scope where the client bundle can see it (not inside loader/action,
+  // which React Router strips for the client) -- referencing a
+  // server-only import from unprotected module scope broke a different
+  // route's production build once already this session for exactly
+  // this reason (see cron.order-processing-catchup.jsx's history).
+  shop_logo_url: "https://onlynaturalgemstones.com/cdn/shop/files/ONG_logo_home.png",
+};
+function renderEmailPreview(templateHtml) {
+  let html = templateHtml || "";
+  for (const [key, value] of Object.entries(EMAIL_PREVIEW_SAMPLE_VALUES)) {
+    html = html.split(`{{${key}}}`).join(value).split(`{{ ${key} }}`).join(value);
+  }
+  return html;
+}
+
 // A password-style field that also knows how to reveal its own current
 // saved value on demand (the 👁 button) — used for every secret on this
 // page (Gmail App Password, service account key, Interakt Secret Key,
@@ -490,6 +532,14 @@ export default function SettingsPage() {
   const [interaktTemplateName, setInteraktTemplateName] = useState(data.interaktTemplateName);
   const [interaktOrderTemplateName, setInteraktOrderTemplateName] = useState(data.interaktOrderTemplateName);
   const [orderProcessingTriggerTag, setOrderProcessingTriggerTag] = useState(data.orderProcessingTriggerTag);
+  // Empty string ("using the built-in default") is shown as the actual
+  // default HTML in the textarea, not a blank box -- otherwise "edit
+  // the template" would mean starting from nothing instead of starting
+  // from what's really sending today.
+  const [orderProcessingEmailTemplate, setOrderProcessingEmailTemplate] = useState(
+    data.orderProcessingEmailTemplate || data.defaultOrderProcessingEmailTemplate
+  );
+  const [showEmailPreview, setShowEmailPreview] = useState(false);
   const [interaktWishlistTemplateName, setInteraktWishlistTemplateName] = useState(data.interaktWishlistTemplateName);
   const [testPhone, setTestPhone] = useState("");
   const [testOrderPhone, setTestOrderPhone] = useState("");
@@ -563,6 +613,15 @@ export default function SettingsPage() {
         interaktTemplateName,
         interaktOrderTemplateName,
         orderProcessingTriggerTag,
+        // Submitting "" (not the literal default HTML) whenever the
+        // textarea still matches the built-in default -- otherwise
+        // saving this form for ANY unrelated reason (e.g. just updating
+        // the Gmail password) would silently freeze today's default
+        // into the database as a permanent "customization" the user
+        // never asked for, and a future improvement to the built-in
+        // default would then never reach this shop again.
+        orderProcessingEmailTemplate:
+          orderProcessingEmailTemplate === data.defaultOrderProcessingEmailTemplate ? "" : orderProcessingEmailTemplate,
         interaktWishlistTemplateName,
         whatsappIntervalValue,
         whatsappIntervalUnit,
@@ -738,6 +797,56 @@ export default function SettingsPage() {
               </s-button>
             </div>
             <TestResult fetcherData={testOrderFetcher.data} intent="sendTestOrderWhatsapp" />
+          </TemplateCard>
+
+          <TemplateCard icon="✉️" title="Order Processing — Email">
+            <p style={{ ...hintStyle, marginTop: 0 }}>
+              Sends alongside the WhatsApp message above, to the same order. Edit the raw HTML below, or leave it
+              as-is to keep using the built-in design.
+            </p>
+            <Explain summary="ℹ️ Available placeholders (substituted automatically when the email actually sends)">
+              <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "12px", color: "#6B7280", lineHeight: 1.8 }}>
+                {data.orderProcessingEmailPlaceholders.map((p) => (
+                  <li key={p.token}>
+                    <code style={{ background: "#F3F4F6", padding: "1px 5px", borderRadius: "4px" }}>{`{{${p.token}}}`}</code>{" "}
+                    — {p.description}
+                  </li>
+                ))}
+              </ul>
+            </Explain>
+            <textarea
+              id="orderProcessingEmailTemplate"
+              value={orderProcessingEmailTemplate}
+              onChange={(e) => setOrderProcessingEmailTemplate(e.target.value)}
+              spellCheck={false}
+              style={{ ...fieldStyle, fontFamily: "Menlo, Consolas, monospace", fontSize: "11.5px", lineHeight: 1.5, height: "260px", resize: "vertical", whiteSpace: "pre" }}
+            />
+            <div style={{ display: "flex", gap: "8px", marginTop: "6px", flexWrap: "wrap" }}>
+              <s-button onClick={() => setShowEmailPreview((v) => !v)}>
+                {showEmailPreview ? "Hide preview" : "Preview"}
+              </s-button>
+              <s-button
+                onClick={() => {
+                  if (window.confirm("Reset to the built-in default template? This discards your current edits (not saved until you click Save settings).")) {
+                    setOrderProcessingEmailTemplate(data.defaultOrderProcessingEmailTemplate);
+                  }
+                }}
+              >
+                Reset to default
+              </s-button>
+            </div>
+            {showEmailPreview && (
+              <div style={{ marginTop: "10px", border: "1px solid #E5E7EB", borderRadius: "10px", overflow: "hidden" }}>
+                <div style={{ padding: "6px 10px", background: "#F9FAFB", borderBottom: "1px solid #EDEEF1", fontSize: "11px", color: "#6B7280" }}>
+                  Preview with sample data — this reflects what's in the box above right now, even if unsaved.
+                </div>
+                <iframe
+                  title="Order processing email preview"
+                  srcDoc={renderEmailPreview(orderProcessingEmailTemplate)}
+                  style={{ width: "100%", height: "500px", border: "none", display: "block" }}
+                />
+              </div>
+            )}
           </TemplateCard>
 
           <TemplateCard icon="3️⃣" title="Wishlist Reminder">

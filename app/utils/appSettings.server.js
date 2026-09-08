@@ -22,6 +22,7 @@ const FIELDS = [
   "interaktOrderTemplateName",
   "interaktWishlistTemplateName",
   "orderProcessingTriggerTag",
+  "orderProcessingEmailTemplate",
   "whatsappIntervalValue",
   "whatsappIntervalUnit",
   "interaktWebhookSecret",

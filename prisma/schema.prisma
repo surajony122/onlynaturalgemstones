@@ -404,6 +404,17 @@ model AppSettings {
   // bracelet is priced on metal cost alone, matching the storefront's
   // existing behavior exactly until this is turned on.
   metalEnableMakingChargeTax     String?
+  // The order-processing customer email's full HTML source, editable
+  // from the Settings page (with a live preview) instead of only ever
+  // being the hardcoded default in orderProcessingEmail.server.js. Null
+  // means "use the built-in default template" -- getOrderProcessingEmailTemplate()
+  // is the one place that default lives, so the Settings page's preview
+  // and the actual send path can never drift apart by each hardcoding
+  // their own copy. Placeholders inside the HTML (e.g. {{customer_first_name}},
+  // {{order_number}}) are substituted at send time -- see
+  // renderOrderProcessingEmailTemplate() in orderProcessingEmail.server.js
+  // for the full list.
+  orderProcessingEmailTemplate   String?
   updatedAt                      DateTime @updatedAt
 }
 
