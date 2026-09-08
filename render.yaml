@@ -1,6 +1,16 @@
 databases:
   - name: shubh-gems-customizer-db
-    plan: free
+    # Upgraded off "free" -- Render auto-suspends (then, after a 14-day
+    # grace period, permanently DELETES) free Postgres instances 30 days
+    # after creation. "0.1c-256mb" is Render's current cheapest paid
+    # compute tier (0.1 CPU / 256MB RAM). NOTE: editing this file alone
+    # does not perform the upgrade -- Render still requires confirming a
+    # payment method and clicking "Upgrade" on the suspended database in
+    # the Dashboard (this repo has no Render credentials/API access).
+    # This line just keeps the Blueprint's declared plan in sync with
+    # whatever plan is actually chosen there, so a future Blueprint sync
+    # doesn't try to revert it back to "free".
+    plan: 0.1c-256mb
     postgresMajorVersion: "16"
 
 services:
