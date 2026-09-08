@@ -41,6 +41,27 @@ export async function checkAndNotifyOrderProcessing({ admin, shop, payload, setD
     return;
   }
 
+  // Never send a "your order is being processed" notification for an
+  // order that's already moved past processing -- confirmed live this
+  // matters: the catch-up poll (see cron.order-processing-catchup.jsx)
+  // scans a 14-day window of recently-UPDATED orders, which surfaced
+  // several real orders still carrying the trigger tag from a while
+  // back that had since been delivered, returned, or refunded (their
+  // own recent Timeline events mentioned exactly that). A customer
+  // whose order already arrived doesn't need a "processing" email or
+  // WhatsApp -- this check applies to BOTH callers (webhook and poll)
+  // since a delayed/duplicate webhook delivery for an old, since-
+  // fulfilled order could hit the same problem.
+  const fulfillmentStatus = String(payload?.fulfillment_status || "").toLowerCase();
+  if (payload?.cancelled_at) {
+    await setDetail(`skipped: order was cancelled at ${payload.cancelled_at}`);
+    return;
+  }
+  if (fulfillmentStatus === "fulfilled") {
+    await setDetail("skipped: order is already fulfilled");
+    return;
+  }
+
   const settings = await getAppSettings(shop);
   const triggerTag = (settings.orderProcessingTriggerTag || DEFAULT_ORDER_PROCESSING_TRIGGER_TAG).trim().toLowerCase();
 

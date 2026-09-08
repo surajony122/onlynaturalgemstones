@@ -81,6 +81,8 @@ export const loader = async ({ request }) => {
             tags
             email
             phone
+            cancelledAt
+            displayFulfillmentStatus
             customer { firstName phone email }
             shippingAddress { phone }
             billingAddress { phone }
@@ -108,6 +110,13 @@ export const loader = async ({ request }) => {
         tags: (o.tags || []).join(", "),
         email: o.email,
         phone: o.phone,
+        // GraphQL's displayFulfillmentStatus (e.g. "FULFILLED",
+        // "UNFULFILLED", "PARTIAL") mapped down to lowercase so the
+        // shared checker's fulfilled/cancelled guard (which was written
+        // against REST's fulfillment_status/cancelled_at fields) works
+        // identically regardless of which caller built this payload.
+        fulfillment_status: (o.displayFulfillmentStatus || "").toLowerCase(),
+        cancelled_at: o.cancelledAt || null,
         customer: o.customer ? { first_name: o.customer.firstName, phone: o.customer.phone, email: o.customer.email } : null,
         shipping_address: o.shippingAddress ? { phone: o.shippingAddress.phone } : null,
         billing_address: o.billingAddress ? { phone: o.billingAddress.phone } : null,
