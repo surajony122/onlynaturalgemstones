@@ -2,6 +2,7 @@
 
 client_id = "24a6c503d46ca4f07024783f33b4b23d"
 name = "ONG Controls"
+handle = "ong-controls"
 application_url = "https://shubh-gems-customizer-app.onrender.com"
 embedded = true
 
