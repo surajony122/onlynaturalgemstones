@@ -24,6 +24,7 @@ export const loader = async ({ request }) => {
 
   const settings = await getAppSettings(session.shop);
   const template = getOrderProcessingEmailTemplate(settings);
+  const trueDefault = getOrderProcessingEmailTemplate({});
   const rendered = renderOrderProcessingEmailTemplate(template, {
     customer_first_name: "Test User",
     order_number: "#TEST1234",
@@ -36,9 +37,10 @@ export const loader = async ({ request }) => {
 
   return Response.json({
     migrationOk: true,
-    hasCustomTemplate: !!settings.orderProcessingEmailTemplate,
+    hasCustomTemplateRawValue: settings.orderProcessingEmailTemplate ? settings.orderProcessingEmailTemplate.slice(0, 80) : null,
     templateLength: template.length,
+    trueDefaultLength: trueDefault.length,
+    identicalToDefault: template === trueDefault,
     renderedHasPlaceholders: rendered.includes("{{"),
-    renderedSnippet: rendered.slice(rendered.indexOf("<body"), rendered.indexOf("<body") + 600),
   });
 };
