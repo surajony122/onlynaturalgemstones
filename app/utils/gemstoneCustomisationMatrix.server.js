@@ -239,7 +239,18 @@ export function generateAllCustomisationVariants(rates) {
   // (which only ever searches for "Ring"/"Pendant"/"Bracelet"), so this
   // is inert for every normal add-to-cart -- it only gets selected by
   // the fallback path specifically looking for it below.
-  variants.push({
+  //
+  // unshift, NOT push: Liquid's `product.variants` (what
+  // shubh-gems-customizer.liquid actually reads client-side -- the
+  // app-pushed lookup snippet needs write_themes and has never
+  // successfully written, per that snippet's own comment) caps out at
+  // the first 250 variants, and this catalog already has 260+ real
+  // design variants. A variant pushed onto the END of this array was
+  // confirmed live to fall outside that 250 cap and be completely
+  // invisible to the theme -- the fallback silently kept resolving to
+  // an arbitrary real design instead. Position 0 stays inside the cap
+  // permanently, regardless of how large the real catalog grows.
+  variants.unshift({
     type: "Utility",
     metal: "Unit",
     design: "Custom Surcharge (Rs 1 Unit)",
