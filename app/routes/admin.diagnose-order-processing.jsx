@@ -8,7 +8,6 @@
  *
  *   GET /admin/diagnose-order-processing?secret=<DIAG_SECRET>
  */
-import shopify from "../shopify.server";
 import db from "../db.server";
 import { getAppSettings } from "../utils/appSettings.server";
 import { checkGmail } from "../utils/serviceHealth.server";
