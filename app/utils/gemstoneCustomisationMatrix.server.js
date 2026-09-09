@@ -193,12 +193,22 @@ export function generateAllCustomisationVariants(rates) {
 
         for (const designEntry of designs) {
           let designCode = (designEntry.design || "").trim();
-          if (
-            !designCode ||
-            designCode.toLowerCase().includes("custom")
-          ) {
-            continue;
-          }
+          if (!designCode) continue;
+          // "Customised" (upload-your-own-design) USED to be skipped here
+          // on the assumption there's no way to pre-price a photo that
+          // doesn't exist yet -- but its catalog entry (see
+          // globalDesigns.server.js) already carries a fixed weight/price
+          // per Type+Metal, identical to every real design code, and
+          // that's the exact number the theme charges regardless of what
+          // the customer actually uploads (see updatePrice() in
+          // shubh-gems-customizer.js -- it reads this same catalog entry,
+          // never anything derived from the real photo). So it's priced
+          // and pre-built exactly like RD01/PD01/etc below: real variant,
+          // quantity always 1, nothing created per order. The photo
+          // itself is still required and still recorded as a line item
+          // property for manufacturing reference -- only the CHARGE no
+          // longer depends on a runtime lookup/creation.
+          //
           // See the comment above the outer loop -- keeps pearl's option
           // value permanently distinct from default's for the same code.
           if (setKey === "pearl") {
