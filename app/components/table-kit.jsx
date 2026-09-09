@@ -634,6 +634,7 @@ const ICON_PATHS = {
   alert: <><path d="M12 3 22 20 2 20Z" /><line x1="12" y1="9" x2="12" y2="14" /><circle cx="12" cy="17" r="0.7" fill="currentColor" stroke="none" /></>,
   x: <><line x1="5" y1="5" x2="19" y2="19" /><line x1="19" y1="5" x2="5" y2="19" /></>,
   undo: <><polyline points="9 5 4 10 9 15" /><path d="M4 10h9a6 6 0 0 1 0 12h-3" /></>,
+  star: <path d="M12 2.5l3.1 6.3 6.9 1-5 4.9 1.2 6.9-6.2-3.3-6.2 3.3 1.2-6.9-5-4.9 6.9-1z" />,
 };
 
 /** A single stroke icon from the shared set above. `name` picks the
