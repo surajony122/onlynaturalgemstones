@@ -413,6 +413,22 @@ export async function getOrCreateCustomizationProduct(admin) {
   // product; leaving it around is harmless (never added to any cart) but
   // gets cleaned up by the abandoned-variant cron for tidiness.
 
+  // First-time creation ONLY (the "found existing" early return above
+  // skips all of this on every later call, so this adds zero latency to
+  // the common case): waitUntilAvailableForSale (called right after this
+  // by createCustomizedVariant, for the variant this function's caller
+  // is about to add) confirms the VARIANT is sellable, but that's a
+  // different thing from the PRODUCT's own just-issued Online Store
+  // channel publish having actually propagated to the storefront-facing
+  // cache /cart/add.js reads from -- confirmed live: a variant created
+  // and added immediately after a brand-new product's first-ever publish
+  // still 422'd as "already sold out" even though
+  // waitUntilAvailableForSale had already confirmed that exact variant
+  // available. Once this product exists at all, this whole branch never
+  // runs again, so this grace period is a one-time cost the very first
+  // custom order ever placed pays, not an ongoing tax on every order.
+  await sleep(2000);
+
   return productId;
 }
 
