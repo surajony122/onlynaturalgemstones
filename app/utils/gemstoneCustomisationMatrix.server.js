@@ -131,6 +131,135 @@ export async function findOrCreateGemstoneCustomisationProduct(admin) {
   return createJson.data?.productCreate?.product || null;
 }
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Polls until a just-created variant is confirmed sellable on Shopify's
+ * own read path, then waits a bit longer — the storefront-facing cache
+ * /cart/add.js actually reads from lags slightly behind that
+ * confirmation. Without this, a variant added to the cart immediately
+ * after creation can 422 "already sold out" even though it was created
+ * correctly (this exact race is why proxy.customization-surcharge.jsx
+ * exists in the first place — it replaces a quantity-multiplier trick
+ * that produced a nonsensical-looking checkout quantity for the same
+ * underlying reason: something computed just-in-time, at order time). */
+async function waitUntilCustomisationVariantAvailable(
+  admin,
+  variantGid,
+  { attempts = 8, intervalMs = 500, floorMs = 1200, postConfirmGraceMs = 900 } = {},
+) {
+  for (let i = 0; i < attempts; i++) {
+    await sleep(i === 0 ? floorMs : intervalMs);
+    try {
+      const res = await admin.graphql(
+        `#graphql
+        query CheckCustomisationVariantAvailable($id: ID!) {
+          productVariant(id: $id) { availableForSale }
+        }`,
+        { variables: { id: variantGid } },
+      );
+      const json = await res.json();
+      if (json.data?.productVariant?.availableForSale) {
+        await sleep(postConfirmGraceMs);
+        return;
+      }
+    } catch (err) {
+      console.error(`[waitUntilCustomisationVariantAvailable] check failed for ${variantGid}:`, err);
+    }
+  }
+  console.warn(`[waitUntilCustomisationVariantAvailable] ${variantGid} still not confirmed available after waiting`);
+}
+
+/** Creates ONE new one-off variant on the shared "Gemstone Customisation"
+ * product, priced at an exact custom amount computed at order time (a
+ * paid Lab Certification upgrade, or a custom/uploaded design's setting
+ * cost) — used by proxy.customization-surcharge.jsx so that amount
+ * becomes a real quantity-1 variant instead of the old
+ * `quantity = amount / helper-variant-price` trick, which showed the
+ * customer a nonsensical-looking quantity at checkout for the same
+ * total (see that route's own header comment for the full history).
+ *
+ * Lives on the SAME product every catalog design variant already lives
+ * on (not a separate product) — this is the one place a merchant would
+ * look for anything related to gemstone customisation pricing, and it's
+ * also the product every existing lookup/health-check in this file
+ * already knows how to find.
+ *
+ * IMPORTANT — a real, currently-accepted trade-off: this file's own
+ * buildGemstoneCustomisationMatrix() rebuilds this SAME product's whole
+ * variant set via a declarative productSet(synchronous: true) call
+ * whenever a merchant saves new metal rates, which replaces every
+ * variant not present in its own freshly-computed list -- including any
+ * one-off variant this function just created. In the rare case a rate
+ * rebuild runs while a customer's custom-design order is still sitting
+ * in their cart uncompleted, that specific cart line would break on
+ * checkout (not silently mischarge -- Shopify just can't find the
+ * variant anymore, so the customer would need to redo the design
+ * upload). This is a known, accepted limitation for now, not something
+ * this function tries to work around -- flagged here deliberately
+ * rather than fixed silently, since preventing it means also changing
+ * buildGemstoneCustomisationMatrix() to preserve non-catalog variants
+ * during a rebuild, a separate, more invasive change to that core
+ * pricing function. */
+export async function createCustomSurchargeVariant(admin, { type, metal, price, gemstoneVariantId }) {
+  const product = await findOrCreateGemstoneCustomisationProduct(admin);
+  if (!product) throw new Error("Could not find or create Gemstone Customisation product.");
+
+  const uniqueDesignValue = `Custom #${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+
+  const res = await admin.graphql(
+    `#graphql
+    mutation CreateCustomSurchargeVariant($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+      productVariantsBulkCreate(productId: $productId, variants: $variants) {
+        productVariants { id }
+        userErrors { field message }
+      }
+    }`,
+    {
+      variables: {
+        productId: product.id,
+        variants: [
+          {
+            optionValues: [
+              { optionName: "Type", name: type },
+              { optionName: "Metal", name: metal },
+              { optionName: "Design", name: uniqueDesignValue },
+            ],
+            price: price.toFixed(2),
+            inventoryPolicy: "CONTINUE",
+            // Untracked, not just "continue selling when out of stock" --
+            // a tracked variant that's never been activated/stocked at a
+            // location gets reported as sold out by /cart/add.js
+            // regardless of inventoryPolicy (same issue already
+            // documented in shopify-admin.server.js for a different,
+            // now-unused variant-creation path -- confirmed to apply
+            // here too).
+            inventoryItem: { tracked: false },
+            metafields: gemstoneVariantId
+              ? [
+                  {
+                    namespace: "custom",
+                    key: "customization_gemstone_variant",
+                    type: "single_line_text_field",
+                    value: `gid://shopify/ProductVariant/${gemstoneVariantId}`,
+                  },
+                ]
+              : [],
+          },
+        ],
+      },
+    },
+  );
+  const json = await res.json();
+  const errs = json.data?.productVariantsBulkCreate?.userErrors;
+  if (errs?.length) throw new Error(`Creating custom surcharge variant failed: ${JSON.stringify(errs)}`);
+  const variant = json.data?.productVariantsBulkCreate?.productVariants?.[0];
+  if (!variant) throw new Error("Variant creation returned no variant");
+
+  await waitUntilCustomisationVariantAvailable(admin, variant.id);
+
+  return { variantGid: variant.id, numericId: variant.id.split("/").pop() };
+}
+
 export async function fetchCustomisationStatus(admin) {
   try {
     const product = await findOrCreateGemstoneCustomisationProduct(admin);
