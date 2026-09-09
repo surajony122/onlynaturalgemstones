@@ -372,20 +372,6 @@ model AppSettings {
   // Photon/OpenStreetMap lookup instead (see
   // proxy.places-autocomplete.jsx for both paths).
   googlePlacesApiKey             String?
-  // Separate Google Places API key + Place ID for the Google Reviews
-  // widget/schema integration -- deliberately a DIFFERENT key from
-  // googlePlacesApiKey above even though both call the same Google
-  // Places API, so the two features' quotas/billing/revocation stay
-  // independent (autocomplete is called on every storefront visitor
-  // typing in the Pooja form; reviews is called once or twice a day by
-  // a cron refresh -- mixing them under one key would make it harder to
-  // tell which feature is driving usage/cost if something goes wrong).
-  // Used server-side only, never sent to the browser. See
-  // utils/googleReviews.server.js (once built) for the fetch/cache
-  // logic; Place ID identifies which Google Business Profile listing to
-  // pull reviews for (findable via Google's own Place ID Finder tool).
-  googleReviewsApiKey             String?
-  googleReviewsPlaceId            String?
   // Daily metal rates + making charge + tax rate, editable from this
   // app's own dashboard (app._index.jsx, "Daily Metal Rates & Pricing
   // Formula" panel) via the "Save Rates & Rebuild Customisation Matrix"

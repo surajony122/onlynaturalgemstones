@@ -78,8 +78,6 @@ export const loader = async ({ request }) => {
     whatsappIntervalUnit: row?.whatsappIntervalUnit || DEFAULT_WHATSAPP_INTERVAL_UNIT,
     interaktWebhookSecretSet: !!row?.interaktWebhookSecret,
     googlePlacesApiKeySet: !!row?.googlePlacesApiKey,
-    googleReviewsApiKeySet: !!row?.googleReviewsApiKey,
-    googleReviewsPlaceId: row?.googleReviewsPlaceId || "",
     // Empty string means "using the built-in default" -- the textarea
     // shows defaultOrderProcessingEmailTemplate as its starting value in
     // that case (see getOrderProcessingEmailTemplate, the one place
@@ -113,7 +111,6 @@ const REVEALABLE_FIELDS = [
   "interaktApiKey",
   "interaktWebhookSecret",
   "googlePlacesApiKey",
-  "googleReviewsApiKey",
 ];
 
 export const action = async ({ request }) => {
@@ -222,7 +219,6 @@ export const action = async ({ request }) => {
   const interaktWebhookSecret = formData.get("interaktWebhookSecret")?.trim() || existing?.interaktWebhookSecret || "";
   const sheetsRelaySecret = formData.get("sheetsRelaySecret")?.trim() || existing?.sheetsRelaySecret || "";
   const googlePlacesApiKey = formData.get("googlePlacesApiKey")?.trim() || existing?.googlePlacesApiKey || "";
-  const googleReviewsApiKey = formData.get("googleReviewsApiKey")?.trim() || existing?.googleReviewsApiKey || "";
 
   await saveAppSettings(session.shop, {
     gmailUser: formData.get("gmailUser")?.trim() || "",
@@ -243,8 +239,6 @@ export const action = async ({ request }) => {
     whatsappIntervalUnit: formData.get("whatsappIntervalUnit")?.trim() || "",
     interaktWebhookSecret,
     googlePlacesApiKey,
-    googleReviewsApiKey,
-    googleReviewsPlaceId: formData.get("googleReviewsPlaceId")?.trim() || "",
   });
 
   return { intent: "save", ok: true };
@@ -521,8 +515,6 @@ export default function SettingsPage() {
   const [whatsappIntervalUnit, setWhatsappIntervalUnit] = useState(data.whatsappIntervalUnit);
   const [interaktWebhookSecret, setInteraktWebhookSecret] = useState("");
   const [googlePlacesApiKey, setGooglePlacesApiKey] = useState("");
-  const [googleReviewsApiKey, setGoogleReviewsApiKey] = useState("");
-  const [googleReviewsPlaceId, setGoogleReviewsPlaceId] = useState(data.googleReviewsPlaceId);
 
   useEffect(() => {
     if (fetcher.data?.intent === "save" && fetcher.data.ok) {
@@ -533,7 +525,6 @@ export default function SettingsPage() {
       setInteraktWebhookSecret("");
       setSheetsRelaySecret("");
       setGooglePlacesApiKey("");
-      setGoogleReviewsApiKey("");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetcher.data]);
@@ -612,8 +603,6 @@ export default function SettingsPage() {
         whatsappIntervalUnit,
         interaktWebhookSecret,
         googlePlacesApiKey,
-        googleReviewsApiKey,
-        googleReviewsPlaceId,
       },
       { method: "POST" }
     );
@@ -924,40 +913,6 @@ export default function SettingsPage() {
             onChange={setGooglePlacesApiKey}
             placeholder="from Google Cloud Console → Credentials"
             envFallbackHint={data.envFallback.googlePlacesApiKey ? "Currently falling back to the GOOGLE_PLACES_API_KEY env var on Render." : null}
-          />
-        </ServiceCard>
-
-        <ServiceCard icon={<Icon name="star" size={19} color={brand.warn} />} title="Google Reviews (in progress)">
-          <Explain summary="ℹ️ What this is for, and where things stand" defaultOpen>
-            Pulls your real Google Business Profile rating/reviews in via Google's Places API, to show on the
-            storefront and back the site's review schema markup — replacing the old manually-entered reviews
-            feature. This is a <strong>separate</strong> API key from the "Location Autocomplete" one above, kept
-            independent so usage/cost/revocation for each feature stays easy to tell apart, even though both call
-            the same underlying Google Places API.
-            <br />
-            <br />
-            Saving these here just gives the fetch-and-cache pipeline (not built yet) somewhere to read
-            credentials from — nothing fetches or displays anything on the storefront until that's built.
-          </Explain>
-
-          <label style={labelStyle} htmlFor="googleReviewsPlaceId">Place ID</label>
-          <input
-            id="googleReviewsPlaceId"
-            style={fieldStyle}
-            type="text"
-            value={googleReviewsPlaceId}
-            onChange={(e) => setGoogleReviewsPlaceId(e.target.value)}
-            placeholder="from Google's Place ID Finder tool"
-          />
-
-          <SecretField
-            id="googleReviewsApiKey"
-            label="Google Places API Key (for Reviews)"
-            fieldName="googleReviewsApiKey"
-            isSet={data.googleReviewsApiKeySet}
-            value={googleReviewsApiKey}
-            onChange={setGoogleReviewsApiKey}
-            placeholder="from Google Cloud Console → Credentials"
           />
         </ServiceCard>
 

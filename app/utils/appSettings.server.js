@@ -27,8 +27,6 @@ const FIELDS = [
   "whatsappIntervalUnit",
   "interaktWebhookSecret",
   "googlePlacesApiKey",
-  "googleReviewsApiKey",
-  "googleReviewsPlaceId",
   "metalRateSilver",
   "metalRatePanchdhatu",
   "metalRateCopper",
