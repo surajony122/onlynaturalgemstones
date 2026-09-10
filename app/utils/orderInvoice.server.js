@@ -105,6 +105,16 @@ export const ORDER_INVOICE_PLACEHOLDERS = [
 // failing the PDF generation for every single invoice. Leaving
 // font-family unset falls back to pdfmake's own default (Roboto),
 // which is always safe.
+//
+// THIRD gotcha: use `background-color`, never the `background`
+// shorthand, for any cell shading. html-to-pdfmake's own CSS-property
+// switch only has a case for the literal key "background-color" --
+// "background" matches no case at all and is silently dropped, so a
+// shaded header row or highlighted bar renders with no fill whatsoever
+// in the real PDF while looking correct in the Settings-page preview
+// (a browser understands the shorthand fine). Confirmed by reading
+// html-to-pdfmake's own source, the same way the two gotchas above
+// were confirmed.
 function getDefaultOrderInvoiceTemplate() {
   // pdfmake has NO concept of a border on a <table> element itself --
   // only on individual <td>/<th> CELLS (a per-cell 4-side boolean
@@ -148,8 +158,8 @@ function getDefaultOrderInvoiceTemplate() {
       <td style="${boxTopSides}padding:0;">
         <table style="width:100%;border-collapse:collapse;">
           <tr>
-            <td style="border:none;border-bottom:1px solid #333;padding:8px 10px;font-size:12px;font-weight:bold;">TAX INVOICE # {{invoice_number}}</td>
-            <td style="border:none;border-bottom:1px solid #333;padding:8px 10px;font-size:12px;font-weight:bold;text-align:right;">Date : {{invoice_date}}</td>
+            <td style="border:none;border-bottom:1px solid #333;background-color:#f3f3f3;padding:8px 10px;font-size:12px;font-weight:bold;">TAX INVOICE # {{invoice_number}}</td>
+            <td style="border:none;border-bottom:1px solid #333;background-color:#f3f3f3;padding:8px 10px;font-size:12px;font-weight:bold;text-align:right;">Date : {{invoice_date}}</td>
           </tr>
         </table>
       </td>
@@ -170,14 +180,14 @@ function getDefaultOrderInvoiceTemplate() {
       <td style="${boxSides}padding:0;">
         <table style="width:100%;border-collapse:collapse;">
           <tr>
-            <th style="width:24%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">ITEM(s) DESCRIPTION</th>
-            <th style="width:8%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">HSN</th>
-            <th style="width:6%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">Qty</th>
-            <th style="width:13%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">RATE (₹)</th>
-            <th style="width:12%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">CGST</th>
-            <th style="width:12%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">SGST</th>
-            <th style="width:12%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">IGST</th>
-            <th style="width:13%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">AMOUNT (₹)</th>
+            <th style="width:24%;background-color:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">ITEM(s) DESCRIPTION</th>
+            <th style="width:8%;background-color:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">HSN</th>
+            <th style="width:6%;background-color:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">Qty</th>
+            <th style="width:13%;background-color:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">RATE (₹)</th>
+            <th style="width:12%;background-color:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">CGST</th>
+            <th style="width:12%;background-color:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">SGST</th>
+            <th style="width:12%;background-color:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">IGST</th>
+            <th style="width:13%;background-color:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">AMOUNT (₹)</th>
           </tr>
           {{line_items_rows}}
         </table>
@@ -195,16 +205,16 @@ function getDefaultOrderInvoiceTemplate() {
             <td style="border:none;width:45%;vertical-align:top;padding:10px;">
               <table style="width:100%;border-collapse:collapse;">
                 <tr>
-                  <td style="border:none;font-size:10px;padding:2px 0;">Sub Total</td>
-                  <td style="border:none;font-size:10px;padding:2px 0;text-align:right;">{{subtotal}}</td>
+                  <td style="border:none;border-bottom:1px solid #ddd;font-size:10px;padding:4px 0;">Sub Total</td>
+                  <td style="border:none;border-bottom:1px solid #ddd;font-size:10px;padding:4px 0;text-align:right;">{{subtotal}}</td>
                 </tr>
                 <tr>
-                  <td style="border:none;font-size:10px;padding:2px 0;">Total GST</td>
-                  <td style="border:none;font-size:10px;padding:2px 0;text-align:right;">{{total_gst}}</td>
+                  <td style="border:none;border-bottom:1px solid #ddd;font-size:10px;padding:4px 0;">Total GST</td>
+                  <td style="border:none;border-bottom:1px solid #ddd;font-size:10px;padding:4px 0;text-align:right;">{{total_gst}}</td>
                 </tr>
                 <tr>
-                  <td style="border:none;border-top:1px solid #333;font-size:12px;font-weight:bold;padding:4px 0;">Total</td>
-                  <td style="border:none;border-top:1px solid #333;font-size:12px;font-weight:bold;padding:4px 0;text-align:right;">{{grand_total}}</td>
+                  <td style="border:none;font-size:12px;font-weight:bold;padding:4px 0;">Total</td>
+                  <td style="border:none;font-size:12px;font-weight:bold;padding:4px 0;text-align:right;">{{grand_total}}</td>
                 </tr>
               </table>
             </td>
@@ -231,7 +241,7 @@ function getDefaultOrderInvoiceTemplate() {
             </td>
             <td style="border:none;width:45%;padding:14px 10px;vertical-align:top;text-align:right;">
               For {{seller_legal_name}}<br>
-              {{seal_html}}
+              <div style="text-align:right;">{{seal_html}}</div>
               Authorised Seal &amp; Signatory
             </td>
           </tr>

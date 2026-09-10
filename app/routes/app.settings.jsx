@@ -548,7 +548,7 @@ function getPdfPresetHtml(id) {
   <table style="width:100%;border-collapse:collapse;">
     <tr>
       <td style="border:none;width:55%;padding:0;font-size:9.5px;color:#666;">Customer signature<br><br>{{customer_name}}</td>
-      <td style="border:none;width:45%;padding:0;text-align:right;font-size:9.5px;color:#666;">For {{seller_legal_name}}<br>{{seal_html}}Authorised signatory</td>
+      <td style="border:none;width:45%;padding:0;text-align:right;font-size:9.5px;color:#666;">For {{seller_legal_name}}<br><div style="text-align:right;">{{seal_html}}</div>Authorised signatory</td>
     </tr>
   </table>
 
@@ -586,14 +586,14 @@ function getPdfPresetHtml(id) {
       <td colspan="2" style="border:none;border-left:1px solid #444;border-right:1px solid #444;padding:0;">
         <table style="width:100%;border-collapse:collapse;">
           <tr>
-            <th style="width:24%;background:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">ITEM</th>
-            <th style="width:8%;background:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">HSN</th>
-            <th style="width:6%;background:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">QTY</th>
-            <th style="width:13%;background:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">RATE</th>
-            <th style="width:12%;background:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">CGST</th>
-            <th style="width:12%;background:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">SGST</th>
-            <th style="width:12%;background:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">IGST</th>
-            <th style="width:13%;background:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">AMT</th>
+            <th style="width:24%;background-color:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">ITEM</th>
+            <th style="width:8%;background-color:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">HSN</th>
+            <th style="width:6%;background-color:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">QTY</th>
+            <th style="width:13%;background-color:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">RATE</th>
+            <th style="width:12%;background-color:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">CGST</th>
+            <th style="width:12%;background-color:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">SGST</th>
+            <th style="width:12%;background-color:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">IGST</th>
+            <th style="width:13%;background-color:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">AMT</th>
           </tr>
           {{line_items_rows}}
         </table>
@@ -625,7 +625,7 @@ function getPdfPresetHtml(id) {
         <table style="width:100%;border-collapse:collapse;">
           <tr>
             <td style="border:none;width:55%;font-size:8px;">Customer Signature: {{customer_name}}</td>
-            <td style="border:none;width:45%;font-size:8px;text-align:right;">For {{seller_legal_name}}<br>{{seal_html}}Auth. Signatory</td>
+            <td style="border:none;width:45%;font-size:8px;text-align:right;">For {{seller_legal_name}}<br><div style="text-align:right;">{{seal_html}}</div>Auth. Signatory</td>
           </tr>
         </table>
       </td>
@@ -654,8 +654,8 @@ function getPdfPresetHtml(id) {
       <td style="border:none;border-top:1px solid #333;border-left:1px solid #333;border-right:1px solid #333;padding:0;">
         <table style="width:100%;border-collapse:collapse;">
           <tr>
-            <td style="border:none;border-bottom:1px solid #333;padding:8px 10px;font-size:12px;font-weight:bold;">TAX INVOICE # {{invoice_number}}</td>
-            <td style="border:none;border-bottom:1px solid #333;padding:8px 10px;font-size:12px;font-weight:bold;text-align:right;">Date : {{invoice_date}}</td>
+            <td style="border:none;border-bottom:1px solid #333;background-color:#f3f3f3;padding:8px 10px;font-size:12px;font-weight:bold;">TAX INVOICE # {{invoice_number}}</td>
+            <td style="border:none;border-bottom:1px solid #333;background-color:#f3f3f3;padding:8px 10px;font-size:12px;font-weight:bold;text-align:right;">Date : {{invoice_date}}</td>
           </tr>
         </table>
       </td>
@@ -676,14 +676,14 @@ function getPdfPresetHtml(id) {
       <td style="border:none;border-left:1px solid #333;border-right:1px solid #333;padding:0;">
         <table style="width:100%;border-collapse:collapse;">
           <tr>
-            <th style="width:24%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">ITEM(s) DESCRIPTION</th>
-            <th style="width:8%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">HSN</th>
-            <th style="width:6%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">Qty</th>
-            <th style="width:13%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">RATE (₹)</th>
-            <th style="width:12%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">CGST</th>
-            <th style="width:12%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">SGST</th>
-            <th style="width:12%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">IGST</th>
-            <th style="width:13%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">AMOUNT (₹)</th>
+            <th style="width:24%;background-color:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">ITEM(s) DESCRIPTION</th>
+            <th style="width:8%;background-color:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">HSN</th>
+            <th style="width:6%;background-color:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">Qty</th>
+            <th style="width:13%;background-color:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">RATE (₹)</th>
+            <th style="width:12%;background-color:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">CGST</th>
+            <th style="width:12%;background-color:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">SGST</th>
+            <th style="width:12%;background-color:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">IGST</th>
+            <th style="width:13%;background-color:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">AMOUNT (₹)</th>
           </tr>
           {{line_items_rows}}
         </table>
@@ -701,16 +701,16 @@ function getPdfPresetHtml(id) {
             <td style="border:none;width:45%;vertical-align:top;padding:10px;">
               <table style="width:100%;border-collapse:collapse;">
                 <tr>
-                  <td style="border:none;font-size:10px;padding:2px 0;">Sub Total</td>
-                  <td style="border:none;font-size:10px;padding:2px 0;text-align:right;">{{subtotal}}</td>
+                  <td style="border:none;border-bottom:1px solid #ddd;font-size:10px;padding:4px 0;">Sub Total</td>
+                  <td style="border:none;border-bottom:1px solid #ddd;font-size:10px;padding:4px 0;text-align:right;">{{subtotal}}</td>
                 </tr>
                 <tr>
-                  <td style="border:none;font-size:10px;padding:2px 0;">Total GST</td>
-                  <td style="border:none;font-size:10px;padding:2px 0;text-align:right;">{{total_gst}}</td>
+                  <td style="border:none;border-bottom:1px solid #ddd;font-size:10px;padding:4px 0;">Total GST</td>
+                  <td style="border:none;border-bottom:1px solid #ddd;font-size:10px;padding:4px 0;text-align:right;">{{total_gst}}</td>
                 </tr>
                 <tr>
-                  <td style="border:none;border-top:1px solid #333;font-size:12px;font-weight:bold;padding:4px 0;">Total</td>
-                  <td style="border:none;border-top:1px solid #333;font-size:12px;font-weight:bold;padding:4px 0;text-align:right;">{{grand_total}}</td>
+                  <td style="border:none;font-size:12px;font-weight:bold;padding:4px 0;">Total</td>
+                  <td style="border:none;font-size:12px;font-weight:bold;padding:4px 0;text-align:right;">{{grand_total}}</td>
                 </tr>
               </table>
             </td>
@@ -737,7 +737,7 @@ function getPdfPresetHtml(id) {
             </td>
             <td style="border:none;width:45%;padding:14px 10px;vertical-align:top;text-align:right;">
               For {{seller_legal_name}}<br>
-              {{seal_html}}
+              <div style="text-align:right;">{{seal_html}}</div>
               Authorised Seal &amp; Signatory
             </td>
           </tr>
