@@ -579,6 +579,43 @@ export async function fetchOrderForInvoice(admin, orderGid) {
   return order;
 }
 
+/** Pre-fills the Settings page's seller name/address/phone/state fields
+ * from the shop's own Shopify billing address, per explicit request --
+ * "auto fetch seller details from shopify". Deliberately does NOT
+ * return a GSTIN (not reliably exposed via the Admin API at all -- see
+ * this file's own header comment) or an email (Shopify's `shop.email`
+ * is the store owner's account email, not necessarily the public
+ * business contact address -- same reasoning astroAdvice.server.js's
+ * getShopFooterInfo already uses for its own footer email). `province`
+ * doubles as invoiceSellerState, which is what actually decides
+ * CGST+SGST vs IGST -- see computeInvoiceGst(). */
+export async function fetchShopSellerInfo(admin) {
+  const res = await admin.graphql(
+    `#graphql
+    query ShopSellerInfo {
+      shop {
+        name
+        billingAddress { address1 address2 city province zip country phone }
+      }
+    }`,
+  );
+  const json = await res.json();
+  if (json.errors?.length) {
+    throw new Error(`ShopSellerInfo query failed: ${JSON.stringify(json.errors)}`);
+  }
+  const shop = json.data?.shop;
+  if (!shop) throw new Error("Shop info not found");
+  const a = shop.billingAddress || {};
+  return {
+    legalName: shop.name || "",
+    address: [a.address1, a.address2, [a.city, a.province, a.zip].filter(Boolean).join(", "), a.country]
+      .filter(Boolean)
+      .join("\n"),
+    phone: a.phone || "",
+    state: a.province || "",
+  };
+}
+
 /** Bulk version of fetchOrderForInvoice -- same field selection (kept in
  * sync by hand, small enough that a shared fragment isn't worth the
  * indirection), but for the last N orders in one call rather than one

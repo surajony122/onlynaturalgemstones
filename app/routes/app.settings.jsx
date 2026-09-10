@@ -33,7 +33,7 @@ import { FALLBACK_LOGO_URL } from "../utils/astroAdvice.server";
 import { sendGemRecommendationWhatsApp, getOrCreateInteraktCampaignId, sendOrderProcessingWhatsApp, sendWishlistWhatsApp } from "../utils/interakt.server";
 import { checkGmail, checkGoogleSheets, checkInterakt, checkGooglePlaces } from "../utils/serviceHealth.server";
 import { getOrderProcessingEmailTemplate, ORDER_PROCESSING_EMAIL_PLACEHOLDERS } from "../utils/orderProcessingEmail.server";
-import { getOrderInvoiceTemplate, ORDER_INVOICE_PLACEHOLDERS, DEFAULT_INVOICE_NUMBER_PREFIX, getInvoiceEmailTemplate, ORDER_INVOICE_EMAIL_PLACEHOLDERS } from "../utils/orderInvoice.server";
+import { getOrderInvoiceTemplate, ORDER_INVOICE_PLACEHOLDERS, DEFAULT_INVOICE_NUMBER_PREFIX, getInvoiceEmailTemplate, ORDER_INVOICE_EMAIL_PLACEHOLDERS, fetchShopSellerInfo } from "../utils/orderInvoice.server";
 import { brand, Icon, Card, PageHeader, PageIn } from "../components/table-kit";
 import { useToast } from "../components/toast";
 
@@ -152,9 +152,30 @@ const REVEALABLE_FIELDS = [
 ];
 
 export const action = async ({ request }) => {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   const formData = await request.formData();
   const intent = formData.get("intent");
+
+  // Pre-fills the seller name/address/phone/state fields from the shop's
+  // own Shopify Settings -> General/Shipping billing address, per
+  // explicit request -- a merchant shouldn't have to retype what
+  // Shopify already knows. Only pre-fills the FORM (client state); the
+  // merchant still reviews and clicks Save themselves, same as any
+  // other edit here -- nothing is written to AppSettings by this alone.
+  // Deliberately does NOT touch GSTIN or seller email: GSTIN isn't
+  // reliably exposed via the Admin API at all (see this file's own
+  // header comment), and Shopify's shop.email is the store owner's
+  // account email, not necessarily a public business contact address —
+  // same reasoning astroAdvice.server.js's getShopFooterInfo already
+  // uses for its own footer email.
+  if (intent === "fetchShopSellerInfo") {
+    try {
+      const info = await fetchShopSellerInfo(admin);
+      return { intent, ok: true, ...info };
+    } catch (err) {
+      return { intent, ok: false, error: String(err.message || err) };
+    }
+  }
 
   // Returns one already-saved secret's real value on demand, for the
   // Settings page's "👁 Show" button — deliberately NOT sent as part of
@@ -697,6 +718,33 @@ export default function SettingsPage() {
     invoiceStartNumberFetcher.submit({ intent: "setInvoiceStartingNumber", startNumber: invoiceStartNumber }, { method: "POST" });
   };
 
+  // "Fetch from Shopify" -- pre-fills legal name/address/phone/state from
+  // the shop's own Shopify billing address (Settings -> General/
+  // Shipping there). Only fills the FORM; nothing is saved to
+  // AppSettings until the merchant reviews it and clicks the page's own
+  // Save button, same as typing it in by hand. Deliberately leaves
+  // GSTIN and seller email untouched -- see fetchShopSellerInfo's own
+  // comment for why those two aren't auto-fetched.
+  const fetchShopInfoFetcher = useFetcher();
+  const isFetchingShopInfo = fetchShopInfoFetcher.state !== "idle";
+  useEffect(() => {
+    if (fetchShopInfoFetcher.data?.intent === "fetchShopSellerInfo") {
+      if (fetchShopInfoFetcher.data.ok) {
+        setInvoiceSellerLegalName(fetchShopInfoFetcher.data.legalName || "");
+        setInvoiceSellerAddress(fetchShopInfoFetcher.data.address || "");
+        setInvoiceSellerPhone(fetchShopInfoFetcher.data.phone || "");
+        setInvoiceSellerState(fetchShopInfoFetcher.data.state || "");
+        toast.show("Fetched from Shopify — review below, then Save settings");
+      } else {
+        toast.show(fetchShopInfoFetcher.data.error || "Couldn't fetch shop info", { isError: true });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchShopInfoFetcher.data]);
+  const fetchShopSellerInfoNow = () => {
+    fetchShopInfoFetcher.submit({ intent: "fetchShopSellerInfo" }, { method: "POST" });
+  };
+
   useEffect(() => {
     if (fetcher.data?.intent === "save" && fetcher.data.ok) {
       toast.show("Settings saved");
@@ -1065,6 +1113,22 @@ export default function SettingsPage() {
 
             {invoiceTab === "pdf" && (
               <>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                  <label style={{ ...labelStyle, marginBottom: 0 }}>Seller details</label>
+                  <button
+                    type="button"
+                    onClick={fetchShopSellerInfoNow}
+                    disabled={isFetchingShopInfo}
+                    style={{ ...secondaryBtn, padding: "6px 12px", fontSize: "12px" }}
+                  >
+                    {isFetchingShopInfo ? "Fetching…" : "⟳ Fetch from Shopify"}
+                  </button>
+                </div>
+                <p style={{ ...hintStyle, marginTop: 0 }}>
+                  Pulls name/address/phone/state from your Shopify Settings → General billing address — review before
+                  saving. GSTIN and business email always need entering by hand (not reliably available via the API).
+                </p>
+
                 <label style={labelStyle} htmlFor="invoiceSellerLegalName">Registered business name</label>
                 <input
                   id="invoiceSellerLegalName"
