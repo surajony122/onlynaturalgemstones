@@ -506,14 +506,20 @@ function formatMoney(amount, currencyCode) {
   }
 }
 
-function formatAddress(address) {
+/** `includeName`/`includePhone` default to true for general use, but the
+ * invoice PDF's customer block already shows {{customer_name}} and
+ * {{customer_phone}} as their own separate fields (with their own
+ * billing/shipping fallback logic) -- passing both false there avoids
+ * printing the same name and phone number twice, once from this
+ * function's own lines and once from the template's dedicated tokens. */
+function formatAddress(address, { includeName = true, includePhone = true } = {}) {
   if (!address) return "";
   const lines = [
-    address.name,
+    includeName ? address.name : null,
     [address.address1, address.address2].filter(Boolean).join(", "),
     [address.city, address.province, address.zip].filter(Boolean).join(", "),
     address.country,
-    address.phone ? `Phone: ${address.phone}` : null,
+    includePhone && address.phone ? `Phone: ${address.phone}` : null,
   ].filter(Boolean);
   return lines.map(esc).join("<br>");
 }
@@ -878,7 +884,12 @@ export async function sendOrderInvoiceEmail(admin, settings, shop, orderGid) {
     customer_name: esc(customerName),
     customer_email: esc(email),
     customer_phone: esc(order.billingAddress?.phone || order.shippingAddress?.phone || "—"),
-    billing_address: formatAddress(order.billingAddress),
+    // includeName/includePhone: false here -- the default PDF template's
+    // customer block already prints {{customer_name}} and
+    // {{customer_phone}} as their own fields right next to this, so
+    // including them again inside the address block itself would show
+    // the same name and phone number twice (confirmed live).
+    billing_address: formatAddress(order.billingAddress, { includeName: false, includePhone: false }),
     shipping_address: formatAddress(order.shippingAddress || order.billingAddress),
     seller_legal_name: esc(settings.invoiceSellerLegalName || "Only Natural Gemstones"),
     seller_address: esc(settings.invoiceSellerAddress || "").split("\n").map(esc).join("<br>"),
