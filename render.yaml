@@ -32,6 +32,19 @@ services:
           property: connectionString
       - key: NODE_VERSION
         value: 20.19.0
+      # Puppeteer (invoice PDF generation, orderInvoice.server.js) --
+      # explicitly pins where its postinstall script downloads Chrome
+      # DURING THE BUILD to the exact same path Puppeteer looks for it
+      # in AT RUNTIME. Without this, the two can silently disagree on
+      # Render (a real, confirmed-live failure: "Could not find Chrome
+      # ... your cache path is incorrectly configured (which is:
+      # /opt/render/.cache/puppeteer)" -- the runtime container was
+      # already looking there, but the build's own install step wasn't
+      # necessarily writing to that same resolved path). Setting this
+      # one env var makes both phases agree, since Render env vars
+      # apply identically to the build and the running service.
+      - key: PUPPETEER_CACHE_DIR
+        value: /opt/render/.cache/puppeteer
       # Set these manually in the Render dashboard after the app is
       # created in Dev Dashboard — see DEPLOYMENT.md.
       - key: SHOPIFY_API_KEY
