@@ -76,65 +76,75 @@ export const ORDER_INVOICE_PLACEHOLDERS = [
   { token: "shop_url", description: "Store URL" },
 ];
 
+// IMPORTANT -- pdfmake only, no <style> block: html-to-pdfmake's own
+// parseStyle() (confirmed by reading its source directly) reads ONLY an
+// element's inline `style="..."` attribute -- it never parses a
+// <style> block or matches CSS classes at all, unlike a browser. A
+// <style>-based version of this template would render correctly in the
+// Settings page's iframe preview (a real browser, which DOES apply
+// class-based CSS) while looking completely different in the actual
+// PDF -- this was a real, previously-undiagnosed bug (confirmed live:
+// the "gap on the right side" report was pdfmake auto-sizing the items
+// table's columns to their short content, with no `width:100%` inline
+// style anywhere to trigger its "stretch to fill" behavior, leaving
+// the whole table narrower than the page). Every element below is
+// therefore styled with a `style="..."` attribute directly -- no
+// class, no <style> block -- so the browser preview and the real PDF
+// render identically. If you're hand-editing this template, the same
+// rule applies: styling that isn't inline will look right in the
+// Settings-page preview and silently vanish from the real PDF.
+//
+// SECOND gotcha, also confirmed by hand: do NOT set an inline
+// `font-family` anywhere in this template. Only the four Roboto
+// weights bundled in pdfmake's own vfs_fonts.js are actually
+// registered fonts here (no headless browser means no system fonts
+// either) -- an inline `font-family: Helvetica, Arial, ...` makes
+// html-to-pdfmake emit `font: "Helvetica"`, which pdfmake then can't
+// find and throws `Font 'Helvetica' in style 'normal' is not defined`,
+// failing the PDF generation for every single invoice. Leaving
+// font-family unset falls back to pdfmake's own default (Roboto),
+// which is always safe.
 function getDefaultOrderInvoiceTemplate() {
+  const outerBorder = "border:1px solid #333;";
+  const cellReset = "border:none;padding:0;";
   return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <style>
-    body { font-family: Helvetica, Arial, sans-serif; font-size: 10px; color: #222; }
-    table { width: 100%; border-collapse: collapse; }
-    td, th { padding: 6px 8px; }
-    .brand { text-align: center; font-size: 22px; font-weight: bold; color: #d97b3f; margin-bottom: 10px; }
-    .outer { border: 1px solid #333; }
-    .outer > tbody > tr > td { border: none; padding: 0; }
-    .bar { border-bottom: 1px solid #333; font-size: 12px; font-weight: bold; }
-    .bar td { padding: 8px 10px; }
-    .info td { vertical-align: top; border-bottom: 1px solid #333; font-size: 10px; line-height: 1.6; }
-    .info-heading { font-weight: bold; margin-bottom: 3px; }
-    .items th { background: #f3efe6; border: 1px solid #999; text-align: left; font-size: 9.5px; }
-    .items td { border: 1px solid #999; vertical-align: top; font-size: 9.5px; }
-    .summary td { vertical-align: top; padding: 10px; }
-    .summary .value { text-align: right; }
-    .summary .grand { font-weight: bold; font-size: 12px; border-top: 1px solid #333; }
-    .terms { font-size: 8.5px; color: #555; line-height: 1.5; padding: 10px; border-top: 1px solid #333; }
-    .sign td { padding: 14px 10px; border-top: 1px solid #333; vertical-align: top; }
-    .footer { text-align: center; font-size: 9px; color: #666; padding: 8px; border-top: 1px solid #333; }
-  </style>
 </head>
-<body>
+<body style="font-size: 10px; color: #222;">
 
-  <div class="brand">{{brand_header_html}}</div>
+  <div style="text-align:center;margin-bottom:10px;">{{brand_header_html}}</div>
 
-  <table class="outer">
+  <table style="width:100%;border-collapse:collapse;${outerBorder}">
     <tr>
-      <td>
-        <table class="bar">
+      <td style="${cellReset}">
+        <table style="width:100%;border-collapse:collapse;border-bottom:1px solid #333;">
           <tr>
-            <td>TAX INVOICE # {{invoice_number}}</td>
-            <td style="text-align: right;">Date : {{invoice_date}}</td>
+            <td style="padding:8px 10px;font-size:12px;font-weight:bold;">TAX INVOICE # {{invoice_number}}</td>
+            <td style="padding:8px 10px;font-size:12px;font-weight:bold;text-align:right;">Date : {{invoice_date}}</td>
           </tr>
         </table>
       </td>
     </tr>
     <tr>
-      <td>
-        <table class="info">
+      <td style="${cellReset}">
+        <table style="width:100%;border-collapse:collapse;border-bottom:1px solid #333;">
           <tr>
-            <td style="width: 38%;">
-              <div class="info-heading">{{seller_legal_name}}</div>
+            <td style="width:38%;vertical-align:top;padding:8px 10px;font-size:10px;line-height:1.6;">
+              <div style="font-weight:bold;margin-bottom:3px;">{{seller_legal_name}}</div>
               {{seller_address}}<br>
               Tel : {{seller_phone}}<br>
               Email : {{seller_email}}<br>
               GSTIN : {{seller_gstin}}
             </td>
-            <td style="width: 38%;">
-              <div class="info-heading">Customer Details</div>
+            <td style="width:38%;vertical-align:top;padding:8px 10px;font-size:10px;line-height:1.6;">
+              <div style="font-weight:bold;margin-bottom:3px;">Customer Details</div>
               {{customer_name}}<br>
               {{billing_address}}<br>
               Tel : {{customer_phone}}
             </td>
-            <td style="width: 24%;">
+            <td style="width:24%;vertical-align:top;padding:8px 10px;font-size:10px;line-height:1.6;">
               Delivery Before : {{delivery_before}}<br>
               Sales Person : {{sales_person}}<br>
               Delivery Mode : {{delivery_mode}}
@@ -144,36 +154,45 @@ function getDefaultOrderInvoiceTemplate() {
       </td>
     </tr>
     <tr>
-      <td>
-        <table class="items">
+      <td style="${cellReset}">
+        <table style="width:100%;border-collapse:collapse;">
           <tr>
-            <th>ITEM(s) DESCRIPTION</th>
-            <th>HSN</th>
-            <th>Qty</th>
-            <th>RATE (₹)</th>
-            <th>CGST</th>
-            <th>SGST</th>
-            <th>IGST</th>
-            <th>AMOUNT (₹)</th>
+            <th style="width:24%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">ITEM(s) DESCRIPTION</th>
+            <th style="width:8%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">HSN</th>
+            <th style="width:6%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">Qty</th>
+            <th style="width:13%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">RATE (₹)</th>
+            <th style="width:12%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">CGST</th>
+            <th style="width:12%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">SGST</th>
+            <th style="width:12%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">IGST</th>
+            <th style="width:13%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">AMOUNT (₹)</th>
           </tr>
           {{line_items_rows}}
         </table>
       </td>
     </tr>
     <tr>
-      <td>
-        <table class="summary">
+      <td style="${cellReset}">
+        <table style="width:100%;border-collapse:collapse;">
           <tr>
-            <td style="width: 55%;">
+            <td style="width:55%;vertical-align:top;padding:10px;font-size:10px;">
               Total In Words<br>
               <b>{{total_in_words}}</b><br><br>
               Payment Mode : {{payment_mode}}
             </td>
-            <td style="width: 45%;">
-              <table>
-                <tr><td>Sub Total</td><td class="value">{{subtotal}}</td></tr>
-                <tr><td>Total GST</td><td class="value">{{total_gst}}</td></tr>
-                <tr class="grand"><td>Total</td><td class="value">{{grand_total}}</td></tr>
+            <td style="width:45%;vertical-align:top;padding:10px;">
+              <table style="width:100%;border-collapse:collapse;">
+                <tr>
+                  <td style="font-size:10px;padding:2px 0;">Sub Total</td>
+                  <td style="font-size:10px;padding:2px 0;text-align:right;">{{subtotal}}</td>
+                </tr>
+                <tr>
+                  <td style="font-size:10px;padding:2px 0;">Total GST</td>
+                  <td style="font-size:10px;padding:2px 0;text-align:right;">{{total_gst}}</td>
+                </tr>
+                <tr>
+                  <td style="font-size:12px;font-weight:bold;padding:4px 0;border-top:1px solid #333;">Total</td>
+                  <td style="font-size:12px;font-weight:bold;padding:4px 0;text-align:right;border-top:1px solid #333;">{{grand_total}}</td>
+                </tr>
               </table>
             </td>
           </tr>
@@ -181,7 +200,7 @@ function getDefaultOrderInvoiceTemplate() {
       </td>
     </tr>
     <tr>
-      <td class="terms">
+      <td style="font-size:8.5px;color:#555;line-height:1.5;padding:10px;border-top:1px solid #333;">
         The Amount Received against Gemstone / Jewellery is Non-refundable. In case of any defect related to Gemstones / Jewellery, the Customer has to return the goods within 3 days after
         purchase. We take full responsibility if the sold gemstone is synthetic (man-made) and the full amount will be refunded. We take no responsibility if the Gemstone / Jewellery gets damaged in
         any way after it is delivered to the Client. Customised Jewellery — including personalised / engraved products manufactured to specific customer instructions — is not eligible for return /
@@ -190,14 +209,14 @@ function getDefaultOrderInvoiceTemplate() {
       </td>
     </tr>
     <tr>
-      <td>
-        <table class="sign">
+      <td style="${cellReset}">
+        <table style="width:100%;border-collapse:collapse;border-top:1px solid #333;">
           <tr>
-            <td style="width: 55%;">
+            <td style="width:55%;padding:14px 10px;vertical-align:top;">
               I have read, understood and agreed to the terms &amp; conditions.<br><br>
               Customer Signature : {{customer_name}}
             </td>
-            <td style="width: 45%; text-align: right;">
+            <td style="width:45%;padding:14px 10px;vertical-align:top;text-align:right;">
               For {{seller_legal_name}}<br>
               {{seal_html}}
               Authorised Seal &amp; Signatory
@@ -207,7 +226,7 @@ function getDefaultOrderInvoiceTemplate() {
       </td>
     </tr>
     <tr>
-      <td class="footer">This is a Computer Generated Invoice — {{shop_name}} ({{shop_url}})</td>
+      <td style="text-align:center;font-size:9px;color:#666;padding:8px;border-top:1px solid #333;">This is a Computer Generated Invoice — {{shop_name}} ({{shop_url}})</td>
     </tr>
   </table>
 
@@ -468,30 +487,30 @@ export function renderOrderInvoiceTemplate(templateHtml, vars) {
   return html;
 }
 
-/** Atomically assigns (or reuses) this order's invoice number. An order
- * that already has an OrderInvoice row keeps its number forever --
- * re-sending never mints a second number for the same order, which GST
- * compliance requires (invoice numbers must be sequential with no gaps
- * or reuse). A genuinely new order consumes the next number from
- * AppSettings.invoiceNextNumber (upserted starting at 1 the first time
- * this ever runs for a shop, or wherever the Settings page set it). */
+/** Assigns (or reuses) this order's invoice number -- per explicit
+ * request, derived directly from the Shopify ORDER number rather than
+ * an independent sequential counter: {prefix}{order's own digits}, e.g.
+ * order "ONG1028" + prefix "IN-" -> "IN-1028". An order that already
+ * has an OrderInvoice row keeps its originally-assigned number forever
+ * (re-sending never recomputes it, so a later change to the prefix
+ * setting can't silently change a previously-issued invoice's number).
+ *
+ * Trade-off worth knowing: unlike the previous independent
+ * increment-by-1 counter, this does NOT guarantee a gap-free sequence
+ * for GST purposes on its own -- Shopify order numbers skip over
+ * cancelled/test/abandoned-checkout orders that never get invoiced, so
+ * the invoice numbers actually issued can have gaps. Only use this if
+ * that's acceptable for your own GST filing; the previous scheme is
+ * still available by setting AppSettings.invoiceNextNumber again if
+ * ever needed. */
 export async function getOrCreateInvoiceNumber(shop, orderId, orderName) {
   const existing = await prisma.orderInvoice.findUnique({ where: { orderId } });
   if (existing) return { invoiceNumber: existing.invoiceNumber, isNew: false };
 
-  const settingsRow = await prisma.appSettings.upsert({
-    where: { shop },
-    create: { shop, invoiceNextNumber: 2 },
-    update: { invoiceNextNumber: { increment: 1 } },
-  });
-  // The row we just wrote already advanced past the number we're
-  // assigning now (increment happens before we read it back on an
-  // existing row) -- a fresh row's `create` above starts the counter at
-  // 2, so this order gets 1. Either way, "assigned number" = the value
-  // read back minus 1.
-  const assignedNumber = (settingsRow.invoiceNextNumber || 2) - 1;
-  const prefix = settingsRow.invoiceNumberPrefix || DEFAULT_INVOICE_NUMBER_PREFIX;
-  const invoiceNumber = `${prefix}${String(assignedNumber).padStart(6, "0")}`;
+  const settingsRow = await prisma.appSettings.findUnique({ where: { shop } });
+  const prefix = settingsRow?.invoiceNumberPrefix || DEFAULT_INVOICE_NUMBER_PREFIX;
+  const orderDigits = (orderName || "").replace(/\D/g, "") || "000000";
+  const invoiceNumber = `${prefix}${orderDigits}`;
 
   await prisma.orderInvoice.create({
     data: { shop, orderId, orderName, invoiceNumber },
@@ -813,16 +832,25 @@ export function computeInvoiceGst(order, settings) {
     const sku = line.variant?.sku || "";
     const lineTotal = taxableValue + gstAmount;
     const pct = (n) => (Number.isInteger(n) ? n : n.toFixed(2)).toString();
+    // Inline styles matching the default template's header cells
+    // (widths included) -- pdfmake's HTML converter reads ONLY inline
+    // `style="..."` attributes, never a <style> block or CSS classes
+    // (confirmed by reading html-to-pdfmake's own source), so these
+    // rows must carry their own styling directly or they render
+    // unstyled/unwidthed in the real PDF even though a browser preview
+    // would look fine either way. See getDefaultOrderInvoiceTemplate's
+    // own comment for the full explanation.
+    const td = (width) => `border:1px solid #999;padding:6px 8px;vertical-align:top;font-size:9.5px;width:${width}%;`;
     itemRows.push(
       `<tr>` +
-        `<td>${esc(line.title)}${sku ? `<br><span style="color:#888;font-size:9px;">SKU: ${esc(sku)}</span>` : ""}</td>` +
-        `<td>${esc(hsn)}</td>` +
-        `<td>${line.quantity}</td>` +
-        `<td>${formatMoney(unitRate, currency)}</td>` +
-        `<td>${formatMoney(lineCgst, currency)}<br><span style="color:#888;font-size:9px;">(${pct(cgstPct)}%)</span></td>` +
-        `<td>${formatMoney(lineSgst, currency)}<br><span style="color:#888;font-size:9px;">(${pct(sgstPct)}%)</span></td>` +
-        `<td>${formatMoney(lineIgst, currency)}<br><span style="color:#888;font-size:9px;">(${pct(igstPct)}%)</span></td>` +
-        `<td>${formatMoney(lineTotal, currency)}</td>` +
+        `<td style="${td(24)}">${esc(line.title)}${sku ? `<br><span style="color:#888;font-size:9px;">SKU: ${esc(sku)}</span>` : ""}</td>` +
+        `<td style="${td(8)}">${esc(hsn)}</td>` +
+        `<td style="${td(6)}">${line.quantity}</td>` +
+        `<td style="${td(13)}">${formatMoney(unitRate, currency)}</td>` +
+        `<td style="${td(12)}">${formatMoney(lineCgst, currency)}<br><span style="color:#888;font-size:9px;">(${pct(cgstPct)}%)</span></td>` +
+        `<td style="${td(12)}">${formatMoney(lineSgst, currency)}<br><span style="color:#888;font-size:9px;">(${pct(sgstPct)}%)</span></td>` +
+        `<td style="${td(12)}">${formatMoney(lineIgst, currency)}<br><span style="color:#888;font-size:9px;">(${pct(igstPct)}%)</span></td>` +
+        `<td style="${td(13)}">${formatMoney(lineTotal, currency)}</td>` +
       `</tr>`,
     );
   }
@@ -946,18 +974,23 @@ export async function sendOrderInvoiceEmail(admin, settings, shop, orderGid) {
     : "—";
 
   // Fetched once here (moved up from below, where only the email used to
-  // need it) since the PDF's own brand header now wants the shop's logo
-  // too -- both images fetched in parallel, each independently falling
+  // need it) since the PDF's own brand header now wants a logo too --
+  // all three images fetched in parallel, each independently falling
   // back to null/"" rather than failing the whole send if one URL is
-  // slow or broken.
+  // slow or broken. invoiceLogoImageUrl (Settings page) overrides the
+  // shop's own Shopify logo when set.
   const shopInfo = await getShopFooterInfo(admin);
   const [logoDataUri, sealDataUri] = await Promise.all([
-    fetchImageAsDataUri(shopInfo.logoUrl),
+    fetchImageAsDataUri(settings.invoiceLogoImageUrl || shopInfo.logoUrl),
     fetchImageAsDataUri(settings.invoiceSealImageUrl),
   ]);
+  // The text fallback needs its own inline styling now that the
+  // template's wrapper div is unstyled (plain centering only) -- see
+  // getDefaultOrderInvoiceTemplate's own comment on why nothing here
+  // can rely on a <style> block/CSS class reaching the real PDF.
   const brandHeaderHtml = logoDataUri
     ? `<img src="${logoDataUri}" style="max-width:160px;max-height:80px;">`
-    : esc(settings.invoiceSellerLegalName || "Only Natural Gemstones");
+    : `<span style="font-size:22px;font-weight:bold;color:#d97b3f;">${esc(settings.invoiceSellerLegalName || "Only Natural Gemstones")}</span>`;
   // "<br><br>" (not empty) when no seal is set -- keeps the same blank
   // vertical space above "Authorised Seal & Signatory" that the
   // original hardcoded default always had, so not configuring a seal

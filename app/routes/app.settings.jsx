@@ -21,7 +21,6 @@ import {
   getAppSettings,
   setInvoiceStartingNumber,
   saveInvoiceCollectionGstRates,
-  saveInvoiceBlocks,
   DEFAULT_WISHLIST_EMAIL_INTERVAL_HOURS,
   DEFAULT_INTERAKT_TEMPLATE_NAME,
   DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME,
@@ -37,7 +36,6 @@ import { getOrderProcessingEmailTemplate, ORDER_PROCESSING_EMAIL_PLACEHOLDERS } 
 import { getOrderInvoiceTemplate, ORDER_INVOICE_PLACEHOLDERS, DEFAULT_INVOICE_NUMBER_PREFIX, getInvoiceEmailTemplate, ORDER_INVOICE_EMAIL_PLACEHOLDERS, fetchShopSellerInfo } from "../utils/orderInvoice.server";
 import { brand, Icon, Card, PageHeader, PageIn } from "../components/table-kit";
 import { useToast } from "../components/toast";
-import { TemplateBuilder, compileBlocksToHtml } from "../components/template-builder";
 
 export const loader = async ({ request }) => {
   const { session, admin } = await authenticate.admin(request);
@@ -112,6 +110,7 @@ export const loader = async ({ request }) => {
     invoiceSellerPhone: row?.invoiceSellerPhone || "",
     invoiceSellerEmail: row?.invoiceSellerEmail || "",
     invoiceSealImageUrl: row?.invoiceSealImageUrl || "",
+    invoiceLogoImageUrl: row?.invoiceLogoImageUrl || "",
     invoiceSellerState: row?.invoiceSellerState || "",
     invoiceGstRateLoose: row?.invoiceGstRateLoose || "",
     invoiceGstRateCustomisation: row?.invoiceGstRateCustomisation || "",
@@ -122,11 +121,9 @@ export const loader = async ({ request }) => {
     invoicePdfTemplate: row?.invoicePdfTemplate || "",
     defaultInvoicePdfTemplate: getOrderInvoiceTemplate({}),
     orderInvoicePlaceholders: ORDER_INVOICE_PLACEHOLDERS,
-    invoicePdfBlocksJson: row?.invoicePdfBlocksJson || null,
     invoiceEmailTemplate: row?.invoiceEmailTemplate || "",
     defaultInvoiceEmailTemplate: getInvoiceEmailTemplate({}),
     orderInvoiceEmailPlaceholders: ORDER_INVOICE_EMAIL_PLACEHOLDERS,
-    invoiceEmailBlocksJson: row?.invoiceEmailBlocksJson || null,
     collections,
     invoiceCollectionGstRates: row?.invoiceCollectionGstRates || {},
     // So the page can say which env vars are filling in for anything
@@ -315,6 +312,7 @@ export const action = async ({ request }) => {
     invoiceSellerPhone: formData.get("invoiceSellerPhone")?.trim() || "",
     invoiceSellerEmail: formData.get("invoiceSellerEmail")?.trim() || "",
     invoiceSealImageUrl: formData.get("invoiceSealImageUrl")?.trim() || "",
+    invoiceLogoImageUrl: formData.get("invoiceLogoImageUrl")?.trim() || "",
     invoiceSellerState: formData.get("invoiceSellerState")?.trim() || "",
     invoiceGstRateLoose: formData.get("invoiceGstRateLoose")?.trim() || "",
     invoiceGstRateCustomisation: formData.get("invoiceGstRateCustomisation")?.trim() || "",
@@ -333,27 +331,6 @@ export const action = async ({ request }) => {
       await saveInvoiceCollectionGstRates(session.shop, JSON.parse(collectionRatesRaw));
     } catch (err) {
       console.error("[app.settings] failed to save invoiceCollectionGstRates:", err);
-    }
-  }
-
-  // The visual template builder's block arrays -- only present in the
-  // submit when that template's builder mode is active (see the client
-  // component's submit()); omitted entirely in raw-HTML mode, which
-  // deliberately leaves whatever blocks were last saved untouched.
-  const invoicePdfBlocksRaw = formData.get("invoicePdfBlocksJson");
-  if (invoicePdfBlocksRaw) {
-    try {
-      await saveInvoiceBlocks(session.shop, "pdf", JSON.parse(invoicePdfBlocksRaw));
-    } catch (err) {
-      console.error("[app.settings] failed to save invoicePdfBlocksJson:", err);
-    }
-  }
-  const invoiceEmailBlocksRaw = formData.get("invoiceEmailBlocksJson");
-  if (invoiceEmailBlocksRaw) {
-    try {
-      await saveInvoiceBlocks(session.shop, "email", JSON.parse(invoiceEmailBlocksRaw));
-    } catch (err) {
-      console.error("[app.settings] failed to save invoiceEmailBlocksJson:", err);
     }
   }
 
@@ -455,100 +432,647 @@ function Explain({ summary, children, defaultOpen }) {
   );
 }
 
-// Starting points for a blank visual-builder canvas -- approximate the
-// two hardcoded default templates' own layouts as blocks, so switching
-// to the builder for the first time isn't a blank, intimidating canvas.
-// Not a byte-for-byte reproduction of the raw-HTML defaults (a plain
-// text/table block can't reproduce every CSS nuance) -- close enough to
-// edit from, which is the actual point.
-function mkBlock(type, props) {
-  return { id: `starter_${type}_${Math.random().toString(36).slice(2, 9)}`, type, ...props };
-}
-function starterPdfBlocks() {
-  return [
-    mkBlock("image", { src: "__SHOP_LOGO__", width: 160, align: "center" }),
-    mkBlock("table", {
-      bordered: true,
-      headerRow: false,
-      borderColor: "#333",
-      rows: [["TAX INVOICE # {{invoice_number}}", "Date : {{invoice_date}}"]],
-    }),
-    mkBlock("table", {
-      bordered: true,
-      headerRow: false,
-      borderColor: "#333",
-      rows: [[
-        "<b>{{seller_legal_name}}</b><br>{{seller_address}}<br>Tel : {{seller_phone}}<br>Email : {{seller_email}}<br>GSTIN : {{seller_gstin}}",
-        "<b>Customer Details</b><br>{{customer_name}}<br>{{billing_address}}<br>Tel : {{customer_phone}}",
-        "Delivery Before : {{delivery_before}}<br>Sales Person : {{sales_person}}<br>Delivery Mode : {{delivery_mode}}",
-      ]],
-    }),
-    mkBlock("itemsTable", { headers: ["ITEM(s) DESCRIPTION", "HSN", "Qty", "RATE (₹)", "CGST", "SGST", "IGST", "AMOUNT (₹)"], headerBg: "#f3efe6", borderColor: "#999" }),
-    mkBlock("table", {
-      bordered: false,
-      headerRow: false,
-      rows: [["Total In Words<br><b>{{total_in_words}}</b><br><br>Payment Mode : {{payment_mode}}", "Sub Total: {{subtotal}}<br>Total GST: {{total_gst}}<br><b>Total: {{grand_total}}</b>"]],
-    }),
-    mkBlock("text", {
-      html: "The Amount Received against Gemstone / Jewellery is Non-refundable. Customised Jewellery is not eligible for return / money back. All matters / disputes subject to Delhi Jurisdiction.",
-      align: "left",
-      fontSize: 9,
-      color: "#555",
-    }),
-    mkBlock("table", {
-      bordered: false,
-      headerRow: false,
-      rows: [["I have read, understood and agreed to the terms &amp; conditions.<br><br>Customer Signature : {{customer_name}}", "For {{seller_legal_name}}<br>{{seal_html}}Authorised Seal &amp; Signatory"]],
-    }),
-    mkBlock("text", { html: "This is a Computer Generated Invoice — {{shop_name}} ({{shop_url}})", align: "center", fontSize: 9, color: "#666" }),
-  ];
-}
-function starterEmailBlocks() {
-  return [
-    mkBlock("image", { src: "__SHOP_LOGO__", width: 100, align: "center" }),
-    mkBlock("divider", { color: "#d5d0c8", thickness: 1, marginY: 14 }),
-    mkBlock("text", {
-      html: "Hello {{customer_first_name}},<br><br>Thank you for your order {{order_number}}. Your GST tax invoice {{invoice_number}} is attached to this email as a PDF.",
-      align: "left",
-      fontSize: 15,
-      color: "#4f5965",
-    }),
-    mkBlock("button", { text: "View Your Order", url: "{{order_status_url}}", bg: "#8c7a4e", color: "#ffffff", align: "center" }),
-    mkBlock("divider", { color: "#d5d0c8", thickness: 1, marginY: 14 }),
-    mkBlock("text", { html: "Thanks for choosing {{shop_name}}.", align: "center", fontSize: 13, color: "#4f5965" }),
-  ];
+// Pick-a-design presets, per explicit request in place of the
+// drag-and-drop builder ("too complicated ... give me 3 html options
+// which predefine i can choose and edit html of it"). Each is a
+// complete, ready-to-send template -- picking one loads it into the
+// raw-HTML textarea below (replacing whatever's there, same confirm-
+// before-discarding pattern as "Reset to default"), and it's then a
+// completely normal hand-editable template from that point on.
+//
+// The PDF presets are 100% inline-styled (no <style> block, no CSS
+// classes) -- see getDefaultOrderInvoiceTemplate's own comment in
+// orderInvoice.server.js for exactly why that's required: pdfmake's
+// HTML converter only ever reads an element's inline `style="..."`
+// attribute, never a <style> block or a class selector, so anything
+// styled via CSS classes looks right in this page's browser preview
+// and silently disappears from the real PDF.
+const PDF_TEMPLATE_PRESETS = [
+  {
+    id: "classic",
+    label: "Classic",
+    description: "Matches a traditional GST tax invoice layout — bordered boxes, shaded column headers.",
+  },
+  {
+    id: "modern",
+    label: "Modern Minimal",
+    description: "Clean and light — no boxes, thin rule lines, generous white space.",
+  },
+  {
+    id: "compact",
+    label: "Compact",
+    description: "Smaller type and tighter spacing — fits more line items on one page.",
+  },
+];
+
+const EMAIL_TEMPLATE_PRESETS = [
+  {
+    id: "classic",
+    label: "Classic",
+    description: "Matches this store's other transactional emails — cream header band, WhatsApp/call/email footer.",
+  },
+  {
+    id: "minimal",
+    label: "Minimal",
+    description: "Plain white background, simple centered message and button, no colored bands.",
+  },
+  {
+    id: "bold",
+    label: "Bold",
+    description: "A solid-color header band and a larger call-to-action button.",
+  },
+];
+
+// A small "choose a design" row: a dropdown of presets plus a button
+// that loads the selected one -- used identically for both the PDF and
+// the email tab, just pointed at a different preset list/setter.
+// "classic" is identical to getDefaultOrderInvoiceTemplate() in
+// orderInvoice.server.js (duplicated, not imported -- that's a
+// .server.js module React Router strips from the client bundle, same
+// reasoning already established for every other client-side preview
+// copy on this page). "modern" and "compact" are genuinely different
+// layouts, not just recolored -- all three stick to the same
+// inline-styles-only rule for the same pdfmake reason.
+function getPdfPresetHtml(id) {
+  if (id === "modern") {
+    return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-size: 10px; color: #333;">
+
+  <div style="text-align:center;margin-bottom:16px;">{{brand_header_html}}</div>
+
+  <table style="width:100%;border-collapse:collapse;margin-bottom:8px;">
+    <tr>
+      <td style="padding:0;font-size:16px;font-weight:600;color:#222;">Tax Invoice</td>
+      <td style="padding:0;text-align:right;font-size:10px;color:#777;">{{invoice_number}}<br>{{invoice_date}}</td>
+    </tr>
+  </table>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:16px;"><tr><td style="border-bottom:2px solid #d97b3f;padding:0;font-size:1px;line-height:1px;">&nbsp;</td></tr></table>
+
+  <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+    <tr>
+      <td style="width:38%;vertical-align:top;padding:0 10px 0 0;font-size:10px;line-height:1.7;">
+        <div style="font-size:9px;color:#999;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">From</div>
+        <div style="font-weight:600;">{{seller_legal_name}}</div>
+        {{seller_address}}<br>{{seller_phone}} · {{seller_email}}<br>GSTIN {{seller_gstin}}
+      </td>
+      <td style="width:38%;vertical-align:top;padding:0 10px;font-size:10px;line-height:1.7;">
+        <div style="font-size:9px;color:#999;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">Bill To</div>
+        <div style="font-weight:600;">{{customer_name}}</div>
+        {{billing_address}}<br>{{customer_phone}}
+      </td>
+      <td style="width:24%;vertical-align:top;padding:0 0 0 10px;font-size:10px;line-height:1.7;">
+        <div style="font-size:9px;color:#999;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">Shipment</div>
+        Before {{delivery_before}}<br>{{delivery_mode}}<br>Sales: {{sales_person}}
+      </td>
+    </tr>
+  </table>
+
+  <table style="width:100%;border-collapse:collapse;margin-bottom:12px;">
+    <tr>
+      <th style="width:24%;border-bottom:1.5px solid #222;padding:6px 6px;font-size:9px;text-align:left;color:#666;font-weight:600;">DESCRIPTION</th>
+      <th style="width:8%;border-bottom:1.5px solid #222;padding:6px 6px;font-size:9px;text-align:left;color:#666;font-weight:600;">HSN</th>
+      <th style="width:6%;border-bottom:1.5px solid #222;padding:6px 6px;font-size:9px;text-align:left;color:#666;font-weight:600;">QTY</th>
+      <th style="width:13%;border-bottom:1.5px solid #222;padding:6px 6px;font-size:9px;text-align:left;color:#666;font-weight:600;">RATE</th>
+      <th style="width:12%;border-bottom:1.5px solid #222;padding:6px 6px;font-size:9px;text-align:left;color:#666;font-weight:600;">CGST</th>
+      <th style="width:12%;border-bottom:1.5px solid #222;padding:6px 6px;font-size:9px;text-align:left;color:#666;font-weight:600;">SGST</th>
+      <th style="width:12%;border-bottom:1.5px solid #222;padding:6px 6px;font-size:9px;text-align:left;color:#666;font-weight:600;">IGST</th>
+      <th style="width:13%;border-bottom:1.5px solid #222;padding:6px 6px;font-size:9px;text-align:left;color:#666;font-weight:600;">AMOUNT</th>
+    </tr>
+    {{line_items_rows}}
+  </table>
+
+  <table style="width:100%;border-collapse:collapse;margin-bottom:14px;">
+    <tr>
+      <td style="width:55%;vertical-align:top;padding:0;font-size:9.5px;color:#666;">{{total_in_words}}<br>Payment: {{payment_mode}}</td>
+      <td style="width:45%;vertical-align:top;padding:0;">
+        <table style="width:100%;border-collapse:collapse;">
+          <tr><td style="font-size:10px;color:#666;padding:2px 0;">Subtotal</td><td style="font-size:10px;padding:2px 0;text-align:right;">{{subtotal}}</td></tr>
+          <tr><td style="font-size:10px;color:#666;padding:2px 0;">GST</td><td style="font-size:10px;padding:2px 0;text-align:right;">{{total_gst}}</td></tr>
+          <tr><td style="font-size:13px;font-weight:700;padding:6px 0 0;border-top:1.5px solid #222;">Total</td><td style="font-size:13px;font-weight:700;padding:6px 0 0;text-align:right;border-top:1.5px solid #222;">{{grand_total}}</td></tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+
+  <div style="font-size:8px;color:#999;line-height:1.5;margin-bottom:20px;">
+    The amount received against gemstone/jewellery is non-refundable. Customised jewellery is not eligible for return or money back. All disputes subject to Delhi jurisdiction.
+  </div>
+
+  <table style="width:100%;border-collapse:collapse;">
+    <tr>
+      <td style="width:55%;padding:0;font-size:9.5px;color:#666;">Customer signature<br><br>{{customer_name}}</td>
+      <td style="width:45%;padding:0;text-align:right;font-size:9.5px;color:#666;">For {{seller_legal_name}}<br>{{seal_html}}Authorised signatory</td>
+    </tr>
+  </table>
+
+  <div style="text-align:center;font-size:8.5px;color:#aaa;margin-top:20px;">Computer generated invoice — {{shop_name}}</div>
+
+</body>
+</html>`;
+  }
+  if (id === "compact") {
+    return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-size: 8.5px; color: #222;">
+
+  <div style="text-align:center;margin-bottom:6px;">{{brand_header_html}}</div>
+
+  <table style="width:100%;border-collapse:collapse;border:1px solid #444;">
+    <tr>
+      <td style="border:none;padding:4px 6px;font-size:9.5px;font-weight:bold;border-bottom:1px solid #444;">INVOICE {{invoice_number}}</td>
+      <td style="border:none;padding:4px 6px;font-size:9.5px;font-weight:bold;text-align:right;border-bottom:1px solid #444;">{{invoice_date}}</td>
+    </tr>
+    <tr>
+      <td colspan="2" style="border:none;padding:0;">
+        <table style="width:100%;border-collapse:collapse;border-bottom:1px solid #444;">
+          <tr>
+            <td style="width:34%;vertical-align:top;padding:4px 6px;font-size:8px;line-height:1.4;"><b>{{seller_legal_name}}</b><br>{{seller_address}}<br>{{seller_phone}}<br>GSTIN {{seller_gstin}}</td>
+            <td style="width:34%;vertical-align:top;padding:4px 6px;font-size:8px;line-height:1.4;"><b>{{customer_name}}</b><br>{{billing_address}}<br>{{customer_phone}}</td>
+            <td style="width:32%;vertical-align:top;padding:4px 6px;font-size:8px;line-height:1.4;">Before {{delivery_before}}<br>{{delivery_mode}}<br>{{sales_person}}</td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2" style="border:none;padding:0;">
+        <table style="width:100%;border-collapse:collapse;">
+          <tr>
+            <th style="width:26%;background:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">ITEM</th>
+            <th style="width:7%;background:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">HSN</th>
+            <th style="width:6%;background:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">QTY</th>
+            <th style="width:13%;background:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">RATE</th>
+            <th style="width:12%;background:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">CGST</th>
+            <th style="width:12%;background:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">SGST</th>
+            <th style="width:12%;background:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">IGST</th>
+            <th style="width:12%;background:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">AMT</th>
+          </tr>
+          {{line_items_rows}}
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2" style="border:none;padding:4px 6px;">
+        <table style="width:100%;border-collapse:collapse;">
+          <tr>
+            <td style="width:55%;vertical-align:top;font-size:8px;">{{total_in_words}}<br>{{payment_mode}}</td>
+            <td style="width:45%;vertical-align:top;">
+              <table style="width:100%;border-collapse:collapse;">
+                <tr><td style="font-size:8px;padding:1px 0;">Sub Total</td><td style="font-size:8px;padding:1px 0;text-align:right;">{{subtotal}}</td></tr>
+                <tr><td style="font-size:8px;padding:1px 0;">GST</td><td style="font-size:8px;padding:1px 0;text-align:right;">{{total_gst}}</td></tr>
+                <tr><td style="font-size:9.5px;font-weight:bold;padding:2px 0;border-top:1px solid #444;">Total</td><td style="font-size:9.5px;font-weight:bold;padding:2px 0;text-align:right;border-top:1px solid #444;">{{grand_total}}</td></tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2" style="border:none;padding:4px 6px;font-size:6.5px;color:#666;line-height:1.35;border-top:1px solid #444;">
+        Amount received against gemstone/jewellery is non-refundable. Customised jewellery is not eligible for return. Disputes subject to Delhi jurisdiction.
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2" style="border:none;padding:6px;border-top:1px solid #444;">
+        <table style="width:100%;border-collapse:collapse;">
+          <tr>
+            <td style="width:55%;font-size:8px;">Customer Signature: {{customer_name}}</td>
+            <td style="width:45%;font-size:8px;text-align:right;">For {{seller_legal_name}}<br>{{seal_html}}Auth. Signatory</td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2" style="border:none;padding:4px;text-align:center;font-size:7px;color:#888;border-top:1px solid #444;">Computer generated invoice — {{shop_name}}</td>
+    </tr>
+  </table>
+
+</body>
+</html>`;
+  }
+  // "classic" (default) -- byte-for-byte the same as
+  // getDefaultOrderInvoiceTemplate() in orderInvoice.server.js.
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+</head>
+<body style="font-size: 10px; color: #222;">
+
+  <div style="text-align:center;margin-bottom:10px;">{{brand_header_html}}</div>
+
+  <table style="width:100%;border-collapse:collapse;border:1px solid #333;">
+    <tr>
+      <td style="border:none;padding:0;">
+        <table style="width:100%;border-collapse:collapse;border-bottom:1px solid #333;">
+          <tr>
+            <td style="padding:8px 10px;font-size:12px;font-weight:bold;">TAX INVOICE # {{invoice_number}}</td>
+            <td style="padding:8px 10px;font-size:12px;font-weight:bold;text-align:right;">Date : {{invoice_date}}</td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td style="border:none;padding:0;">
+        <table style="width:100%;border-collapse:collapse;border-bottom:1px solid #333;">
+          <tr>
+            <td style="width:38%;vertical-align:top;padding:8px 10px;font-size:10px;line-height:1.6;">
+              <div style="font-weight:bold;margin-bottom:3px;">{{seller_legal_name}}</div>
+              {{seller_address}}<br>
+              Tel : {{seller_phone}}<br>
+              Email : {{seller_email}}<br>
+              GSTIN : {{seller_gstin}}
+            </td>
+            <td style="width:38%;vertical-align:top;padding:8px 10px;font-size:10px;line-height:1.6;">
+              <div style="font-weight:bold;margin-bottom:3px;">Customer Details</div>
+              {{customer_name}}<br>
+              {{billing_address}}<br>
+              Tel : {{customer_phone}}
+            </td>
+            <td style="width:24%;vertical-align:top;padding:8px 10px;font-size:10px;line-height:1.6;">
+              Delivery Before : {{delivery_before}}<br>
+              Sales Person : {{sales_person}}<br>
+              Delivery Mode : {{delivery_mode}}
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td style="border:none;padding:0;">
+        <table style="width:100%;border-collapse:collapse;">
+          <tr>
+            <th style="width:24%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">ITEM(s) DESCRIPTION</th>
+            <th style="width:8%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">HSN</th>
+            <th style="width:6%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">Qty</th>
+            <th style="width:13%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">RATE (₹)</th>
+            <th style="width:12%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">CGST</th>
+            <th style="width:12%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">SGST</th>
+            <th style="width:12%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">IGST</th>
+            <th style="width:13%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">AMOUNT (₹)</th>
+          </tr>
+          {{line_items_rows}}
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td style="border:none;padding:0;">
+        <table style="width:100%;border-collapse:collapse;">
+          <tr>
+            <td style="width:55%;vertical-align:top;padding:10px;font-size:10px;">
+              Total In Words<br>
+              <b>{{total_in_words}}</b><br><br>
+              Payment Mode : {{payment_mode}}
+            </td>
+            <td style="width:45%;vertical-align:top;padding:10px;">
+              <table style="width:100%;border-collapse:collapse;">
+                <tr>
+                  <td style="font-size:10px;padding:2px 0;">Sub Total</td>
+                  <td style="font-size:10px;padding:2px 0;text-align:right;">{{subtotal}}</td>
+                </tr>
+                <tr>
+                  <td style="font-size:10px;padding:2px 0;">Total GST</td>
+                  <td style="font-size:10px;padding:2px 0;text-align:right;">{{total_gst}}</td>
+                </tr>
+                <tr>
+                  <td style="font-size:12px;font-weight:bold;padding:4px 0;border-top:1px solid #333;">Total</td>
+                  <td style="font-size:12px;font-weight:bold;padding:4px 0;text-align:right;border-top:1px solid #333;">{{grand_total}}</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td style="font-size:8.5px;color:#555;line-height:1.5;padding:10px;border-top:1px solid #333;">
+        The Amount Received against Gemstone / Jewellery is Non-refundable. In case of any defect related to Gemstones / Jewellery, the Customer has to return the goods within 3 days after
+        purchase. We take full responsibility if the sold gemstone is synthetic (man-made) and the full amount will be refunded. We take no responsibility if the Gemstone / Jewellery gets damaged in
+        any way after it is delivered to the Client. Customised Jewellery — including personalised / engraved products manufactured to specific customer instructions — is not eligible for return /
+        money back. Any item showing signs of wear, or that has been engraved, altered, resized or otherwise damaged, will not be accepted for return. All matters / disputes subject to Delhi
+        Jurisdiction.
+      </td>
+    </tr>
+    <tr>
+      <td style="border:none;padding:0;">
+        <table style="width:100%;border-collapse:collapse;border-top:1px solid #333;">
+          <tr>
+            <td style="width:55%;padding:14px 10px;vertical-align:top;">
+              I have read, understood and agreed to the terms &amp; conditions.<br><br>
+              Customer Signature : {{customer_name}}
+            </td>
+            <td style="width:45%;padding:14px 10px;vertical-align:top;text-align:right;">
+              For {{seller_legal_name}}<br>
+              {{seal_html}}
+              Authorised Seal &amp; Signatory
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td style="text-align:center;font-size:9px;color:#666;padding:8px;border-top:1px solid #333;">This is a Computer Generated Invoice — {{shop_name}} ({{shop_url}})</td>
+    </tr>
+  </table>
+
+</body>
+</html>`;
 }
 
-// Switches a template between the drag-and-drop visual builder and the
-// raw-HTML textarea -- the two don't live-sync with each other (HTML
-// can't be reliably reverse-parsed back into blocks), so switching is a
-// deliberate choice, made clear here rather than silently discarding
-// whichever mode isn't active.
-function EditorModeToggle({ mode, setMode }) {
+// "classic" is identical to getDefaultInvoiceEmailTemplate() in
+// orderInvoice.server.js (duplicated for the same client-bundle reason
+// as above). Regular <style>-block CSS is fine for all three of these
+// -- unlike the PDF, the email never goes through pdfmake, so a real
+// email client (or nodemailer, which just sends the raw HTML as-is)
+// applies a <style> block normally.
+function getEmailPresetHtml(id) {
+  if (id === "minimal") {
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta name="viewport" content="width=device-width">
+  <style type="text/css">
+    body{margin:0;padding:0;width:100%;background-color:#ffffff;font-family:Arial,Helvetica,sans-serif;color:#333}
+    table{border-spacing:0;border-collapse:collapse} img{border:0;display:block} a{text-decoration:none}
+    .container{width:100%;max-width:480px;margin:0 auto;padding:40px 24px;text-align:center}
+    .content{font-size:15px;line-height:1.7;color:#444;text-align:left;margin-top:24px}
+    .button{display:inline-block;background:#222;color:#fff!important;text-decoration:none!important;padding:12px 26px;border-radius:4px;font-size:14px;margin-top:20px}
+    .footer{font-size:12px;color:#999;margin-top:36px}
+  </style>
+</head>
+<body>
+  <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td align="center">
+    <table class="container" cellpadding="0" cellspacing="0" border="0"><tr><td>
+      <img src="{{shop_logo_url}}" alt="{{shop_name}}" width="90" style="margin:0 auto;">
+      <div class="content">
+        <p>Hello {{customer_first_name}},</p>
+        <p>Thank you for your order {{order_number}}. Your GST tax invoice {{invoice_number}} is attached to this email as a PDF.</p>
+      </div>
+      <a href="{{order_status_url}}" class="button">View Your Order</a>
+      <div class="footer">{{shop_name}} · <a href="{{shop_url}}" style="color:#999;">{{shop_url}}</a></div>
+    </td></tr></table>
+  </td></tr></table>
+</body>
+</html>`;
+  }
+  if (id === "bold") {
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta name="viewport" content="width=device-width">
+  <style type="text/css">
+    body{margin:0;padding:0;width:100%;background-color:#f3f2ef;font-family:Arial,Helvetica,sans-serif;color:#333}
+    table{border-spacing:0;border-collapse:collapse} img{border:0;display:block} a{text-decoration:none}
+    .wrapper{width:100%;background:#f3f2ef;padding:32px 0}
+    .container{width:100%;max-width:520px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden}
+    .header{background:#8c7a4e;padding:32px 20px;text-align:center}
+    .header img{margin:0 auto}
+    .content{padding:32px 28px;font-size:15px;line-height:1.7;color:#333}
+    .button{display:block;width:100%;box-sizing:border-box;text-align:center;background:#8c7a4e;color:#fff!important;text-decoration:none!important;padding:14px;border-radius:6px;font-size:15px;font-weight:600;margin-top:20px}
+    .footer{padding:20px;text-align:center;font-size:12px;color:#999;background:#faf9f7}
+  </style>
+</head>
+<body>
+  <table class="wrapper" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td align="center">
+    <table class="container" cellpadding="0" cellspacing="0" border="0"><tr><td>
+      <div class="header"><img src="{{shop_logo_url}}" alt="{{shop_name}}" width="100"></div>
+      <div class="content">
+        <p>Hello {{customer_first_name}},</p>
+        <p>Your order <b>{{order_number}}</b> is complete — invoice <b>{{invoice_number}}</b> is attached as a PDF.</p>
+        <a href="{{order_status_url}}" class="button">View Your Order</a>
+      </div>
+      <div class="footer">{{shop_name}} · {{shop_url}}</div>
+    </td></tr></table>
+  </td></tr></table>
+</body>
+</html>`;
+  }
+  // "classic" (default) -- byte-for-byte the same as
+  // getDefaultInvoiceEmailTemplate() in orderInvoice.server.js.
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Your invoice is here</title>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta name="viewport" content="width=device-width">
+  <style type="text/css">
+.gt a{color:#222!important;text-decoration:none!important}
+body{margin:0;padding:0;width:100%;background-color:#f3f2ef;font-family:Arial,Helvetica,sans-serif;color:#4f5965}
+table{border-spacing:0;border-collapse:collapse} img{border:0;display:block} a{text-decoration:none}
+.email-wrapper{width:100%;background-color:#f3f2ef}.page-padding{padding:32px 0}
+.email-container{width:500px;max-width:500px;background-color:#fff;border-radius:0 0 12px 12px;overflow:hidden}
+.logo-section{padding:28px 20px 25px;text-align:center;background-color:#fffcf3;border-top:5px solid #8c7a4e}
+.logo-section img{max-width:100px;width:auto;height:auto;margin:0 auto}
+.logo-text{margin:0;font-size:30px;font-weight:normal;color:#a76642}
+.divider-cell{padding-left:0;padding-right:0}.divider{height:1px;background-color:#d5d0c8;width:100%;font-size:1px;line-height:1px}
+.content-section{padding:30px 28px 25px;font-size:15px;line-height:1.6;color:#4f5965;background-color:#fff}
+.content-inner{width:100%;margin:0 auto}.content-section p{margin-top:0;margin-bottom:18px}
+.order-number,.complete-status{font-weight:bold;color:#3d4652}
+.button-table{width:100%;margin-top:20px;margin-bottom:10px}.button-cell{width:50%;vertical-align:middle}
+.button-gap{width:8px;min-width:8px;font-size:1px;line-height:1px}
+.email-button{display:block;width:100%;box-sizing:border-box;text-align:center;background-color:#8c7a4e;color:#fff!important;padding:11px 5px;font-size:14px;font-weight:500;line-height:16px;border-radius:3px;white-space:nowrap;text-decoration:none!important}
+.secondary-button{background-color:#fff;color:#8c7a4e!important;border:1px solid #8c7a4e;padding:10px 5px}
+.footer-section{padding:14px 18px 16px;text-align:center;color:#4f5965;background-color:#fffcf3}
+.footer-title{margin:0 0 8px;font-size:14px;line-height:1.45;color:#4f5965}
+.address{margin:0 0 10px;font-size:13px;line-height:1.45;color:#333!important}.address a{color:#333!important;text-decoration:none!important}
+.contact-table{width:100%;margin:0 auto;table-layout:fixed}.website-row{padding-bottom:8px}
+.contact-item{width:50%;padding:3px 2px;text-align:center;vertical-align:middle;font-size:13px;line-height:18px}
+.single-contact-item{padding:3px 2px;text-align:center;vertical-align:middle;font-size:13px;line-height:18px}
+.contact-link{color:#333!important;text-decoration:none!important;white-space:nowrap}
+.contact-icon{width:18px;height:18px;display:block}
+@media only screen and (max-width:600px){
+.page-padding{padding:0!important}.email-container{width:100%!important;max-width:100%!important;border-radius:0!important}
+.logo-section{padding:22px 15px!important}.logo-section img{max-width:100px!important}
+.content-section{padding:24px 20px 18px!important;font-size:16px!important}
+.button-table{width:100%!important;margin-top:18px!important;margin-bottom:10px!important}.button-gap{width:8px!important;min-width:8px!important}
+.email-button{font-size:13px!important;line-height:16px!important;padding:10px 3px!important}.secondary-button{padding:9px 3px!important}
+.footer-section{padding:12px 12px 14px!important}.footer-title{font-size:14px!important;line-height:1.4!important;margin-bottom:7px!important}
+.address{font-size:13px!important;line-height:1.4!important;margin-bottom:8px!important}.website-row{padding-bottom:6px!important}
+.contact-item,.single-contact-item{padding:3px 1px!important;font-size:13px!important}.contact-link{white-space:nowrap!important}
+}
+</style>
+</head>
+
+
+<body>
+
+  <table class="email-wrapper" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+      <td class="page-padding" align="center">
+
+        <table class="email-container" width="500" cellpadding="0" cellspacing="0" border="0">
+
+          <tr>
+            <td class="logo-section">
+              <img src="{{shop_logo_url}}" alt="{{shop_name}}" width="100">
+            </td>
+          </tr>
+
+          <tr>
+            <td class="divider-cell">
+              <div class="divider">&nbsp;</div>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="content-section">
+              <div class="content-inner">
+
+                <p>Hello {{customer_first_name}},</p>
+
+                <p>
+                  Thank you for your order
+                  <span class="order-number">{{order_number}}</span>.
+                  Your GST tax invoice
+                  <span class="order-number">{{invoice_number}}</span>
+                  is attached to this email as a PDF.
+                </p>
+
+                <p style="margin-top: 0; margin-bottom: 0;">
+                  Best Wishes &amp; Regards!
+                </p>
+
+                <table class="button-table" width="100%" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td class="button-cell" width="50%">
+                      <a href="{{order_status_url}}" class="email-button">View Your Order</a>
+                    </td>
+                    <td class="button-gap" width="8">&nbsp;</td>
+                    <td class="button-cell" width="50%">
+                      <a href="{{shop_url}}" class="email-button secondary-button">Visit Our Store</a>
+                    </td>
+                  </tr>
+                </table>
+
+              </div>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="divider-cell">
+              <div class="divider">&nbsp;</div>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="footer-section">
+
+              <p class="footer-title">
+                Thanks for choosing {{shop_name}} from the House of Shubh Gems.
+              </p>
+
+              <p class="address">
+                <a href="https://maps.app.goo.gl/vffRkrDyMiM9q895A">
+                  L-75-76, Lajpat Nagar 2, New Delhi - Delhi - 110024, India
+                </a>
+              </p>
+
+              <table class="contact-table" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td class="single-contact-item website-row" align="center">
+                    <table cellpadding="0" cellspacing="0" border="0" align="center">
+                      <tr>
+                        <td valign="middle" style="padding-right: 6px;">
+                          <img src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/website.png?v=1788870868" alt="Website" width="18" height="18" class="contact-icon">
+                        </td>
+                        <td valign="middle">
+                          <a href="{{shop_url}}" class="contact-link">onlynaturalgemstones.com</a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <table class="contact-table" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td class="contact-item" align="center">
+                    <table cellpadding="0" cellspacing="0" border="0" align="center">
+                      <tr>
+                        <td valign="middle" style="padding-right: 6px;">
+                          <a href="https://wa.me/919310400152">
+                            <img src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/whatsapp-svg-icon.svg?v=1787318358" alt="WhatsApp" width="18" height="18" class="contact-icon">
+                          </a>
+                        </td>
+                        <td valign="middle">
+                          <a href="https://wa.me/919310400152" class="contact-link">+91-9310-400-152</a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                  <td class="contact-item" align="center">
+                    <table cellpadding="0" cellspacing="0" border="0" align="center">
+                      <tr>
+                        <td valign="middle" style="padding-right: 6px;">
+                          <img src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/phone.png?v=1788597346" alt="Call" width="18" height="18" class="contact-icon">
+                        </td>
+                        <td valign="middle">
+                          <a href="tel:+918010555111" class="contact-link">+91-8010-555-111</a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <table class="contact-table" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td class="single-contact-item" align="center">
+                    <table cellpadding="0" cellspacing="0" border="0" align="center">
+                      <tr>
+                        <td valign="middle" style="padding-right: 6px;">
+                          <img src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/Email.png?v=1788596216" alt="Email" width="18" height="18" class="contact-icon">
+                        </td>
+                        <td valign="middle">
+                          <a href="mailto:{{shop_email}}" class="contact-link">{{shop_email}}</a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+            </td>
+          </tr>
+
+        </table>
+
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>`;
+}
+
+function PresetPicker({ presets, getHtml, onApply }) {
+  const [selected, setSelected] = useState(presets[0].id);
   return (
-    <div style={{ display: "flex", gap: "6px", marginBottom: "12px" }}>
-      {[
-        { id: "visual", label: "🧩 Visual Builder" },
-        { id: "raw", label: "</> Raw HTML" },
-      ].map((m) => (
-        <button
-          key={m.id}
-          type="button"
-          onClick={() => setMode(m.id)}
-          style={{
-            padding: "7px 14px",
-            borderRadius: "8px",
-            border: `1px solid ${mode === m.id ? brand.accent : brand.border}`,
-            background: mode === m.id ? brand.accentTint : "#fff",
-            color: mode === m.id ? brand.accent : brand.body,
-            fontSize: "12.5px",
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
-        >
-          {m.label}
-        </button>
-      ))}
+    <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap", marginBottom: "14px", padding: "10px 12px", background: brand.panel, borderRadius: "10px", border: `1px solid ${brand.border}` }}>
+      <span style={{ fontSize: "12.5px", fontWeight: 600, color: brand.body }}>Choose a design:</span>
+      <select value={selected} onChange={(e) => setSelected(e.target.value)} style={{ padding: "7px 9px", borderRadius: "7px", border: `1px solid ${brand.border}`, fontSize: "12.5px" }}>
+        {presets.map((p) => (
+          <option key={p.id} value={p.id}>{p.label}</option>
+        ))}
+      </select>
+      <span style={{ fontSize: "11.5px", color: brand.muted, flex: 1, minWidth: "160px" }}>
+        {presets.find((p) => p.id === selected)?.description}
+      </span>
+      <button
+        type="button"
+        onClick={() => {
+          if (window.confirm(`Load the "${presets.find((p) => p.id === selected)?.label}" design? This replaces the HTML below (not saved until you click Save settings).`)) {
+            onApply(getHtml(selected));
+          }
+        }}
+        style={{ padding: "7px 14px", borderRadius: "8px", border: "none", background: brand.accent, color: "#fff", fontSize: "12.5px", fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}
+      >
+        Use this design
+      </button>
     </div>
   );
 }
@@ -571,7 +1095,7 @@ const INVOICE_PREVIEW_SAMPLE_VALUES = {
   // fetchImageAsDataUri() in orderInvoice.server.js), which this
   // client-side-only preview can't reproduce -- it shows the same
   // text/blank fallback a real send would use with nothing configured.
-  brand_header_html: "Only Natural Gemstones",
+  brand_header_html: '<span style="font-size:22px;font-weight:bold;color:#d97b3f;">Only Natural Gemstones</span>',
   seal_html: "<br><br>",
   invoice_number: "INV-000123",
   invoice_date: "10/09/2026",
@@ -815,6 +1339,7 @@ export default function SettingsPage() {
   const [invoiceSellerPhone, setInvoiceSellerPhone] = useState(data.invoiceSellerPhone);
   const [invoiceSellerEmail, setInvoiceSellerEmail] = useState(data.invoiceSellerEmail);
   const [invoiceSealImageUrl, setInvoiceSealImageUrl] = useState(data.invoiceSealImageUrl);
+  const [invoiceLogoImageUrl, setInvoiceLogoImageUrl] = useState(data.invoiceLogoImageUrl);
   const [invoiceSellerState, setInvoiceSellerState] = useState(data.invoiceSellerState);
   const [invoiceGstRateLoose, setInvoiceGstRateLoose] = useState(data.invoiceGstRateLoose);
   const [invoiceGstRateCustomisation, setInvoiceGstRateCustomisation] = useState(data.invoiceGstRateCustomisation);
@@ -824,24 +1349,6 @@ export default function SettingsPage() {
   const [showInvoicePreview, setShowInvoicePreview] = useState(false);
   const [invoiceEmailTemplate, setInvoiceEmailTemplate] = useState(data.invoiceEmailTemplate || data.defaultInvoiceEmailTemplate);
   const [showInvoiceEmailPreview, setShowInvoiceEmailPreview] = useState(false);
-  // "visual" (drag-and-drop builder) vs "raw" (hand-typed HTML) --
-  // defaults to visual only when blocks were already saved from a
-  // previous builder session, so existing hand-typed-HTML users see no
-  // change at all until they deliberately switch. Editing in one mode
-  // does not update the other's content live -- switching modes is a
-  // deliberate choice, not a live two-way sync (documented in the UI).
-  const [invoicePdfEditorMode, setInvoicePdfEditorMode] = useState(
-    Array.isArray(data.invoicePdfBlocksJson) && data.invoicePdfBlocksJson.length ? "visual" : "raw"
-  );
-  const [invoicePdfBlocks, setInvoicePdfBlocks] = useState(
-    Array.isArray(data.invoicePdfBlocksJson) ? data.invoicePdfBlocksJson : []
-  );
-  const [invoiceEmailEditorMode, setInvoiceEmailEditorMode] = useState(
-    Array.isArray(data.invoiceEmailBlocksJson) && data.invoiceEmailBlocksJson.length ? "visual" : "raw"
-  );
-  const [invoiceEmailBlocks, setInvoiceEmailBlocks] = useState(
-    Array.isArray(data.invoiceEmailBlocksJson) ? data.invoiceEmailBlocksJson : []
-  );
   // Which of the two GST Tax Invoice tabs is active -- "email" (the
   // message the customer receives) or "pdf" (the attached invoice
   // document's own layout), per explicit request to split these into
@@ -850,26 +1357,6 @@ export default function SettingsPage() {
   const [collectionGstRates, setCollectionGstRates] = useState(data.invoiceCollectionGstRates || {});
   const setCollectionRate = (gid, value) => {
     setCollectionGstRates((prev) => ({ ...prev, [gid]: value }));
-  };
-  const [invoiceStartNumber, setInvoiceStartNumber] = useState("");
-  const invoiceStartNumberFetcher = useFetcher();
-  const isSettingInvoiceStartNumber = invoiceStartNumberFetcher.state !== "idle";
-
-  useEffect(() => {
-    if (invoiceStartNumberFetcher.data?.intent === "setInvoiceStartingNumber") {
-      if (invoiceStartNumberFetcher.data.ok) {
-        toast.show("Invoice numbering will start at " + invoiceStartNumber);
-        setInvoiceStartNumber("");
-      } else {
-        toast.show(invoiceStartNumberFetcher.data.error || "Couldn't set starting number", { isError: true });
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [invoiceStartNumberFetcher.data]);
-
-  const saveInvoiceStartNumber = () => {
-    if (!invoiceStartNumber) return;
-    invoiceStartNumberFetcher.submit({ intent: "setInvoiceStartingNumber", startNumber: invoiceStartNumber }, { method: "POST" });
   };
 
   // "Fetch from Shopify" -- pre-fills legal name/address/phone/state from
@@ -947,21 +1434,6 @@ export default function SettingsPage() {
 
   const submit = (e) => {
     e.preventDefault();
-    // In visual-builder mode, the blocks (not the raw-HTML textarea
-    // state, which isn't edited in that mode) are the source of truth
-    // -- compile them to the same HTML-string shape a hand-typed
-    // template already is, right before submitting.
-    const compiledPdfHtml = invoicePdfEditorMode === "visual" ? compileBlocksToHtml(invoicePdfBlocks, { title: "Invoice" }) : null;
-    const compiledEmailHtml = invoiceEmailEditorMode === "visual" ? compileBlocksToHtml(invoiceEmailBlocks, { title: "Invoice email" }) : null;
-    // Catches the easy accidental mistake of switching to the visual
-    // builder and saving before adding any blocks -- an empty template
-    // would otherwise silently send a blank invoice/email.
-    if (invoicePdfEditorMode === "visual" && invoicePdfBlocks.length === 0) {
-      if (!window.confirm("Your Invoice PDF has no blocks yet, so it would generate a blank invoice. Save anyway?")) return;
-    }
-    if (invoiceEmailEditorMode === "visual" && invoiceEmailBlocks.length === 0) {
-      if (!window.confirm("Your Invoice Email has no blocks yet, so it would send a blank email. Save anyway?")) return;
-    }
     fetcher.submit(
       {
         gmailUser,
@@ -1007,34 +1479,23 @@ export default function SettingsPage() {
         invoiceSellerPhone,
         invoiceSellerEmail,
         invoiceSealImageUrl,
+        invoiceLogoImageUrl,
         invoiceSellerState,
         invoiceGstRateLoose,
         invoiceGstRateCustomisation,
         invoiceNumberPrefix,
         invoiceDeliveryDays,
         // Same "don't freeze today's default as a permanent customization"
-        // reasoning as orderProcessingEmailTemplate above -- only applies
-        // in raw mode; visual mode always saves its compiled HTML as-is,
-        // since "matches the built-in default" isn't a meaningful
-        // concept once a merchant is composing from blocks.
+        // reasoning as orderProcessingEmailTemplate above.
         invoicePdfTemplate:
-          compiledPdfHtml != null
-            ? compiledPdfHtml
-            : invoicePdfTemplate.replace(/\r\n/g, "\n") === data.defaultInvoicePdfTemplate.replace(/\r\n/g, "\n")
-              ? ""
-              : invoicePdfTemplate,
+          invoicePdfTemplate.replace(/\r\n/g, "\n") === data.defaultInvoicePdfTemplate.replace(/\r\n/g, "\n")
+            ? ""
+            : invoicePdfTemplate,
         invoiceEmailTemplate:
-          compiledEmailHtml != null
-            ? compiledEmailHtml
-            : invoiceEmailTemplate.replace(/\r\n/g, "\n") === data.defaultInvoiceEmailTemplate.replace(/\r\n/g, "\n")
-              ? ""
-              : invoiceEmailTemplate,
+          invoiceEmailTemplate.replace(/\r\n/g, "\n") === data.defaultInvoiceEmailTemplate.replace(/\r\n/g, "\n")
+            ? ""
+            : invoiceEmailTemplate,
         invoiceCollectionGstRates: JSON.stringify(collectionGstRates),
-        // Only sent while that template's builder mode is active --
-        // omitted in raw mode, which leaves previously-saved blocks
-        // (if any) untouched rather than clobbering them with "[]".
-        ...(invoicePdfEditorMode === "visual" ? { invoicePdfBlocksJson: JSON.stringify(invoicePdfBlocks) } : {}),
-        ...(invoiceEmailEditorMode === "visual" ? { invoiceEmailBlocksJson: JSON.stringify(invoiceEmailBlocks) } : {}),
       },
       { method: "POST" }
     );
@@ -1245,9 +1706,8 @@ export default function SettingsPage() {
             {invoiceTab === "email" && (
               <>
                 <p style={{ ...hintStyle, marginTop: 0 }}>
-                  The message the customer actually receives, with the invoice PDF attached. Edit the raw HTML
-                  below, or leave it as-is to keep using the built-in design (matches this store's other
-                  transactional emails).
+                  The message the customer actually receives, with the invoice PDF attached. Pick a design below,
+                  then edit its raw HTML freely — or leave it as-is to keep the built-in design.
                 </p>
                 <Explain summary="ℹ️ Available placeholders (substituted automatically when the invoice email sends)">
                   <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "12px", color: brand.muted, lineHeight: 1.8 }}>
@@ -1258,68 +1718,40 @@ export default function SettingsPage() {
                     ))}
                   </ul>
                 </Explain>
-                <EditorModeToggle mode={invoiceEmailEditorMode} setMode={setInvoiceEmailEditorMode} />
 
-                {invoiceEmailEditorMode === "visual" ? (
-                  <>
-                    {invoiceEmailBlocks.length === 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setInvoiceEmailBlocks(starterEmailBlocks())}
-                        style={{ ...secondaryBtn, padding: "8px 16px", fontSize: "12.5px", marginBottom: "10px" }}
-                      >
-                        ✨ Load starter blocks
-                      </button>
-                    )}
-                    <TemplateBuilder
-                      blocks={invoiceEmailBlocks}
-                      onChange={setInvoiceEmailBlocks}
-                      tokens={data.orderInvoiceEmailPlaceholders}
-                      isPdf={false}
-                    />
-                    <Explain summary="Preview this design with sample data" defaultOpen>
-                      <iframe
-                        title="Invoice email builder preview"
-                        srcDoc={renderInvoiceEmailPreview(compileBlocksToHtml(invoiceEmailBlocks, { title: "Invoice email" }))}
-                        style={{ width: "100%", height: "500px", border: `1px solid ${brand.border}`, borderRadius: "10px", display: "block", marginTop: "8px" }}
-                      />
-                    </Explain>
-                  </>
-                ) : (
-                  <>
-                    <label style={labelStyle} htmlFor="invoiceEmailTemplate">Invoice email HTML</label>
-                    <textarea
-                      id="invoiceEmailTemplate"
-                      value={invoiceEmailTemplate}
-                      onChange={(e) => setInvoiceEmailTemplate(e.target.value)}
-                      spellCheck={false}
-                      style={{ ...fieldStyle, fontFamily: brand.mono, fontSize: "11.5px", lineHeight: 1.5, height: "260px", resize: "vertical", whiteSpace: "pre" }}
-                    />
-                    <div style={{ display: "flex", gap: "8px", marginTop: "6px", flexWrap: "wrap" }}>
-                      <button type="button" onClick={() => setShowInvoiceEmailPreview((v) => !v)} style={{ ...primaryBtn, padding: "8px 16px", fontSize: "12.5px" }}>
-                        {showInvoiceEmailPreview ? "Hide preview" : "Preview"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (window.confirm("Reset to the built-in default template? This discards your current edits (not saved until you click Save settings).")) {
-                            setInvoiceEmailTemplate(data.defaultInvoiceEmailTemplate);
-                          }
-                        }}
-                        style={{ ...secondaryBtn, padding: "8px 16px", fontSize: "12.5px" }}
-                      >
-                        Reset to default
-                      </button>
+                <PresetPicker presets={EMAIL_TEMPLATE_PRESETS} getHtml={getEmailPresetHtml} onApply={setInvoiceEmailTemplate} />
+
+                <label style={labelStyle} htmlFor="invoiceEmailTemplate">Invoice email HTML</label>
+                <textarea
+                  id="invoiceEmailTemplate"
+                  value={invoiceEmailTemplate}
+                  onChange={(e) => setInvoiceEmailTemplate(e.target.value)}
+                  spellCheck={false}
+                  style={{ ...fieldStyle, fontFamily: brand.mono, fontSize: "11.5px", lineHeight: 1.5, height: "260px", resize: "vertical", whiteSpace: "pre" }}
+                />
+                <div style={{ display: "flex", gap: "8px", marginTop: "6px", flexWrap: "wrap" }}>
+                  <button type="button" onClick={() => setShowInvoiceEmailPreview((v) => !v)} style={{ ...primaryBtn, padding: "8px 16px", fontSize: "12.5px" }}>
+                    {showInvoiceEmailPreview ? "Hide preview" : "Preview"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm("Reset to the built-in default template? This discards your current edits (not saved until you click Save settings).")) {
+                        setInvoiceEmailTemplate(data.defaultInvoiceEmailTemplate);
+                      }
+                    }}
+                    style={{ ...secondaryBtn, padding: "8px 16px", fontSize: "12.5px" }}
+                  >
+                    Reset to default
+                  </button>
+                </div>
+                {showInvoiceEmailPreview && (
+                  <div style={{ marginTop: "10px", border: `1px solid ${brand.border}`, borderRadius: "10px", overflow: "hidden" }}>
+                    <div style={{ padding: "6px 10px", background: brand.panel, borderBottom: `1px solid ${brand.divider}`, fontSize: "11px", color: brand.muted }}>
+                      Preview with sample data — this reflects what's in the box above right now, even if unsaved.
                     </div>
-                    {showInvoiceEmailPreview && (
-                      <div style={{ marginTop: "10px", border: `1px solid ${brand.border}`, borderRadius: "10px", overflow: "hidden" }}>
-                        <div style={{ padding: "6px 10px", background: brand.panel, borderBottom: `1px solid ${brand.divider}`, fontSize: "11px", color: brand.muted }}>
-                          Preview with sample data — this reflects what's in the box above right now, even if unsaved.
-                        </div>
-                        <iframe title="Invoice email preview" srcDoc={renderInvoiceEmailPreview(invoiceEmailTemplate)} style={{ width: "100%", height: "500px", border: "none", display: "block" }} />
-                      </div>
-                    )}
-                  </>
+                    <iframe title="Invoice email preview" srcDoc={renderInvoiceEmailPreview(invoiceEmailTemplate)} style={{ width: "100%", height: "500px", border: "none", display: "block" }} />
+                  </div>
                 )}
               </>
             )}
@@ -1500,47 +1932,47 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                <label style={labelStyle} htmlFor="invoiceSealImageUrl">Signature/seal image URL (optional)</label>
-                <input
-                  id="invoiceSealImageUrl"
-                  style={fieldStyle}
-                  type="text"
-                  value={invoiceSealImageUrl}
-                  onChange={(e) => setInvoiceSealImageUrl(e.target.value)}
-                  placeholder="https://cdn.shopify.com/... (upload it under Settings → Files in Shopify Admin, then paste its link here)"
-                />
-                <p style={{ ...hintStyle, marginTop: "-10px" }}>
-                  Shown above "Authorised Seal &amp; Signatory" on the invoice PDF. Leave blank to show just the text,
-                  no image, as before.
+                <div style={{ display: "flex", gap: "12px" }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle} htmlFor="invoiceLogoImageUrl">Logo image URL (optional)</label>
+                    <input
+                      id="invoiceLogoImageUrl"
+                      style={fieldStyle}
+                      type="text"
+                      value={invoiceLogoImageUrl}
+                      onChange={(e) => setInvoiceLogoImageUrl(e.target.value)}
+                      placeholder="https://cdn.shopify.com/..."
+                    />
+                    <p style={{ ...hintStyle, marginTop: "-10px" }}>
+                      Shown at the top of the invoice PDF. Leave blank to automatically use your store's own logo
+                      instead.
+                    </p>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle} htmlFor="invoiceSealImageUrl">Signature/seal image URL (optional)</label>
+                    <input
+                      id="invoiceSealImageUrl"
+                      style={fieldStyle}
+                      type="text"
+                      value={invoiceSealImageUrl}
+                      onChange={(e) => setInvoiceSealImageUrl(e.target.value)}
+                      placeholder="https://cdn.shopify.com/..."
+                    />
+                    <p style={{ ...hintStyle, marginTop: "-10px" }}>
+                      Shown above "Authorised Seal &amp; Signatory". Leave blank to show just the text, no image.
+                    </p>
+                  </div>
+                </div>
+                <p style={{ ...hintStyle, marginTop: "-6px" }}>
+                  For either image: upload it under Settings → Files in Shopify Admin, then paste its link here.
                 </p>
 
                 <label style={labelStyle}>Invoice numbering</label>
-                {data.invoiceNextNumber ? (
-                  <p style={{ ...hintStyle, marginTop: "5px" }}>
-                    Next invoice will be <strong>{invoiceNumberPrefix || data.defaultInvoiceNumberPrefix}{String(data.invoiceNextNumber).padStart(6, "0")}</strong>.
-                    The starting number can no longer be changed — at least one invoice has already been issued.
-                  </p>
-                ) : (
-                  <>
-                    <p style={{ ...hintStyle, marginTop: "5px" }}>
-                      No invoice has been issued yet — set where the sequence should start (e.g. 1, or wherever your
-                      existing paper/accounting records leave off). This can only be set once, before the first invoice.
-                    </p>
-                    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                      <input
-                        style={{ ...fieldStyle, marginBottom: 0, maxWidth: "160px" }}
-                        type="number"
-                        min="1"
-                        value={invoiceStartNumber}
-                        onChange={(e) => setInvoiceStartNumber(e.target.value)}
-                        placeholder="1"
-                      />
-                      <button type="button" onClick={saveInvoiceStartNumber} disabled={isSettingInvoiceStartNumber || !invoiceStartNumber} style={{ ...secondaryBtn, padding: "9px 16px", fontSize: "12.5px" }}>
-                        {isSettingInvoiceStartNumber ? "Setting…" : "Set starting number"}
-                      </button>
-                    </div>
-                  </>
-                )}
+                <p style={{ ...hintStyle, marginTop: "5px" }}>
+                  An invoice's number is your prefix above plus that order's own number — e.g. order{" "}
+                  <strong>ONG1028</strong> becomes <strong>{invoiceNumberPrefix || data.defaultInvoiceNumberPrefix}1028</strong>.
+                  Assigned once per order and never changes on resend, even if you edit the prefix afterward.
+                </p>
 
                 <Explain summary="ℹ️ Available placeholders (substituted automatically when the invoice is generated)">
                   <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "12px", color: brand.muted, lineHeight: 1.8 }}>
@@ -1552,78 +1984,46 @@ export default function SettingsPage() {
                   </ul>
                 </Explain>
 
-                <EditorModeToggle mode={invoicePdfEditorMode} setMode={setInvoicePdfEditorMode} />
+                <PresetPicker presets={PDF_TEMPLATE_PRESETS} getHtml={getPdfPresetHtml} onApply={setInvoicePdfTemplate} />
 
-                {invoicePdfEditorMode === "visual" ? (
-                  <>
-                    <p style={{ ...hintStyle, marginTop: 0 }}>
-                      Rendered without a browser engine (pdfmake, not Puppeteer) to keep this app's hosting light —
-                      stick to the block types offered here (all table-based under the hood); freeform positioning
-                      isn't supported.
-                    </p>
-                    {invoicePdfBlocks.length === 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setInvoicePdfBlocks(starterPdfBlocks())}
-                        style={{ ...secondaryBtn, padding: "8px 16px", fontSize: "12.5px", marginBottom: "10px" }}
-                      >
-                        ✨ Load starter blocks
-                      </button>
-                    )}
-                    <TemplateBuilder
-                      blocks={invoicePdfBlocks}
-                      onChange={setInvoicePdfBlocks}
-                      tokens={data.orderInvoicePlaceholders}
-                      isPdf
-                    />
-                    <Explain summary="Preview this design with sample data (browser preview — the real PDF's exact fonts/spacing may differ slightly)" defaultOpen>
-                      <iframe
-                        title="Invoice PDF builder preview"
-                        srcDoc={renderInvoicePreview(compileBlocksToHtml(invoicePdfBlocks, { title: "Invoice" }))}
-                        style={{ width: "100%", height: "500px", border: `1px solid ${brand.border}`, borderRadius: "10px", display: "block", marginTop: "8px" }}
-                      />
-                    </Explain>
-                  </>
-                ) : (
-                  <>
-                    <label style={labelStyle} htmlFor="invoicePdfTemplate">Invoice PDF HTML</label>
-                    <textarea
-                      id="invoicePdfTemplate"
-                      value={invoicePdfTemplate}
-                      onChange={(e) => setInvoicePdfTemplate(e.target.value)}
-                      spellCheck={false}
-                      style={{ ...fieldStyle, fontFamily: brand.mono, fontSize: "11.5px", lineHeight: 1.5, height: "260px", resize: "vertical", whiteSpace: "pre" }}
-                    />
-                    <p style={{ ...hintStyle, marginTop: "6px" }}>
-                      Rendered without a browser engine (no Puppeteer) to keep this app's hosting light — stick to
-                      table-based layouts like this default, not flexbox/grid/absolute positioning, which won't render.
-                    </p>
-                    <div style={{ display: "flex", gap: "8px", marginTop: "6px", flexWrap: "wrap" }}>
-                      <button type="button" onClick={() => setShowInvoicePreview((v) => !v)} style={{ ...primaryBtn, padding: "8px 16px", fontSize: "12.5px" }}>
-                        {showInvoicePreview ? "Hide preview" : "Preview"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (window.confirm("Reset to the built-in default template? This discards your current edits (not saved until you click Save settings).")) {
-                            setInvoicePdfTemplate(data.defaultInvoicePdfTemplate);
-                          }
-                        }}
-                        style={{ ...secondaryBtn, padding: "8px 16px", fontSize: "12.5px" }}
-                      >
-                        Reset to default
-                      </button>
+                <label style={labelStyle} htmlFor="invoicePdfTemplate">Invoice PDF HTML</label>
+                <textarea
+                  id="invoicePdfTemplate"
+                  value={invoicePdfTemplate}
+                  onChange={(e) => setInvoicePdfTemplate(e.target.value)}
+                  spellCheck={false}
+                  style={{ ...fieldStyle, fontFamily: brand.mono, fontSize: "11.5px", lineHeight: 1.5, height: "260px", resize: "vertical", whiteSpace: "pre" }}
+                />
+                <p style={{ ...hintStyle, marginTop: "6px" }}>
+                  Rendered without a browser engine (no Puppeteer) to keep this app's hosting light — every style
+                  must be inline (<code>style="..."</code>) on the element itself, not in a &lt;style&gt; block or
+                  CSS class — those are silently ignored by the real PDF even though they'd show up fine in the
+                  preview below. Stick to table-based layouts, not flexbox/grid/absolute positioning.
+                </p>
+                <div style={{ display: "flex", gap: "8px", marginTop: "6px", flexWrap: "wrap" }}>
+                  <button type="button" onClick={() => setShowInvoicePreview((v) => !v)} style={{ ...primaryBtn, padding: "8px 16px", fontSize: "12.5px" }}>
+                    {showInvoicePreview ? "Hide preview" : "Preview"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm("Reset to the built-in default template? This discards your current edits (not saved until you click Save settings).")) {
+                        setInvoicePdfTemplate(data.defaultInvoicePdfTemplate);
+                      }
+                    }}
+                    style={{ ...secondaryBtn, padding: "8px 16px", fontSize: "12.5px" }}
+                  >
+                    Reset to default
+                  </button>
+                </div>
+                {showInvoicePreview && (
+                  <div style={{ marginTop: "10px", border: `1px solid ${brand.border}`, borderRadius: "10px", overflow: "hidden" }}>
+                    <div style={{ padding: "6px 10px", background: brand.panel, borderBottom: `1px solid ${brand.divider}`, fontSize: "11px", color: brand.muted }}>
+                      Preview with sample data — reflects the HTML box above, even if unsaved. The real PDF's exact fonts/
+                      spacing may differ slightly from this browser preview since the PDF is rendered by pdfmake, not a browser.
                     </div>
-                    {showInvoicePreview && (
-                      <div style={{ marginTop: "10px", border: `1px solid ${brand.border}`, borderRadius: "10px", overflow: "hidden" }}>
-                        <div style={{ padding: "6px 10px", background: brand.panel, borderBottom: `1px solid ${brand.divider}`, fontSize: "11px", color: brand.muted }}>
-                          Preview with sample data — reflects the HTML box above, even if unsaved. The real PDF's exact fonts/
-                          spacing may differ slightly from this browser preview since the PDF is rendered by pdfmake, not a browser.
-                        </div>
-                        <iframe title="Invoice PDF preview" srcDoc={renderInvoicePreview(invoicePdfTemplate)} style={{ width: "100%", height: "500px", border: "none", display: "block" }} />
-                      </div>
-                    )}
-                  </>
+                    <iframe title="Invoice PDF preview" srcDoc={renderInvoicePreview(invoicePdfTemplate)} style={{ width: "100%", height: "500px", border: "none", display: "block" }} />
+                  </div>
                 )}
               </>
             )}

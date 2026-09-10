@@ -486,6 +486,10 @@ model AppSettings {
   // and inlined as base64 server-side on every send -- see
   // fetchImageAsDataUri() in orderInvoice.server.js.
   invoiceSealImageUrl            String?
+  // Overrides the invoice PDF's logo -- when blank, falls back to the
+  // shop's own Shopify logo (see getShopFooterInfo), same fetch-and-
+  // inline-as-base64 mechanism as invoiceSealImageUrl above.
+  invoiceLogoImageUrl            String?
   // The visual drag-and-drop template builder's own block arrays (see
   // app/components/template-builder.jsx) -- purely so the builder can
   // restore the same editable blocks next time it's opened. The real
