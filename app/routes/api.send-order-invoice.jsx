@@ -1,20 +1,32 @@
 /**
  * Backend for the "Send Invoice" admin action extension
  * (extensions/order-invoice-action) — the order page's own button calls
- * this directly. Admin UI extensions auto-authenticate fetch() calls
- * resolved against the app's own application_url (no manual token
- * handling needed on the extension side) — see
- * https://shopify.dev/docs/apps/build/admin/actions-blocks/connect-app-backend.
- * authenticate.admin(request) verifies that inbound authorization here,
- * the same as any embedded page load, and its own `cors` helper (NOT
- * manual headers — confirmed this SDK version provides one, same as the
- * public.customerAccount/appProxy variants) wraps every response so the
- * extension (hosted on a separate shopifycdn.com domain) can actually
- * read it.
+ * this with an explicit `Authorization: Bearer <shopify.auth.idToken()>`
+ * header (see that file's own comment for why -- two earlier guesses at
+ * this, an "auto-authenticated relative fetch" and a couple of wrong
+ * token-method names, all failed live before landing on this one, which
+ * matches the target-specific Action Extension API reference).
+ *
+ * Because that's a genuine cross-origin request (extension runs on
+ * *.shopifycdn.com) with a custom Authorization header, the browser
+ * sends a real CORS preflight OPTIONS request FIRST, carrying no
+ * Authorization header at all -- authenticate.admin(request) must never
+ * run on that preflight (it has nothing to authenticate and would only
+ * get in the way), so OPTIONS is short-circuited before it's called.
+ * The real POST goes through authenticate.admin as normal, wrapping
+ * every response in its own `cors` helper (confirmed this SDK version
+ * has one, same family as the public.customerAccount/appProxy variants)
+ * so the extension can actually read the response.
  */
 import { authenticate } from "../shopify.server";
 import { getAppSettings } from "../utils/appSettings.server";
 import { sendOrderInvoiceEmail } from "../utils/orderInvoice.server";
+
+const PREFLIGHT_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
 
 function toOrderGid(id) {
   if (!id) return null;
@@ -22,6 +34,10 @@ function toOrderGid(id) {
 }
 
 export const action = async ({ request }) => {
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: PREFLIGHT_HEADERS });
+  }
+
   const { admin, session, cors } = await authenticate.admin(request);
 
   let body;

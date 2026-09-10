@@ -12,6 +12,10 @@ import '@shopify/ui-extensions/preact';
 import {render} from 'preact';
 import {useState} from 'preact/hooks';
 
+// This app's own backend — same Render domain used throughout the rest
+// of this app.
+const BACKEND_URL = 'https://shubh-gems-customizer-app.onrender.com/api/send-order-invoice';
+
 export default async () => {
   render(<Extension />, document.body);
 };
@@ -25,15 +29,23 @@ function Extension() {
   async function handleSend() {
     setState({status: 'sending', message: null});
     try {
-      // A relative path here -- NOT shopify.sessionToken.get() (that's
-      // customer-account extensions only) or shopify.idToken() called
-      // directly (confirmed live: both threw). Admin UI extensions
-      // auto-authenticate fetch() calls resolved against the app's own
-      // application_url and add the Authorization header themselves --
-      // see https://shopify.dev/docs/apps/build/admin/actions-blocks/connect-app-backend.
-      const res = await fetch('api/send-order-invoice', {
+      // Third try, now confirmed against the target-specific Action
+      // Extension API reference (not a generic guide): the token comes
+      // from the `auth` namespace, NOT a top-level shopify.idToken()
+      // (confirmed live: threw "not a function") and NOT
+      // shopify.sessionToken.get() (customer-account extensions only --
+      // also confirmed live: threw, "sessionToken" is undefined here).
+      // A bare relative-path fetch() with no explicit token also failed
+      // live ("Failed to fetch") -- going back to an absolute URL with
+      // an explicit Bearer header, which is the documented pattern for
+      // this exact target (admin.order-details.action.render).
+      const token = await shopify.auth.idToken();
+      const res = await fetch(BACKEND_URL, {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({orderId}),
       });
       const json = await res.json().catch(() => ({}));
