@@ -504,25 +504,25 @@ function getPdfPresetHtml(id) {
 
   <table style="width:100%;border-collapse:collapse;margin-bottom:8px;">
     <tr>
-      <td style="padding:0;font-size:16px;font-weight:600;color:#222;">Tax Invoice</td>
-      <td style="padding:0;text-align:right;font-size:10px;color:#777;">{{invoice_number}}<br>{{invoice_date}}</td>
+      <td style="border:none;padding:0;font-size:16px;font-weight:600;color:#222;">Tax Invoice</td>
+      <td style="border:none;padding:0;text-align:right;font-size:10px;color:#777;">{{invoice_number}}<br>{{invoice_date}}</td>
     </tr>
   </table>
-  <table style="width:100%;border-collapse:collapse;margin-bottom:16px;"><tr><td style="border-bottom:2px solid #d97b3f;padding:0;font-size:1px;line-height:1px;">&nbsp;</td></tr></table>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:16px;"><tr><td style="border:none;border-bottom:2px solid #d97b3f;padding:0;font-size:1px;line-height:1px;">&nbsp;</td></tr></table>
 
   <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
     <tr>
-      <td style="width:38%;vertical-align:top;padding:0 10px 0 0;font-size:10px;line-height:1.7;">
+      <td style="border:none;width:38%;vertical-align:top;padding:0 10px 0 0;font-size:10px;line-height:1.7;">
         <div style="font-size:9px;color:#999;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">From</div>
         <div style="font-weight:600;">{{seller_legal_name}}</div>
         {{seller_address}}<br>{{seller_phone}} · {{seller_email}}<br>GSTIN {{seller_gstin}}
       </td>
-      <td style="width:38%;vertical-align:top;padding:0 10px;font-size:10px;line-height:1.7;">
+      <td style="border:none;width:38%;vertical-align:top;padding:0 10px;font-size:10px;line-height:1.7;">
         <div style="font-size:9px;color:#999;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">Bill To</div>
         <div style="font-weight:600;">{{customer_name}}</div>
         {{billing_address}}<br>{{customer_phone}}
       </td>
-      <td style="width:24%;vertical-align:top;padding:0 0 0 10px;font-size:10px;line-height:1.7;">
+      <td style="border:none;width:24%;vertical-align:top;padding:0 0 0 10px;font-size:10px;line-height:1.7;">
         <div style="font-size:9px;color:#999;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">Shipment</div>
         Before {{delivery_before}}<br>{{delivery_mode}}<br>Sales: {{sales_person}}
       </td>
@@ -531,26 +531,26 @@ function getPdfPresetHtml(id) {
 
   <table style="width:100%;border-collapse:collapse;margin-bottom:12px;">
     <tr>
-      <th style="width:24%;border-bottom:1.5px solid #222;padding:6px 6px;font-size:9px;text-align:left;color:#666;font-weight:600;">DESCRIPTION</th>
-      <th style="width:8%;border-bottom:1.5px solid #222;padding:6px 6px;font-size:9px;text-align:left;color:#666;font-weight:600;">HSN</th>
-      <th style="width:6%;border-bottom:1.5px solid #222;padding:6px 6px;font-size:9px;text-align:left;color:#666;font-weight:600;">QTY</th>
-      <th style="width:13%;border-bottom:1.5px solid #222;padding:6px 6px;font-size:9px;text-align:left;color:#666;font-weight:600;">RATE</th>
-      <th style="width:12%;border-bottom:1.5px solid #222;padding:6px 6px;font-size:9px;text-align:left;color:#666;font-weight:600;">CGST</th>
-      <th style="width:12%;border-bottom:1.5px solid #222;padding:6px 6px;font-size:9px;text-align:left;color:#666;font-weight:600;">SGST</th>
-      <th style="width:12%;border-bottom:1.5px solid #222;padding:6px 6px;font-size:9px;text-align:left;color:#666;font-weight:600;">IGST</th>
-      <th style="width:13%;border-bottom:1.5px solid #222;padding:6px 6px;font-size:9px;text-align:left;color:#666;font-weight:600;">AMOUNT</th>
+      <th style="width:24%;border:none;border-bottom:1.5px solid #222;padding:6px 6px;font-size:9px;text-align:left;color:#666;font-weight:600;">DESCRIPTION</th>
+      <th style="width:8%;border:none;border-bottom:1.5px solid #222;padding:6px 6px;font-size:9px;text-align:left;color:#666;font-weight:600;">HSN</th>
+      <th style="width:6%;border:none;border-bottom:1.5px solid #222;padding:6px 6px;font-size:9px;text-align:left;color:#666;font-weight:600;">QTY</th>
+      <th style="width:13%;border:none;border-bottom:1.5px solid #222;padding:6px 6px;font-size:9px;text-align:left;color:#666;font-weight:600;">RATE</th>
+      <th style="width:12%;border:none;border-bottom:1.5px solid #222;padding:6px 6px;font-size:9px;text-align:left;color:#666;font-weight:600;">CGST</th>
+      <th style="width:12%;border:none;border-bottom:1.5px solid #222;padding:6px 6px;font-size:9px;text-align:left;color:#666;font-weight:600;">SGST</th>
+      <th style="width:12%;border:none;border-bottom:1.5px solid #222;padding:6px 6px;font-size:9px;text-align:left;color:#666;font-weight:600;">IGST</th>
+      <th style="width:13%;border:none;border-bottom:1.5px solid #222;padding:6px 6px;font-size:9px;text-align:left;color:#666;font-weight:600;">AMOUNT</th>
     </tr>
     {{line_items_rows}}
   </table>
 
   <table style="width:100%;border-collapse:collapse;margin-bottom:14px;">
     <tr>
-      <td style="width:55%;vertical-align:top;padding:0;font-size:9.5px;color:#666;">{{total_in_words}}<br>Payment: {{payment_mode}}</td>
-      <td style="width:45%;vertical-align:top;padding:0;">
+      <td style="border:none;width:55%;vertical-align:top;padding:0;font-size:9.5px;color:#666;">{{total_in_words}}<br>Payment: {{payment_mode}}</td>
+      <td style="border:none;width:45%;vertical-align:top;padding:0;">
         <table style="width:100%;border-collapse:collapse;">
-          <tr><td style="font-size:10px;color:#666;padding:2px 0;">Subtotal</td><td style="font-size:10px;padding:2px 0;text-align:right;">{{subtotal}}</td></tr>
-          <tr><td style="font-size:10px;color:#666;padding:2px 0;">GST</td><td style="font-size:10px;padding:2px 0;text-align:right;">{{total_gst}}</td></tr>
-          <tr><td style="font-size:13px;font-weight:700;padding:6px 0 0;border-top:1.5px solid #222;">Total</td><td style="font-size:13px;font-weight:700;padding:6px 0 0;text-align:right;border-top:1.5px solid #222;">{{grand_total}}</td></tr>
+          <tr><td style="border:none;font-size:10px;color:#666;padding:2px 0;">Subtotal</td><td style="border:none;font-size:10px;padding:2px 0;text-align:right;">{{subtotal}}</td></tr>
+          <tr><td style="border:none;font-size:10px;color:#666;padding:2px 0;">GST</td><td style="border:none;font-size:10px;padding:2px 0;text-align:right;">{{total_gst}}</td></tr>
+          <tr><td style="border:none;border-top:1.5px solid #222;font-size:13px;font-weight:700;padding:6px 0 0;">Total</td><td style="border:none;border-top:1.5px solid #222;font-size:13px;font-weight:700;padding:6px 0 0;text-align:right;">{{grand_total}}</td></tr>
         </table>
       </td>
     </tr>
@@ -562,8 +562,8 @@ function getPdfPresetHtml(id) {
 
   <table style="width:100%;border-collapse:collapse;">
     <tr>
-      <td style="width:55%;padding:0;font-size:9.5px;color:#666;">Customer signature<br><br>{{customer_name}}</td>
-      <td style="width:45%;padding:0;text-align:right;font-size:9.5px;color:#666;">For {{seller_legal_name}}<br>{{seal_html}}Authorised signatory</td>
+      <td style="border:none;width:55%;padding:0;font-size:9.5px;color:#666;">Customer signature<br><br>{{customer_name}}</td>
+      <td style="border:none;width:45%;padding:0;text-align:right;font-size:9.5px;color:#666;">For {{seller_legal_name}}<br>{{seal_html}}Authorised signatory</td>
     </tr>
   </table>
 
@@ -580,49 +580,49 @@ function getPdfPresetHtml(id) {
 
   <div style="text-align:center;margin-bottom:6px;">{{brand_header_html}}</div>
 
-  <table style="width:100%;border-collapse:collapse;border:1px solid #444;">
+  <table style="width:100%;border-collapse:collapse;">
     <tr>
-      <td style="border:none;padding:4px 6px;font-size:9.5px;font-weight:bold;border-bottom:1px solid #444;">INVOICE {{invoice_number}}</td>
-      <td style="border:none;padding:4px 6px;font-size:9.5px;font-weight:bold;text-align:right;border-bottom:1px solid #444;">{{invoice_date}}</td>
+      <td style="border:1px solid #444;padding:4px 6px;font-size:9.5px;font-weight:bold;">INVOICE {{invoice_number}}</td>
+      <td style="border:1px solid #444;padding:4px 6px;font-size:9.5px;font-weight:bold;text-align:right;">{{invoice_date}}</td>
     </tr>
     <tr>
-      <td colspan="2" style="border:none;padding:0;">
-        <table style="width:100%;border-collapse:collapse;border-bottom:1px solid #444;">
+      <td colspan="2" style="border:none;border-left:1px solid #444;border-right:1px solid #444;padding:0;">
+        <table style="width:100%;border-collapse:collapse;">
           <tr>
-            <td style="width:34%;vertical-align:top;padding:4px 6px;font-size:8px;line-height:1.4;"><b>{{seller_legal_name}}</b><br>{{seller_address}}<br>{{seller_phone}}<br>GSTIN {{seller_gstin}}</td>
-            <td style="width:34%;vertical-align:top;padding:4px 6px;font-size:8px;line-height:1.4;"><b>{{customer_name}}</b><br>{{billing_address}}<br>{{customer_phone}}</td>
-            <td style="width:32%;vertical-align:top;padding:4px 6px;font-size:8px;line-height:1.4;">Before {{delivery_before}}<br>{{delivery_mode}}<br>{{sales_person}}</td>
+            <td style="border:none;border-bottom:1px solid #444;width:34%;vertical-align:top;padding:4px 6px;font-size:8px;line-height:1.4;"><b>{{seller_legal_name}}</b><br>{{seller_address}}<br>{{seller_phone}}<br>GSTIN {{seller_gstin}}</td>
+            <td style="border:none;border-bottom:1px solid #444;width:34%;vertical-align:top;padding:4px 6px;font-size:8px;line-height:1.4;"><b>{{customer_name}}</b><br>{{billing_address}}<br>{{customer_phone}}</td>
+            <td style="border:none;border-bottom:1px solid #444;width:32%;vertical-align:top;padding:4px 6px;font-size:8px;line-height:1.4;">Before {{delivery_before}}<br>{{delivery_mode}}<br>{{sales_person}}</td>
           </tr>
         </table>
       </td>
     </tr>
     <tr>
-      <td colspan="2" style="border:none;padding:0;">
+      <td colspan="2" style="border:none;border-left:1px solid #444;border-right:1px solid #444;padding:0;">
         <table style="width:100%;border-collapse:collapse;">
           <tr>
-            <th style="width:26%;background:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">ITEM</th>
-            <th style="width:7%;background:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">HSN</th>
+            <th style="width:24%;background:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">ITEM</th>
+            <th style="width:8%;background:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">HSN</th>
             <th style="width:6%;background:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">QTY</th>
             <th style="width:13%;background:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">RATE</th>
             <th style="width:12%;background:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">CGST</th>
             <th style="width:12%;background:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">SGST</th>
             <th style="width:12%;background:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">IGST</th>
-            <th style="width:12%;background:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">AMT</th>
+            <th style="width:13%;background:#eee;border:1px solid #999;padding:3px 5px;font-size:7.5px;text-align:left;">AMT</th>
           </tr>
           {{line_items_rows}}
         </table>
       </td>
     </tr>
     <tr>
-      <td colspan="2" style="border:none;padding:4px 6px;">
+      <td colspan="2" style="border:none;border-left:1px solid #444;border-right:1px solid #444;padding:4px 6px;">
         <table style="width:100%;border-collapse:collapse;">
           <tr>
-            <td style="width:55%;vertical-align:top;font-size:8px;">{{total_in_words}}<br>{{payment_mode}}</td>
-            <td style="width:45%;vertical-align:top;">
+            <td style="border:none;width:55%;vertical-align:top;font-size:8px;">{{total_in_words}}<br>{{payment_mode}}</td>
+            <td style="border:none;width:45%;vertical-align:top;">
               <table style="width:100%;border-collapse:collapse;">
-                <tr><td style="font-size:8px;padding:1px 0;">Sub Total</td><td style="font-size:8px;padding:1px 0;text-align:right;">{{subtotal}}</td></tr>
-                <tr><td style="font-size:8px;padding:1px 0;">GST</td><td style="font-size:8px;padding:1px 0;text-align:right;">{{total_gst}}</td></tr>
-                <tr><td style="font-size:9.5px;font-weight:bold;padding:2px 0;border-top:1px solid #444;">Total</td><td style="font-size:9.5px;font-weight:bold;padding:2px 0;text-align:right;border-top:1px solid #444;">{{grand_total}}</td></tr>
+                <tr><td style="border:none;font-size:8px;padding:1px 0;">Sub Total</td><td style="border:none;font-size:8px;padding:1px 0;text-align:right;">{{subtotal}}</td></tr>
+                <tr><td style="border:none;font-size:8px;padding:1px 0;">GST</td><td style="border:none;font-size:8px;padding:1px 0;text-align:right;">{{total_gst}}</td></tr>
+                <tr><td style="border:none;border-top:1px solid #444;font-size:9.5px;font-weight:bold;padding:2px 0;">Total</td><td style="border:none;border-top:1px solid #444;font-size:9.5px;font-weight:bold;padding:2px 0;text-align:right;">{{grand_total}}</td></tr>
               </table>
             </td>
           </tr>
@@ -630,22 +630,22 @@ function getPdfPresetHtml(id) {
       </td>
     </tr>
     <tr>
-      <td colspan="2" style="border:none;padding:4px 6px;font-size:6.5px;color:#666;line-height:1.35;border-top:1px solid #444;">
+      <td colspan="2" style="border:none;border-top:1px solid #444;border-left:1px solid #444;border-right:1px solid #444;padding:4px 6px;font-size:6.5px;color:#666;line-height:1.35;">
         Amount received against gemstone/jewellery is non-refundable. Customised jewellery is not eligible for return. Disputes subject to Delhi jurisdiction.
       </td>
     </tr>
     <tr>
-      <td colspan="2" style="border:none;padding:6px;border-top:1px solid #444;">
+      <td colspan="2" style="border:none;border-top:1px solid #444;border-left:1px solid #444;border-right:1px solid #444;padding:6px;">
         <table style="width:100%;border-collapse:collapse;">
           <tr>
-            <td style="width:55%;font-size:8px;">Customer Signature: {{customer_name}}</td>
-            <td style="width:45%;font-size:8px;text-align:right;">For {{seller_legal_name}}<br>{{seal_html}}Auth. Signatory</td>
+            <td style="border:none;width:55%;font-size:8px;">Customer Signature: {{customer_name}}</td>
+            <td style="border:none;width:45%;font-size:8px;text-align:right;">For {{seller_legal_name}}<br>{{seal_html}}Auth. Signatory</td>
           </tr>
         </table>
       </td>
     </tr>
     <tr>
-      <td colspan="2" style="border:none;padding:4px;text-align:center;font-size:7px;color:#888;border-top:1px solid #444;">Computer generated invoice — {{shop_name}}</td>
+      <td colspan="2" style="border:1px solid #444;padding:4px;text-align:center;font-size:7px;color:#888;">Computer generated invoice — {{shop_name}}</td>
     </tr>
   </table>
 
@@ -663,35 +663,35 @@ function getPdfPresetHtml(id) {
 
   <div style="text-align:center;margin-bottom:10px;">{{brand_header_html}}</div>
 
-  <table style="width:100%;border-collapse:collapse;border:1px solid #333;">
+  <table style="width:100%;border-collapse:collapse;">
     <tr>
-      <td style="border:none;padding:0;">
-        <table style="width:100%;border-collapse:collapse;border-bottom:1px solid #333;">
+      <td style="border:none;border-top:1px solid #333;border-left:1px solid #333;border-right:1px solid #333;padding:0;">
+        <table style="width:100%;border-collapse:collapse;">
           <tr>
-            <td style="padding:8px 10px;font-size:12px;font-weight:bold;">TAX INVOICE # {{invoice_number}}</td>
-            <td style="padding:8px 10px;font-size:12px;font-weight:bold;text-align:right;">Date : {{invoice_date}}</td>
+            <td style="border:none;border-bottom:1px solid #333;padding:8px 10px;font-size:12px;font-weight:bold;">TAX INVOICE # {{invoice_number}}</td>
+            <td style="border:none;border-bottom:1px solid #333;padding:8px 10px;font-size:12px;font-weight:bold;text-align:right;">Date : {{invoice_date}}</td>
           </tr>
         </table>
       </td>
     </tr>
     <tr>
-      <td style="border:none;padding:0;">
-        <table style="width:100%;border-collapse:collapse;border-bottom:1px solid #333;">
+      <td style="border:none;border-left:1px solid #333;border-right:1px solid #333;padding:0;">
+        <table style="width:100%;border-collapse:collapse;">
           <tr>
-            <td style="width:38%;vertical-align:top;padding:8px 10px;font-size:10px;line-height:1.6;">
+            <td style="border:none;border-bottom:1px solid #333;width:38%;vertical-align:top;padding:8px 10px;font-size:10px;line-height:1.6;">
               <div style="font-weight:bold;margin-bottom:3px;">{{seller_legal_name}}</div>
               {{seller_address}}<br>
               Tel : {{seller_phone}}<br>
               Email : {{seller_email}}<br>
               GSTIN : {{seller_gstin}}
             </td>
-            <td style="width:38%;vertical-align:top;padding:8px 10px;font-size:10px;line-height:1.6;">
+            <td style="border:none;border-bottom:1px solid #333;width:38%;vertical-align:top;padding:8px 10px;font-size:10px;line-height:1.6;">
               <div style="font-weight:bold;margin-bottom:3px;">Customer Details</div>
               {{customer_name}}<br>
               {{billing_address}}<br>
               Tel : {{customer_phone}}
             </td>
-            <td style="width:24%;vertical-align:top;padding:8px 10px;font-size:10px;line-height:1.6;">
+            <td style="border:none;border-bottom:1px solid #333;width:24%;vertical-align:top;padding:8px 10px;font-size:10px;line-height:1.6;">
               Delivery Before : {{delivery_before}}<br>
               Sales Person : {{sales_person}}<br>
               Delivery Mode : {{delivery_mode}}
@@ -701,7 +701,7 @@ function getPdfPresetHtml(id) {
       </td>
     </tr>
     <tr>
-      <td style="border:none;padding:0;">
+      <td style="border:none;border-left:1px solid #333;border-right:1px solid #333;padding:0;">
         <table style="width:100%;border-collapse:collapse;">
           <tr>
             <th style="width:24%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">ITEM(s) DESCRIPTION</th>
@@ -718,27 +718,27 @@ function getPdfPresetHtml(id) {
       </td>
     </tr>
     <tr>
-      <td style="border:none;padding:0;">
+      <td style="border:none;border-left:1px solid #333;border-right:1px solid #333;padding:0;">
         <table style="width:100%;border-collapse:collapse;">
           <tr>
-            <td style="width:55%;vertical-align:top;padding:10px;font-size:10px;">
+            <td style="border:none;width:55%;vertical-align:top;padding:10px;font-size:10px;">
               Total In Words<br>
               <b>{{total_in_words}}</b><br><br>
               Payment Mode : {{payment_mode}}
             </td>
-            <td style="width:45%;vertical-align:top;padding:10px;">
+            <td style="border:none;width:45%;vertical-align:top;padding:10px;">
               <table style="width:100%;border-collapse:collapse;">
                 <tr>
-                  <td style="font-size:10px;padding:2px 0;">Sub Total</td>
-                  <td style="font-size:10px;padding:2px 0;text-align:right;">{{subtotal}}</td>
+                  <td style="border:none;font-size:10px;padding:2px 0;">Sub Total</td>
+                  <td style="border:none;font-size:10px;padding:2px 0;text-align:right;">{{subtotal}}</td>
                 </tr>
                 <tr>
-                  <td style="font-size:10px;padding:2px 0;">Total GST</td>
-                  <td style="font-size:10px;padding:2px 0;text-align:right;">{{total_gst}}</td>
+                  <td style="border:none;font-size:10px;padding:2px 0;">Total GST</td>
+                  <td style="border:none;font-size:10px;padding:2px 0;text-align:right;">{{total_gst}}</td>
                 </tr>
                 <tr>
-                  <td style="font-size:12px;font-weight:bold;padding:4px 0;border-top:1px solid #333;">Total</td>
-                  <td style="font-size:12px;font-weight:bold;padding:4px 0;text-align:right;border-top:1px solid #333;">{{grand_total}}</td>
+                  <td style="border:none;border-top:1px solid #333;font-size:12px;font-weight:bold;padding:4px 0;">Total</td>
+                  <td style="border:none;border-top:1px solid #333;font-size:12px;font-weight:bold;padding:4px 0;text-align:right;">{{grand_total}}</td>
                 </tr>
               </table>
             </td>
@@ -747,7 +747,7 @@ function getPdfPresetHtml(id) {
       </td>
     </tr>
     <tr>
-      <td style="font-size:8.5px;color:#555;line-height:1.5;padding:10px;border-top:1px solid #333;">
+      <td style="border:none;border-top:1px solid #333;border-left:1px solid #333;border-right:1px solid #333;font-size:8.5px;color:#555;line-height:1.5;padding:10px;">
         The Amount Received against Gemstone / Jewellery is Non-refundable. In case of any defect related to Gemstones / Jewellery, the Customer has to return the goods within 3 days after
         purchase. We take full responsibility if the sold gemstone is synthetic (man-made) and the full amount will be refunded. We take no responsibility if the Gemstone / Jewellery gets damaged in
         any way after it is delivered to the Client. Customised Jewellery — including personalised / engraved products manufactured to specific customer instructions — is not eligible for return /
@@ -756,14 +756,14 @@ function getPdfPresetHtml(id) {
       </td>
     </tr>
     <tr>
-      <td style="border:none;padding:0;">
-        <table style="width:100%;border-collapse:collapse;border-top:1px solid #333;">
+      <td style="border:none;border-top:1px solid #333;border-left:1px solid #333;border-right:1px solid #333;padding:0;">
+        <table style="width:100%;border-collapse:collapse;">
           <tr>
-            <td style="width:55%;padding:14px 10px;vertical-align:top;">
+            <td style="border:none;width:55%;padding:14px 10px;vertical-align:top;">
               I have read, understood and agreed to the terms &amp; conditions.<br><br>
               Customer Signature : {{customer_name}}
             </td>
-            <td style="width:45%;padding:14px 10px;vertical-align:top;text-align:right;">
+            <td style="border:none;width:45%;padding:14px 10px;vertical-align:top;text-align:right;">
               For {{seller_legal_name}}<br>
               {{seal_html}}
               Authorised Seal &amp; Signatory
@@ -773,7 +773,7 @@ function getPdfPresetHtml(id) {
       </td>
     </tr>
     <tr>
-      <td style="text-align:center;font-size:9px;color:#666;padding:8px;border-top:1px solid #333;">This is a Computer Generated Invoice — {{shop_name}} ({{shop_url}})</td>
+      <td style="border:1px solid #333;text-align:center;font-size:9px;color:#666;padding:8px;">This is a Computer Generated Invoice — {{shop_name}} ({{shop_url}})</td>
     </tr>
   </table>
 

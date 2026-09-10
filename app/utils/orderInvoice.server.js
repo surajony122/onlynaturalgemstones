@@ -105,7 +105,33 @@ export const ORDER_INVOICE_PLACEHOLDERS = [
 // font-family unset falls back to pdfmake's own default (Roboto),
 // which is always safe.
 function getDefaultOrderInvoiceTemplate() {
-  const outerBorder = "border:1px solid #333;";
+  // pdfmake has NO concept of a border on a <table> element itself --
+  // only on individual <td>/<th> CELLS (a per-cell 4-side boolean
+  // array). A border/border-bottom/border-top style placed on a
+  // <table> tag gets attached to the wrong object in html-to-pdfmake's
+  // own output (confirmed by inspecting its JSON directly) and pdfmake
+  // silently ignores it there -- while any cell that never got an
+  // explicit border style of its own falls back to pdfmake's default
+  // grid-lines-everywhere table look. Together that produces exactly
+  // the "boxes nested inside boxes, not edge to edge" look reported
+  // live: every nested table quietly grew pdfmake's own default grid
+  // instead of the invisible layout-only wrapper it was meant to be,
+  // while the intended divider lines (border-bottom under the info
+  // block, border-top above the terms paragraph, etc.) never actually
+  // rendered at all, because that's where their `style` had been put.
+  //
+  // Fix: every border below sits on an actual <td>, never a <table>,
+  // and every cell that should show NO border says so explicitly
+  // (`border:none`, not just omitting the property) -- an unstated
+  // border on a pdfmake table cell defaults to VISIBLE, the opposite
+  // of how a bare HTML <td> behaves in a browser. The outer box's
+  // continuous rectangle is built by giving every row's cell its own
+  // left+right edge, with the top edge only on the first row and the
+  // bottom edge only on the last -- there is no such thing as "border
+  // around this whole table" to fall back on.
+  const boxTopSides = "border:none;border-top:1px solid #333;border-left:1px solid #333;border-right:1px solid #333;";
+  const boxSides = "border:none;border-left:1px solid #333;border-right:1px solid #333;";
+  const boxBottomSides = "border:1px solid #333;";
   const cellReset = "border:none;padding:0;";
   return `<!DOCTYPE html>
 <html>
@@ -116,35 +142,35 @@ function getDefaultOrderInvoiceTemplate() {
 
   <div style="text-align:center;margin-bottom:10px;">{{brand_header_html}}</div>
 
-  <table style="width:100%;border-collapse:collapse;${outerBorder}">
+  <table style="width:100%;border-collapse:collapse;">
     <tr>
-      <td style="${cellReset}">
-        <table style="width:100%;border-collapse:collapse;border-bottom:1px solid #333;">
+      <td style="${boxTopSides}padding:0;">
+        <table style="width:100%;border-collapse:collapse;">
           <tr>
-            <td style="padding:8px 10px;font-size:12px;font-weight:bold;">TAX INVOICE # {{invoice_number}}</td>
-            <td style="padding:8px 10px;font-size:12px;font-weight:bold;text-align:right;">Date : {{invoice_date}}</td>
+            <td style="border:none;border-bottom:1px solid #333;padding:8px 10px;font-size:12px;font-weight:bold;">TAX INVOICE # {{invoice_number}}</td>
+            <td style="border:none;border-bottom:1px solid #333;padding:8px 10px;font-size:12px;font-weight:bold;text-align:right;">Date : {{invoice_date}}</td>
           </tr>
         </table>
       </td>
     </tr>
     <tr>
-      <td style="${cellReset}">
-        <table style="width:100%;border-collapse:collapse;border-bottom:1px solid #333;">
+      <td style="${boxSides}padding:0;">
+        <table style="width:100%;border-collapse:collapse;">
           <tr>
-            <td style="width:38%;vertical-align:top;padding:8px 10px;font-size:10px;line-height:1.6;">
+            <td style="border:none;border-bottom:1px solid #333;width:38%;vertical-align:top;padding:8px 10px;font-size:10px;line-height:1.6;">
               <div style="font-weight:bold;margin-bottom:3px;">{{seller_legal_name}}</div>
               {{seller_address}}<br>
               Tel : {{seller_phone}}<br>
               Email : {{seller_email}}<br>
               GSTIN : {{seller_gstin}}
             </td>
-            <td style="width:38%;vertical-align:top;padding:8px 10px;font-size:10px;line-height:1.6;">
+            <td style="border:none;border-bottom:1px solid #333;width:38%;vertical-align:top;padding:8px 10px;font-size:10px;line-height:1.6;">
               <div style="font-weight:bold;margin-bottom:3px;">Customer Details</div>
               {{customer_name}}<br>
               {{billing_address}}<br>
               Tel : {{customer_phone}}
             </td>
-            <td style="width:24%;vertical-align:top;padding:8px 10px;font-size:10px;line-height:1.6;">
+            <td style="border:none;border-bottom:1px solid #333;width:24%;vertical-align:top;padding:8px 10px;font-size:10px;line-height:1.6;">
               Delivery Before : {{delivery_before}}<br>
               Sales Person : {{sales_person}}<br>
               Delivery Mode : {{delivery_mode}}
@@ -154,7 +180,7 @@ function getDefaultOrderInvoiceTemplate() {
       </td>
     </tr>
     <tr>
-      <td style="${cellReset}">
+      <td style="${boxSides}padding:0;">
         <table style="width:100%;border-collapse:collapse;">
           <tr>
             <th style="width:24%;background:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">ITEM(s) DESCRIPTION</th>
@@ -171,27 +197,27 @@ function getDefaultOrderInvoiceTemplate() {
       </td>
     </tr>
     <tr>
-      <td style="${cellReset}">
+      <td style="${boxSides}padding:0;">
         <table style="width:100%;border-collapse:collapse;">
           <tr>
-            <td style="width:55%;vertical-align:top;padding:10px;font-size:10px;">
+            <td style="border:none;width:55%;vertical-align:top;padding:10px;font-size:10px;">
               Total In Words<br>
               <b>{{total_in_words}}</b><br><br>
               Payment Mode : {{payment_mode}}
             </td>
-            <td style="width:45%;vertical-align:top;padding:10px;">
+            <td style="border:none;width:45%;vertical-align:top;padding:10px;">
               <table style="width:100%;border-collapse:collapse;">
                 <tr>
-                  <td style="font-size:10px;padding:2px 0;">Sub Total</td>
-                  <td style="font-size:10px;padding:2px 0;text-align:right;">{{subtotal}}</td>
+                  <td style="border:none;font-size:10px;padding:2px 0;">Sub Total</td>
+                  <td style="border:none;font-size:10px;padding:2px 0;text-align:right;">{{subtotal}}</td>
                 </tr>
                 <tr>
-                  <td style="font-size:10px;padding:2px 0;">Total GST</td>
-                  <td style="font-size:10px;padding:2px 0;text-align:right;">{{total_gst}}</td>
+                  <td style="border:none;font-size:10px;padding:2px 0;">Total GST</td>
+                  <td style="border:none;font-size:10px;padding:2px 0;text-align:right;">{{total_gst}}</td>
                 </tr>
                 <tr>
-                  <td style="font-size:12px;font-weight:bold;padding:4px 0;border-top:1px solid #333;">Total</td>
-                  <td style="font-size:12px;font-weight:bold;padding:4px 0;text-align:right;border-top:1px solid #333;">{{grand_total}}</td>
+                  <td style="border:none;border-top:1px solid #333;font-size:12px;font-weight:bold;padding:4px 0;">Total</td>
+                  <td style="border:none;border-top:1px solid #333;font-size:12px;font-weight:bold;padding:4px 0;text-align:right;">{{grand_total}}</td>
                 </tr>
               </table>
             </td>
@@ -200,7 +226,7 @@ function getDefaultOrderInvoiceTemplate() {
       </td>
     </tr>
     <tr>
-      <td style="font-size:8.5px;color:#555;line-height:1.5;padding:10px;border-top:1px solid #333;">
+      <td style="${boxTopSides}font-size:8.5px;color:#555;line-height:1.5;padding:10px;">
         The Amount Received against Gemstone / Jewellery is Non-refundable. In case of any defect related to Gemstones / Jewellery, the Customer has to return the goods within 3 days after
         purchase. We take full responsibility if the sold gemstone is synthetic (man-made) and the full amount will be refunded. We take no responsibility if the Gemstone / Jewellery gets damaged in
         any way after it is delivered to the Client. Customised Jewellery — including personalised / engraved products manufactured to specific customer instructions — is not eligible for return /
@@ -209,14 +235,14 @@ function getDefaultOrderInvoiceTemplate() {
       </td>
     </tr>
     <tr>
-      <td style="${cellReset}">
-        <table style="width:100%;border-collapse:collapse;border-top:1px solid #333;">
+      <td style="${boxTopSides}padding:0;">
+        <table style="width:100%;border-collapse:collapse;">
           <tr>
-            <td style="width:55%;padding:14px 10px;vertical-align:top;">
+            <td style="border:none;width:55%;padding:14px 10px;vertical-align:top;">
               I have read, understood and agreed to the terms &amp; conditions.<br><br>
               Customer Signature : {{customer_name}}
             </td>
-            <td style="width:45%;padding:14px 10px;vertical-align:top;text-align:right;">
+            <td style="border:none;width:45%;padding:14px 10px;vertical-align:top;text-align:right;">
               For {{seller_legal_name}}<br>
               {{seal_html}}
               Authorised Seal &amp; Signatory
@@ -226,7 +252,7 @@ function getDefaultOrderInvoiceTemplate() {
       </td>
     </tr>
     <tr>
-      <td style="text-align:center;font-size:9px;color:#666;padding:8px;border-top:1px solid #333;">This is a Computer Generated Invoice — {{shop_name}} ({{shop_url}})</td>
+      <td style="${boxBottomSides}text-align:center;font-size:9px;color:#666;padding:8px;">This is a Computer Generated Invoice — {{shop_name}} ({{shop_url}})</td>
     </tr>
   </table>
 
