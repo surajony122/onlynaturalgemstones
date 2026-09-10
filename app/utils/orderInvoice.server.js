@@ -285,8 +285,20 @@ export function computeInvoiceGst(order, settings) {
   const isDomestic = !shipTo || !shipTo.countryCodeV2 || shipTo.countryCodeV2 === "IN";
   const sellerState = (settings.invoiceSellerState || "").trim().toLowerCase();
   const customerState = (shipTo?.province || "").trim().toLowerCase();
+  // Same-state (CGST+SGST) only ever applies within India -- an
+  // international order always falls through to the IGST bucket below,
+  // same as a different-state domestic one, per explicit request: GST
+  // still applies on exports here (this store does not zero-rate them
+  // under LUT), it's just always charged as IGST rather than split.
   const sameState = isDomestic && sellerState && customerState && sellerState === customerState;
 
+  // The gemstone line and the "Gemstone Customisation" charge line each
+  // have their OWN rate, tracked completely independently -- per
+  // explicit request ("separate gst for gemstone and customisation")
+  // even though they currently happen to both be set to the same
+  // number. Whether the order is loose-only or has a customisation line
+  // attached doesn't change the gemstone line's own rate at all; it's
+  // simply whichever product the line actually is.
   const rateLoose = parseFloat(settings.invoiceGstRateLoose) || 0;
   const rateCustomisation = parseFloat(settings.invoiceGstRateCustomisation) || 0;
 
@@ -300,17 +312,19 @@ export function computeInvoiceGst(order, settings) {
     const taxableValue = parseFloat(line.discountedTotalSet?.shopMoney?.amount ?? line.originalTotalSet?.shopMoney?.amount ?? 0) || 0;
     subtotal += taxableValue;
 
+    // GST always applies -- domestic or international -- at this line's
+    // own rate. The only thing international/different-state-domestic
+    // changes is which bucket (CGST+SGST vs IGST) it's charged under,
+    // never whether it's charged at all.
     const isCustomisation = line.variant?.product?.title === CUSTOMISATION_PRODUCT_TITLE;
-    const rate = !isDomestic ? 0 : isCustomisation ? rateCustomisation : rateLoose;
+    const rate = isCustomisation ? rateCustomisation : rateLoose;
     const gstAmount = (taxableValue * rate) / 100;
 
-    if (isDomestic) {
-      if (sameState) {
-        totalCgst += gstAmount / 2;
-        totalSgst += gstAmount / 2;
-      } else {
-        totalIgst += gstAmount;
-      }
+    if (sameState) {
+      totalCgst += gstAmount / 2;
+      totalSgst += gstAmount / 2;
+    } else {
+      totalIgst += gstAmount;
     }
 
     const hsn = line.variant?.inventoryItem?.harmonizedSystemCode || "";
@@ -336,7 +350,9 @@ export function computeInvoiceGst(order, settings) {
     grandTotal: subtotal + totalGst,
     lineItemsRowsHtml: itemRows.join(""),
     gstBreakdownRowsHtml: gstRows.join(""),
-    taxTreatmentNote: isDomestic ? "" : "Export — zero-rated supply under LUT (no GST charged on international orders).",
+    // No special export/zero-rated note -- GST is charged on
+    // international orders here too (as IGST), not exempted.
+    taxTreatmentNote: "",
   };
 }
 
