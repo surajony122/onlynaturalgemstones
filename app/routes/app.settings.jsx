@@ -19,6 +19,7 @@ import {
   getRawAppSettingsRow,
   saveAppSettings,
   getAppSettings,
+  setInvoiceStartingNumber,
   DEFAULT_WISHLIST_EMAIL_INTERVAL_HOURS,
   DEFAULT_INTERAKT_TEMPLATE_NAME,
   DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME,
@@ -31,6 +32,7 @@ import { FALLBACK_LOGO_URL } from "../utils/astroAdvice.server";
 import { sendGemRecommendationWhatsApp, getOrCreateInteraktCampaignId, sendOrderProcessingWhatsApp, sendWishlistWhatsApp } from "../utils/interakt.server";
 import { checkGmail, checkGoogleSheets, checkInterakt, checkGooglePlaces } from "../utils/serviceHealth.server";
 import { getOrderProcessingEmailTemplate, ORDER_PROCESSING_EMAIL_PLACEHOLDERS } from "../utils/orderProcessingEmail.server";
+import { getOrderInvoiceTemplate, ORDER_INVOICE_PLACEHOLDERS, DEFAULT_INVOICE_NUMBER_PREFIX } from "../utils/orderInvoice.server";
 import { brand, Icon, Card, PageHeader, PageIn } from "../components/table-kit";
 import { useToast } from "../components/toast";
 
@@ -86,6 +88,18 @@ export const loader = async ({ request }) => {
     orderProcessingEmailTemplate: row?.orderProcessingEmailTemplate || "",
     defaultOrderProcessingEmailTemplate: getOrderProcessingEmailTemplate({}),
     orderProcessingEmailPlaceholders: ORDER_PROCESSING_EMAIL_PLACEHOLDERS,
+    invoiceGstin: row?.invoiceGstin || "",
+    invoiceSellerLegalName: row?.invoiceSellerLegalName || "",
+    invoiceSellerAddress: row?.invoiceSellerAddress || "",
+    invoiceSellerState: row?.invoiceSellerState || "",
+    invoiceGstRateLoose: row?.invoiceGstRateLoose || "",
+    invoiceGstRateCustomisation: row?.invoiceGstRateCustomisation || "",
+    invoiceNumberPrefix: row?.invoiceNumberPrefix || "",
+    defaultInvoiceNumberPrefix: DEFAULT_INVOICE_NUMBER_PREFIX,
+    invoiceNextNumber: row?.invoiceNextNumber ?? null,
+    invoicePdfTemplate: row?.invoicePdfTemplate || "",
+    defaultInvoicePdfTemplate: getOrderInvoiceTemplate({}),
+    orderInvoicePlaceholders: ORDER_INVOICE_PLACEHOLDERS,
     // So the page can say which env vars are filling in for anything
     // not saved here yet.
     envFallback: {
@@ -130,6 +144,12 @@ export const action = async ({ request }) => {
     }
     const row = await getRawAppSettingsRow(session.shop);
     return { intent, ok: true, field, value: (row && row[field]) || "" };
+  }
+
+  if (intent === "setInvoiceStartingNumber") {
+    const startNumber = formData.get("startNumber")?.trim();
+    const result = await setInvoiceStartingNumber(session.shop, startNumber);
+    return { intent, ok: result.ok, error: result.error };
   }
 
   if (intent === "sendTestWhatsapp") {
@@ -239,6 +259,14 @@ export const action = async ({ request }) => {
     whatsappIntervalUnit: formData.get("whatsappIntervalUnit")?.trim() || "",
     interaktWebhookSecret,
     googlePlacesApiKey,
+    invoiceGstin: formData.get("invoiceGstin")?.trim() || "",
+    invoiceSellerLegalName: formData.get("invoiceSellerLegalName")?.trim() || "",
+    invoiceSellerAddress: formData.get("invoiceSellerAddress")?.trim() || "",
+    invoiceSellerState: formData.get("invoiceSellerState")?.trim() || "",
+    invoiceGstRateLoose: formData.get("invoiceGstRateLoose")?.trim() || "",
+    invoiceGstRateCustomisation: formData.get("invoiceGstRateCustomisation")?.trim() || "",
+    invoiceNumberPrefix: formData.get("invoiceNumberPrefix")?.trim() || "",
+    invoicePdfTemplate: formData.get("invoicePdfTemplate")?.trim() || "",
   });
 
   return { intent: "save", ok: true };
@@ -347,6 +375,42 @@ function Explain({ summary, children, defaultOpen }) {
 // hand; if the real substitution logic ever changes there, mirror the
 // change here too. Sample values stand in for what a real order would
 // actually provide, purely for previewing the HTML's layout.
+// Same reasoning as EMAIL_PREVIEW_SAMPLE_VALUES/renderEmailPreview above
+// -- a client-side-only duplicate of orderInvoice.server.js's own
+// substitution, since that's a .server.js module React Router strips
+// from the client bundle. Kept in sync by hand.
+const INVOICE_PREVIEW_SAMPLE_VALUES = {
+  invoice_number: "INV-000123",
+  invoice_date: "10 September 2026",
+  order_number: "#1000031314",
+  customer_name: "Suraj Kumar",
+  customer_email: "suraj@example.com",
+  billing_address: "Suraj Kumar<br>123 MG Road<br>Delhi, Delhi, 110024<br>India",
+  shipping_address: "Suraj Kumar<br>123 MG Road<br>Delhi, Delhi, 110024<br>India",
+  seller_legal_name: "Only Natural Gemstones",
+  seller_address: "L-75-76, Lajpat Nagar 2<br>New Delhi, Delhi, 110024<br>India",
+  seller_gstin: "07ABCDE1234F1Z5",
+  line_items_rows:
+    '<tr><td>Blue Sapphire - 4.12 Carat</td><td>7103</td><td>1</td><td>&#8377;18,500.00</td></tr>' +
+    '<tr><td>Gemstone Customisation</td><td>7113</td><td>1</td><td>&#8377;2,150.00</td></tr>',
+  gst_breakdown_rows:
+    '<tr><td style="text-align:right;">CGST</td><td style="text-align:right; width:110px;">&#8377;310.13</td></tr>' +
+    '<tr><td style="text-align:right;">SGST</td><td style="text-align:right; width:110px;">&#8377;310.13</td></tr>',
+  subtotal: "₹20,650.00",
+  total_gst: "₹620.25",
+  grand_total: "₹21,270.25",
+  tax_treatment_note: "",
+  shop_name: "Only Natural Gemstones",
+  shop_url: "https://onlynaturalgemstones.com",
+};
+function renderInvoicePreview(templateHtml) {
+  let html = templateHtml || "";
+  for (const [key, value] of Object.entries(INVOICE_PREVIEW_SAMPLE_VALUES)) {
+    html = html.split(`{{${key}}}`).join(value).split(`{{ ${key} }}`).join(value);
+  }
+  return html;
+}
+
 const EMAIL_PREVIEW_SAMPLE_VALUES = {
   customer_first_name: "Suraj Kumar",
   order_number: "#1000031314",
@@ -515,6 +579,35 @@ export default function SettingsPage() {
   const [whatsappIntervalUnit, setWhatsappIntervalUnit] = useState(data.whatsappIntervalUnit);
   const [interaktWebhookSecret, setInteraktWebhookSecret] = useState("");
   const [googlePlacesApiKey, setGooglePlacesApiKey] = useState("");
+  const [invoiceGstin, setInvoiceGstin] = useState(data.invoiceGstin);
+  const [invoiceSellerLegalName, setInvoiceSellerLegalName] = useState(data.invoiceSellerLegalName);
+  const [invoiceSellerAddress, setInvoiceSellerAddress] = useState(data.invoiceSellerAddress);
+  const [invoiceSellerState, setInvoiceSellerState] = useState(data.invoiceSellerState);
+  const [invoiceGstRateLoose, setInvoiceGstRateLoose] = useState(data.invoiceGstRateLoose);
+  const [invoiceGstRateCustomisation, setInvoiceGstRateCustomisation] = useState(data.invoiceGstRateCustomisation);
+  const [invoiceNumberPrefix, setInvoiceNumberPrefix] = useState(data.invoiceNumberPrefix);
+  const [invoicePdfTemplate, setInvoicePdfTemplate] = useState(data.invoicePdfTemplate || data.defaultInvoicePdfTemplate);
+  const [showInvoicePreview, setShowInvoicePreview] = useState(false);
+  const [invoiceStartNumber, setInvoiceStartNumber] = useState("");
+  const invoiceStartNumberFetcher = useFetcher();
+  const isSettingInvoiceStartNumber = invoiceStartNumberFetcher.state !== "idle";
+
+  useEffect(() => {
+    if (invoiceStartNumberFetcher.data?.intent === "setInvoiceStartingNumber") {
+      if (invoiceStartNumberFetcher.data.ok) {
+        toast.show("Invoice numbering will start at " + invoiceStartNumber);
+        setInvoiceStartNumber("");
+      } else {
+        toast.show(invoiceStartNumberFetcher.data.error || "Couldn't set starting number", { isError: true });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoiceStartNumberFetcher.data]);
+
+  const saveInvoiceStartNumber = () => {
+    if (!invoiceStartNumber) return;
+    invoiceStartNumberFetcher.submit({ intent: "setInvoiceStartingNumber", startNumber: invoiceStartNumber }, { method: "POST" });
+  };
 
   useEffect(() => {
     if (fetcher.data?.intent === "save" && fetcher.data.ok) {
@@ -603,6 +696,19 @@ export default function SettingsPage() {
         whatsappIntervalUnit,
         interaktWebhookSecret,
         googlePlacesApiKey,
+        invoiceGstin,
+        invoiceSellerLegalName,
+        invoiceSellerAddress,
+        invoiceSellerState,
+        invoiceGstRateLoose,
+        invoiceGstRateCustomisation,
+        invoiceNumberPrefix,
+        // Same "don't freeze today's default as a permanent customization"
+        // reasoning as orderProcessingEmailTemplate above.
+        invoicePdfTemplate:
+          invoicePdfTemplate.replace(/\r\n/g, "\n") === data.defaultInvoicePdfTemplate.replace(/\r\n/g, "\n")
+            ? ""
+            : invoicePdfTemplate,
       },
       { method: "POST" }
     );
@@ -773,6 +879,167 @@ export default function SettingsPage() {
                   Preview with sample data — this reflects what's in the box above right now, even if unsaved.
                 </div>
                 <iframe title="Order processing email preview" srcDoc={renderEmailPreview(orderProcessingEmailTemplate)} style={{ width: "100%", height: "500px", border: "none", display: "block" }} />
+              </div>
+            )}
+          </TemplateCard>
+
+          <TemplateCard icon={<Icon name="tag" size={15} color={brand.accent} />} title="GST Tax Invoice">
+            <p style={{ ...hintStyle, marginTop: 0 }}>
+              Never sends automatically — only when someone clicks "Send Invoice" on an order's page in Shopify
+              Admin. Generates a GST invoice PDF and emails it to the customer.
+            </p>
+
+            <label style={labelStyle} htmlFor="invoiceSellerLegalName">Registered business name</label>
+            <input
+              id="invoiceSellerLegalName"
+              style={fieldStyle}
+              type="text"
+              value={invoiceSellerLegalName}
+              onChange={(e) => setInvoiceSellerLegalName(e.target.value)}
+              placeholder="Only Natural Gemstones"
+            />
+
+            <label style={labelStyle} htmlFor="invoiceSellerAddress">Registered business address</label>
+            <textarea
+              id="invoiceSellerAddress"
+              style={{ ...fieldStyle, height: "70px", resize: "vertical" }}
+              value={invoiceSellerAddress}
+              onChange={(e) => setInvoiceSellerAddress(e.target.value)}
+              placeholder={"L-75-76, Lajpat Nagar 2\nNew Delhi, Delhi, 110024\nIndia"}
+            />
+
+            <label style={labelStyle} htmlFor="invoiceGstin">GSTIN</label>
+            <input
+              id="invoiceGstin"
+              style={fieldStyle}
+              type="text"
+              value={invoiceGstin}
+              onChange={(e) => setInvoiceGstin(e.target.value)}
+              placeholder="e.g. 07ABCDE1234F1Z5"
+            />
+
+            <label style={labelStyle} htmlFor="invoiceSellerState">Your state (for CGST+SGST vs IGST)</label>
+            <input
+              id="invoiceSellerState"
+              style={fieldStyle}
+              type="text"
+              value={invoiceSellerState}
+              onChange={(e) => setInvoiceSellerState(e.target.value)}
+              placeholder="e.g. Delhi — must match how the customer's state is spelled on their order"
+            />
+
+            <div style={{ display: "flex", gap: "12px" }}>
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle} htmlFor="invoiceGstRateLoose">GST rate — loose gemstones (%)</label>
+                <input
+                  id="invoiceGstRateLoose"
+                  style={fieldStyle}
+                  type="text"
+                  inputMode="decimal"
+                  value={invoiceGstRateLoose}
+                  onChange={(e) => setInvoiceGstRateLoose(e.target.value)}
+                  placeholder="e.g. 3"
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle} htmlFor="invoiceGstRateCustomisation">GST rate — customisation (%)</label>
+                <input
+                  id="invoiceGstRateCustomisation"
+                  style={fieldStyle}
+                  type="text"
+                  inputMode="decimal"
+                  value={invoiceGstRateCustomisation}
+                  onChange={(e) => setInvoiceGstRateCustomisation(e.target.value)}
+                  placeholder="e.g. 5"
+                />
+              </div>
+            </div>
+            <p style={{ ...hintStyle, marginTop: "-10px" }}>
+              International orders are always zero-rated (export under LUT) regardless of these rates.
+            </p>
+
+            <label style={labelStyle} htmlFor="invoiceNumberPrefix">Invoice number prefix</label>
+            <input
+              id="invoiceNumberPrefix"
+              style={fieldStyle}
+              type="text"
+              value={invoiceNumberPrefix}
+              onChange={(e) => setInvoiceNumberPrefix(e.target.value)}
+              placeholder={`${data.defaultInvoiceNumberPrefix} (default if left blank)`}
+            />
+
+            <label style={labelStyle}>Invoice numbering</label>
+            {data.invoiceNextNumber ? (
+              <p style={{ ...hintStyle, marginTop: "5px" }}>
+                Next invoice will be <strong>{invoiceNumberPrefix || data.defaultInvoiceNumberPrefix}{String(data.invoiceNextNumber).padStart(6, "0")}</strong>.
+                The starting number can no longer be changed — at least one invoice has already been issued.
+              </p>
+            ) : (
+              <>
+                <p style={{ ...hintStyle, marginTop: "5px" }}>
+                  No invoice has been issued yet — set where the sequence should start (e.g. 1, or wherever your
+                  existing paper/accounting records leave off). This can only be set once, before the first invoice.
+                </p>
+                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                  <input
+                    style={{ ...fieldStyle, marginBottom: 0, maxWidth: "160px" }}
+                    type="number"
+                    min="1"
+                    value={invoiceStartNumber}
+                    onChange={(e) => setInvoiceStartNumber(e.target.value)}
+                    placeholder="1"
+                  />
+                  <button type="button" onClick={saveInvoiceStartNumber} disabled={isSettingInvoiceStartNumber || !invoiceStartNumber} style={{ ...secondaryBtn, padding: "9px 16px", fontSize: "12.5px" }}>
+                    {isSettingInvoiceStartNumber ? "Setting…" : "Set starting number"}
+                  </button>
+                </div>
+              </>
+            )}
+
+            <Explain summary="ℹ️ Available placeholders (substituted automatically when the invoice is generated)">
+              <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "12px", color: brand.muted, lineHeight: 1.8 }}>
+                {data.orderInvoicePlaceholders.map((p) => (
+                  <li key={p.token}>
+                    <code style={{ background: brand.panel, padding: "1px 5px", borderRadius: "4px" }}>{`{{${p.token}}}`}</code> — {p.description}
+                  </li>
+                ))}
+              </ul>
+            </Explain>
+            <label style={labelStyle} htmlFor="invoicePdfTemplate">Invoice PDF HTML</label>
+            <textarea
+              id="invoicePdfTemplate"
+              value={invoicePdfTemplate}
+              onChange={(e) => setInvoicePdfTemplate(e.target.value)}
+              spellCheck={false}
+              style={{ ...fieldStyle, fontFamily: brand.mono, fontSize: "11.5px", lineHeight: 1.5, height: "260px", resize: "vertical", whiteSpace: "pre" }}
+            />
+            <p style={{ ...hintStyle, marginTop: "6px" }}>
+              Rendered without a browser engine (no Puppeteer) to keep this app's hosting light — stick to
+              table-based layouts like this default, not flexbox/grid/absolute positioning, which won't render.
+            </p>
+            <div style={{ display: "flex", gap: "8px", marginTop: "6px", flexWrap: "wrap" }}>
+              <button type="button" onClick={() => setShowInvoicePreview((v) => !v)} style={{ ...primaryBtn, padding: "8px 16px", fontSize: "12.5px" }}>
+                {showInvoicePreview ? "Hide preview" : "Preview"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm("Reset to the built-in default template? This discards your current edits (not saved until you click Save settings).")) {
+                    setInvoicePdfTemplate(data.defaultInvoicePdfTemplate);
+                  }
+                }}
+                style={{ ...secondaryBtn, padding: "8px 16px", fontSize: "12.5px" }}
+              >
+                Reset to default
+              </button>
+            </div>
+            {showInvoicePreview && (
+              <div style={{ marginTop: "10px", border: `1px solid ${brand.border}`, borderRadius: "10px", overflow: "hidden" }}>
+                <div style={{ padding: "6px 10px", background: brand.panel, borderBottom: `1px solid ${brand.divider}`, fontSize: "11px", color: brand.muted }}>
+                  Preview with sample data — reflects the HTML box above, even if unsaved. The real PDF's exact fonts/
+                  spacing may differ slightly from this browser preview since the PDF is rendered by pdfmake, not a browser.
+                </div>
+                <iframe title="Invoice preview" srcDoc={renderInvoicePreview(invoicePdfTemplate)} style={{ width: "100%", height: "500px", border: "none", display: "block" }} />
               </div>
             )}
           </TemplateCard>

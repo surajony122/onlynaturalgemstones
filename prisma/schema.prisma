@@ -415,7 +415,69 @@ model AppSettings {
   // renderOrderProcessingEmailTemplate() in orderProcessingEmail.server.js
   // for the full list.
   orderProcessingEmailTemplate   String?
+  // GST tax invoice settings — see app/utils/orderInvoice.server.js and
+  // the order-page "Send Invoice" admin action extension
+  // (extensions/order-invoice-action). GSTIN/legal name/address entered
+  // here rather than read from Shopify's own Settings -> Taxes and
+  // duties page, since that India-GST-registration data isn't reliably
+  // exposed to apps via the Admin API — this is the one place it's
+  // actually readable at send time, per explicit request.
+  invoiceGstin                   String?
+  invoiceSellerLegalName         String?
+  invoiceSellerAddress           String?
+  // Seller's own state (e.g. "Delhi") — determines whether a domestic
+  // order's GST splits into CGST+SGST (customer's state matches this) or
+  // is charged as IGST (customer is in a different Indian state).
+  invoiceSellerState             String?
+  // Percentage rates (e.g. "3"), applied per line depending on which
+  // product it is — a loose gemstone line vs a "Gemstone Customisation"
+  // charge line get taxed differently, per explicit request. International
+  // orders (shipping/billing country != India) are always zero-rated
+  // (export under LUT), regardless of these rates.
+  invoiceGstRateLoose            String?
+  invoiceGstRateCustomisation    String?
+  // Prefix for generated invoice numbers, e.g. "INV-" -> "INV-000123".
+  // Defaults to "INV-" if left blank — see DEFAULT_INVOICE_NUMBER_PREFIX.
+  invoiceNumberPrefix            String?
+  // The next number to assign (NOT the last one used) — atomically
+  // incremented by getOrCreateInvoiceNumber() every time a genuinely new
+  // order is invoiced for the first time (re-sending an existing
+  // invoice reuses its already-assigned OrderInvoice row instead of
+  // consuming another number). Settable once from the Settings page to
+  // start the sequence wherever the merchant wants; system-managed after
+  // that, not part of the generic FIELDS/saveAppSettings save flow (same
+  // reasoning as interaktCampaignId above).
+  invoiceNextNumber              Int?
+  // The order-invoice PDF's full HTML source, editable from the Settings
+  // page (with a live preview), same pattern as orderProcessingEmailTemplate
+  // above. Null means "use the built-in default template" —
+  // getOrderInvoiceTemplate() is the one place that resolution happens.
+  // Rendered through html-to-pdfmake (no headless browser -- see that
+  // file's own comment for why), so it should stay to the same
+  // table-based layout style the rest of this store's transactional
+  // emails already use rather than relying on flexbox/grid/absolute
+  // positioning, which won't render.
+  invoicePdfTemplate             String?
   updatedAt                      DateTime @updatedAt
+}
+
+// One row per order that's had a GST invoice generated — orderId is
+// unique so the assigned invoiceNumber is permanent for that order even
+// across repeated manual sends (clicking "Send Invoice" again on the
+// order page resends the same numbered invoice, it never mints a new
+// one for an order that already has one — required for GST compliance,
+// where invoice numbers must be sequential and never reused/skipped).
+// See app/utils/orderInvoice.server.js's getOrCreateInvoiceNumber().
+model OrderInvoice {
+  id            String   @id @default(cuid())
+  shop          String?
+  orderId       String   @unique
+  orderName     String?
+  invoiceNumber String
+  sentTo        String?
+  status        String? // same "OK: .../FAILED: ..." shape as elsewhere
+  createdAt     DateTime @default(now())
+  lastSentAt    DateTime @default(now())
 }
 
 // One row per wishlist email sent — mirrors AstroLead's shape but for

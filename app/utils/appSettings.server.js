@@ -37,6 +37,14 @@ const FIELDS = [
   "metalRateGold14kWhite",
   "metalMakingCharge",
   "metalTaxRate",
+  "invoiceGstin",
+  "invoiceSellerLegalName",
+  "invoiceSellerAddress",
+  "invoiceSellerState",
+  "invoiceGstRateLoose",
+  "invoiceGstRateCustomisation",
+  "invoiceNumberPrefix",
+  "invoicePdfTemplate",
 ];
 
 const ENV_FALLBACK = {
@@ -123,6 +131,11 @@ export async function getAppSettings(shop) {
   // never user-editable) — see getOrCreateInteraktCampaignId.
   resolved.interaktCampaignId = (row && row.interaktCampaignId) || "";
   resolved.interaktCampaignTemplateName = (row && row.interaktCampaignTemplateName) || "";
+  // Also system-managed (see getOrCreateInvoiceNumber in
+  // orderInvoice.server.js) -- an actual number, not a string like the
+  // rest of this function's return, since callers do arithmetic with it.
+  // Null means "never invoiced anything yet under this shop".
+  resolved.invoiceNextNumber = row ? row.invoiceNextNumber : null;
   return resolved;
 }
 
@@ -137,6 +150,29 @@ export async function setInteraktCampaign(shop, campaignId, templateName) {
     create: { shop, interaktCampaignId: campaignId, interaktCampaignTemplateName: templateName },
     update: { interaktCampaignId: campaignId, interaktCampaignTemplateName: templateName },
   });
+}
+
+/** Sets where the GST invoice sequence starts (the FIRST invoice ever
+ * generated will be this number) — deliberately refuses once a single
+ * invoice has already been issued (i.e. any row exists in OrderInvoice
+ * for this shop), since changing the counter mid-sequence would create
+ * a gap or a collision, both of which break GST's "no gaps, no reuse"
+ * numbering requirement. Returns { ok: true } or { ok: false, error }. */
+export async function setInvoiceStartingNumber(shop, startNumber) {
+  const alreadyIssued = await prisma.orderInvoice.findFirst({ where: { shop } });
+  if (alreadyIssued) {
+    return { ok: false, error: "Can't change the starting number — at least one invoice has already been issued under this shop." };
+  }
+  const n = parseInt(startNumber, 10);
+  if (!Number.isFinite(n) || n < 1) {
+    return { ok: false, error: "Starting number must be a positive whole number." };
+  }
+  await prisma.appSettings.upsert({
+    where: { shop },
+    create: { shop, invoiceNextNumber: n },
+    update: { invoiceNextNumber: n },
+  });
+  return { ok: true };
 }
 
 /** Raw DB row only (no env fallback) — used by the Settings page itself
