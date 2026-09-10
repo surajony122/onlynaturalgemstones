@@ -425,6 +425,13 @@ model AppSettings {
   invoiceGstin                   String?
   invoiceSellerLegalName         String?
   invoiceSellerAddress           String?
+  // Shown on the invoice PDF's seller info block (reference layout has a
+  // "Tel :" / "Email :" line under the seller address) and used as the
+  // From-name context in the invoice email. Independent of gmailUser
+  // (the actual sending mailbox) since the seller's public contact
+  // number/email can differ from the Gmail account used to send.
+  invoiceSellerPhone             String?
+  invoiceSellerEmail             String?
   // Seller's own state (e.g. "Delhi") — determines whether a domestic
   // order's GST splits into CGST+SGST (customer's state matches this) or
   // is charged as IGST (customer is in a different Indian state).
@@ -439,6 +446,11 @@ model AppSettings {
   // Prefix for generated invoice numbers, e.g. "INV-" -> "INV-000123".
   // Defaults to "INV-" if left blank — see DEFAULT_INVOICE_NUMBER_PREFIX.
   invoiceNumberPrefix            String?
+  // Number of days after order date to show as "Delivery Before" on the
+  // invoice PDF (reference layout has this next to the customer block).
+  // Stored as a string like the rest of FIELDS ("blank means unset");
+  // parsed with a default of 10 at send time.
+  invoiceDeliveryDays            String?
   // The next number to assign (NOT the last one used) — atomically
   // incremented by getOrCreateInvoiceNumber() every time a genuinely new
   // order is invoiced for the first time (re-sending an existing
@@ -458,6 +470,15 @@ model AppSettings {
   // emails already use rather than relying on flexbox/grid/absolute
   // positioning, which won't render.
   invoicePdfTemplate             String?
+  // The invoice EMAIL's full HTML source (the message the customer
+  // actually receives, PDF attached) — separate from invoicePdfTemplate
+  // above, which is the attached PDF's own layout. Settings page shows
+  // these as two tabs ("Invoice Email" / "Invoice PDF") under GST Tax
+  // Invoice. Null means "use the built-in default" — mirrors the same
+  // delivery-notification visual style (logo header, divider, content
+  // card, footer with WhatsApp/call/email rows) already used by this
+  // store's other transactional emails, per explicit request.
+  invoiceEmailTemplate           String?
   // Per-collection GST rate overrides for the gemstone line -- {"gid://
   // shopify/Collection/123": "0.25", ...} -- since different gemstone
   // types can have different real HSN classifications/rates under GST,

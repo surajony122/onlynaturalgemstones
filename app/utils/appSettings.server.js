@@ -40,11 +40,15 @@ const FIELDS = [
   "invoiceGstin",
   "invoiceSellerLegalName",
   "invoiceSellerAddress",
+  "invoiceSellerPhone",
+  "invoiceSellerEmail",
   "invoiceSellerState",
   "invoiceGstRateLoose",
   "invoiceGstRateCustomisation",
   "invoiceNumberPrefix",
+  "invoiceDeliveryDays",
   "invoicePdfTemplate",
+  "invoiceEmailTemplate",
 ];
 
 const ENV_FALLBACK = {

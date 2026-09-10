@@ -22,7 +22,7 @@
  */
 import nodemailer from "nodemailer";
 import prisma from "../db.server";
-import { esc } from "./astroAdvice.server";
+import { esc, getShopFooterInfo } from "./astroAdvice.server";
 import pdfMake from "pdfmake/build/pdfmake.js";
 import pdfFonts from "pdfmake/build/vfs_fonts.js";
 import htmlToPdfmake from "html-to-pdfmake";
@@ -40,28 +40,36 @@ const CUSTOMISATION_PRODUCT_TITLE = "Gemstone Customisation";
 
 // Documented once, here, so the Settings page's "available placeholders"
 // help text and the actual substitution logic below can never drift
-// apart. line_items_rows and gst_breakdown_rows are pre-rendered HTML
-// (a real templating loop isn't worth the added complexity/fragility for
-// one page's worth of rows -- see renderOrderInvoiceTemplate's own
+// apart. line_items_rows is pre-rendered HTML, one <tr> per line with its
+// own CGST/SGST/IGST columns already computed (a real templating loop
+// isn't worth the added complexity/fragility for one page's worth of
+// rows -- see renderOrderInvoiceTemplate's own
 // comment for the same reasoning already established for the order-
 // processing email template).
 export const ORDER_INVOICE_PLACEHOLDERS = [
   { token: "invoice_number", description: "e.g. INV-000123 -- assigned once per order, permanently" },
-  { token: "invoice_date", description: "Date the invoice was generated" },
+  { token: "invoice_date", description: "Date the invoice was generated, DD/MM/YYYY" },
   { token: "order_number", description: "Shopify order number, e.g. #1000031314" },
   { token: "customer_name", description: "Customer's full name" },
   { token: "customer_email", description: "Customer's email address" },
+  { token: "customer_phone", description: "Customer's phone number, if on the order" },
   { token: "billing_address", description: "Formatted billing address (multi-line HTML)" },
   { token: "shipping_address", description: "Formatted shipping address (multi-line HTML)" },
   { token: "seller_legal_name", description: "Your registered business name (Settings page)" },
   { token: "seller_address", description: "Your registered business address (Settings page)" },
+  { token: "seller_phone", description: "Your business phone (Settings page)" },
+  { token: "seller_email", description: "Your business support email (Settings page)" },
   { token: "seller_gstin", description: "Your GSTIN (Settings page)" },
-  { token: "line_items_rows", description: "Pre-built HTML table rows: item, HSN code, qty, rate, taxable value" },
-  { token: "gst_breakdown_rows", description: "Pre-built HTML table rows: CGST/SGST or IGST, each with amount" },
+  { token: "sales_person", description: "Defaults to your registered business name" },
+  { token: "delivery_mode", description: "The order's actual shipping method, if any" },
+  { token: "delivery_before", description: "Order date + your configured delivery-days setting" },
+  { token: "payment_mode", description: "The order's actual payment gateway (e.g. Razorpay)" },
+  { token: "line_items_rows", description: "Pre-built HTML table rows: item, HSN, qty, rate, CGST, SGST, IGST, amount" },
   { token: "subtotal", description: "Sum of all line items before GST" },
   { token: "total_gst", description: "Total GST amount across all lines" },
   { token: "grand_total", description: "Subtotal + total GST" },
-  { token: "tax_treatment_note", description: "\"Export — zero-rated supply under LUT\" for international orders, blank otherwise" },
+  { token: "total_in_words", description: "Grand total spelled out, e.g. \"Indian Rupee One Only\"" },
+  { token: "tax_treatment_note", description: "Reserved, currently always blank (GST applies even internationally, as IGST)" },
   { token: "shop_name", description: "Store name" },
   { token: "shop_url", description: "Store URL" },
 ];
@@ -72,79 +80,133 @@ function getDefaultOrderInvoiceTemplate() {
 <head>
   <meta charset="utf-8">
   <style>
-    body { font-family: Helvetica, Arial, sans-serif; font-size: 11px; color: #222; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
-    td, th { padding: 5px 6px; }
-    .header-table td { vertical-align: top; }
-    .seller-block { font-size: 11px; line-height: 1.5; }
-    .invoice-title { font-size: 20px; font-weight: bold; color: #8C7A4E; text-align: right; }
-    .invoice-meta { text-align: right; font-size: 11px; line-height: 1.6; }
-    .addr-table td { vertical-align: top; width: 50%; font-size: 11px; line-height: 1.5; }
-    .addr-heading { font-weight: bold; margin-bottom: 4px; }
-    .items-table th { background: #f3efe6; border: 1px solid #ccc; text-align: left; }
-    .items-table td { border: 1px solid #ccc; }
-    .totals-table td { border: none; }
-    .totals-table .label { text-align: right; }
-    .totals-table .value { text-align: right; width: 110px; }
-    .grand-total { font-weight: bold; font-size: 13px; border-top: 1px solid #333; }
-    .note { font-size: 10px; color: #666; margin-top: 14px; }
+    body { font-family: Helvetica, Arial, sans-serif; font-size: 10px; color: #222; }
+    table { width: 100%; border-collapse: collapse; }
+    td, th { padding: 6px 8px; }
+    .brand { text-align: center; font-size: 22px; font-weight: bold; color: #d97b3f; margin-bottom: 10px; }
+    .outer { border: 1px solid #333; }
+    .outer > tbody > tr > td { border: none; padding: 0; }
+    .bar { border-bottom: 1px solid #333; font-size: 12px; font-weight: bold; }
+    .bar td { padding: 8px 10px; }
+    .info td { vertical-align: top; border-bottom: 1px solid #333; font-size: 10px; line-height: 1.6; }
+    .info-heading { font-weight: bold; margin-bottom: 3px; }
+    .items th { background: #f3efe6; border: 1px solid #999; text-align: left; font-size: 9.5px; }
+    .items td { border: 1px solid #999; vertical-align: top; font-size: 9.5px; }
+    .summary td { vertical-align: top; padding: 10px; }
+    .summary .value { text-align: right; }
+    .summary .grand { font-weight: bold; font-size: 12px; border-top: 1px solid #333; }
+    .terms { font-size: 8.5px; color: #555; line-height: 1.5; padding: 10px; border-top: 1px solid #333; }
+    .sign td { padding: 14px 10px; border-top: 1px solid #333; vertical-align: top; }
+    .footer { text-align: center; font-size: 9px; color: #666; padding: 8px; border-top: 1px solid #333; }
   </style>
 </head>
 <body>
 
-  <table class="header-table">
-    <tr>
-      <td style="width: 55%;">
-        <div class="seller-block">
-          <b>{{seller_legal_name}}</b><br>
-          {{seller_address}}<br>
-          GSTIN: {{seller_gstin}}
-        </div>
-      </td>
-      <td style="width: 45%;">
-        <div class="invoice-title">TAX INVOICE</div>
-        <div class="invoice-meta">
-          Invoice #: {{invoice_number}}<br>
-          Date: {{invoice_date}}<br>
-          Order: {{order_number}}
-        </div>
-      </td>
-    </tr>
-  </table>
+  <div class="brand">{{shop_name}}</div>
 
-  <table class="addr-table">
+  <table class="outer">
     <tr>
       <td>
-        <div class="addr-heading">Billed To</div>
-        {{customer_name}}<br>
-        {{customer_email}}<br>
-        {{billing_address}}
-      </td>
-      <td>
-        <div class="addr-heading">Shipped To</div>
-        {{shipping_address}}
+        <table class="bar">
+          <tr>
+            <td>TAX INVOICE # {{invoice_number}}</td>
+            <td style="text-align: right;">Date : {{invoice_date}}</td>
+          </tr>
+        </table>
       </td>
     </tr>
-  </table>
-
-  <table class="items-table">
     <tr>
-      <th>Item</th>
-      <th>HSN</th>
-      <th>Qty</th>
-      <th>Taxable Value</th>
+      <td>
+        <table class="info">
+          <tr>
+            <td style="width: 38%;">
+              <div class="info-heading">{{seller_legal_name}}</div>
+              {{seller_address}}<br>
+              Tel : {{seller_phone}}<br>
+              Email : {{seller_email}}<br>
+              GSTIN : {{seller_gstin}}
+            </td>
+            <td style="width: 38%;">
+              <div class="info-heading">Customer Details</div>
+              {{customer_name}}<br>
+              {{billing_address}}<br>
+              Tel : {{customer_phone}}
+            </td>
+            <td style="width: 24%;">
+              Delivery Before : {{delivery_before}}<br>
+              Sales Person : {{sales_person}}<br>
+              Delivery Mode : {{delivery_mode}}
+            </td>
+          </tr>
+        </table>
+      </td>
     </tr>
-    {{line_items_rows}}
+    <tr>
+      <td>
+        <table class="items">
+          <tr>
+            <th>ITEM(s) DESCRIPTION</th>
+            <th>HSN</th>
+            <th>Qty</th>
+            <th>RATE (₹)</th>
+            <th>CGST</th>
+            <th>SGST</th>
+            <th>IGST</th>
+            <th>AMOUNT (₹)</th>
+          </tr>
+          {{line_items_rows}}
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <table class="summary">
+          <tr>
+            <td style="width: 55%;">
+              Total In Words<br>
+              <b>{{total_in_words}}</b><br><br>
+              Payment Mode : {{payment_mode}}
+            </td>
+            <td style="width: 45%;">
+              <table>
+                <tr><td>Sub Total</td><td class="value">{{subtotal}}</td></tr>
+                <tr><td>Total GST</td><td class="value">{{total_gst}}</td></tr>
+                <tr class="grand"><td>Total</td><td class="value">{{grand_total}}</td></tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td class="terms">
+        The Amount Received against Gemstone / Jewellery is Non-refundable. In case of any defect related to Gemstones / Jewellery, the Customer has to return the goods within 3 days after
+        purchase. We take full responsibility if the sold gemstone is synthetic (man-made) and the full amount will be refunded. We take no responsibility if the Gemstone / Jewellery gets damaged in
+        any way after it is delivered to the Client. Customised Jewellery — including personalised / engraved products manufactured to specific customer instructions — is not eligible for return /
+        money back. Any item showing signs of wear, or that has been engraved, altered, resized or otherwise damaged, will not be accepted for return. All matters / disputes subject to Delhi
+        Jurisdiction.
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <table class="sign">
+          <tr>
+            <td style="width: 55%;">
+              I have read, understood and agreed to the terms &amp; conditions.<br><br>
+              Customer Signature : {{customer_name}}
+            </td>
+            <td style="width: 45%; text-align: right;">
+              For {{seller_legal_name}}<br><br><br>
+              Authorised Seal &amp; Signatory
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td class="footer">This is a Computer Generated Invoice — {{shop_name}} ({{shop_url}})</td>
+    </tr>
   </table>
-
-  <table class="totals-table">
-    <tr><td class="label">Subtotal</td><td class="value">{{subtotal}}</td></tr>
-    {{gst_breakdown_rows}}
-    <tr><td class="label grand-total">Grand Total</td><td class="value grand-total">{{grand_total}}</td></tr>
-  </table>
-
-  <p class="note">{{tax_treatment_note}}</p>
-  <p class="note">This is a computer-generated invoice from {{shop_name}} ({{shop_url}}).</p>
 
 </body>
 </html>`;
@@ -157,6 +219,234 @@ function getDefaultOrderInvoiceTemplate() {
  * answers. */
 export function getOrderInvoiceTemplate(settings) {
   return (settings && settings.invoicePdfTemplate) || getDefaultOrderInvoiceTemplate();
+}
+
+// The EMAIL's own placeholder list -- deliberately a different, smaller
+// set than ORDER_INVOICE_PLACEHOLDERS above, since the email body never
+// needs the GST/line-item breakdown (that only ever lives in the
+// attached PDF) -- it's just the wrapper message announcing the invoice.
+export const ORDER_INVOICE_EMAIL_PLACEHOLDERS = [
+  { token: "customer_first_name", description: "Customer's name (falls back to \"there\" if unknown)" },
+  { token: "order_number", description: "Order number, e.g. #1000031314" },
+  { token: "invoice_number", description: "e.g. INV-000123" },
+  { token: "order_status_url", description: "Link to the customer's own order status page" },
+  { token: "shop_name", description: "Store name" },
+  { token: "shop_url", description: "Store URL" },
+  { token: "shop_email", description: "Store support email address" },
+  { token: "shop_logo_url", description: "Store logo image URL (a sensible fallback logo is used if the store has none set)" },
+];
+
+// Matches the visual identity of this store's other transactional emails
+// (native Shopify notifications + the order-processing email) --
+// logo/wordmark header on a cream band, divider, content card, footer
+// with address + WhatsApp/call/email rows -- per explicit request, so
+// the invoice email doesn't look like a different product. Content is
+// invoice-specific: announces the attached PDF rather than a status
+// change.
+function getDefaultInvoiceEmailTemplate() {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Your invoice is here</title>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta name="viewport" content="width=device-width">
+  <style type="text/css">
+.gt a{color:#222!important;text-decoration:none!important}
+body{margin:0;padding:0;width:100%;background-color:#f3f2ef;font-family:Arial,Helvetica,sans-serif;color:#4f5965}
+table{border-spacing:0;border-collapse:collapse} img{border:0;display:block} a{text-decoration:none}
+.email-wrapper{width:100%;background-color:#f3f2ef}.page-padding{padding:32px 0}
+.email-container{width:500px;max-width:500px;background-color:#fff;border-radius:0 0 12px 12px;overflow:hidden}
+.logo-section{padding:28px 20px 25px;text-align:center;background-color:#fffcf3;border-top:5px solid #8c7a4e}
+.logo-section img{max-width:100px;width:auto;height:auto;margin:0 auto}
+.logo-text{margin:0;font-size:30px;font-weight:normal;color:#a76642}
+.divider-cell{padding-left:0;padding-right:0}.divider{height:1px;background-color:#d5d0c8;width:100%;font-size:1px;line-height:1px}
+.content-section{padding:30px 28px 25px;font-size:15px;line-height:1.6;color:#4f5965;background-color:#fff}
+.content-inner{width:100%;margin:0 auto}.content-section p{margin-top:0;margin-bottom:18px}
+.order-number,.complete-status{font-weight:bold;color:#3d4652}
+.button-table{width:100%;margin-top:20px;margin-bottom:10px}.button-cell{width:50%;vertical-align:middle}
+.button-gap{width:8px;min-width:8px;font-size:1px;line-height:1px}
+.email-button{display:block;width:100%;box-sizing:border-box;text-align:center;background-color:#8c7a4e;color:#fff!important;padding:11px 5px;font-size:14px;font-weight:500;line-height:16px;border-radius:3px;white-space:nowrap;text-decoration:none!important}
+.secondary-button{background-color:#fff;color:#8c7a4e!important;border:1px solid #8c7a4e;padding:10px 5px}
+.footer-section{padding:14px 18px 16px;text-align:center;color:#4f5965;background-color:#fffcf3}
+.footer-title{margin:0 0 8px;font-size:14px;line-height:1.45;color:#4f5965}
+.address{margin:0 0 10px;font-size:13px;line-height:1.45;color:#333!important}.address a{color:#333!important;text-decoration:none!important}
+.contact-table{width:100%;margin:0 auto;table-layout:fixed}.website-row{padding-bottom:8px}
+.contact-item{width:50%;padding:3px 2px;text-align:center;vertical-align:middle;font-size:13px;line-height:18px}
+.single-contact-item{padding:3px 2px;text-align:center;vertical-align:middle;font-size:13px;line-height:18px}
+.contact-link{color:#333!important;text-decoration:none!important;white-space:nowrap}
+.contact-icon{width:18px;height:18px;display:block}
+@media only screen and (max-width:600px){
+.page-padding{padding:0!important}.email-container{width:100%!important;max-width:100%!important;border-radius:0!important}
+.logo-section{padding:22px 15px!important}.logo-section img{max-width:100px!important}
+.content-section{padding:24px 20px 18px!important;font-size:16px!important}
+.button-table{width:100%!important;margin-top:18px!important;margin-bottom:10px!important}.button-gap{width:8px!important;min-width:8px!important}
+.email-button{font-size:13px!important;line-height:16px!important;padding:10px 3px!important}.secondary-button{padding:9px 3px!important}
+.footer-section{padding:12px 12px 14px!important}.footer-title{font-size:14px!important;line-height:1.4!important;margin-bottom:7px!important}
+.address{font-size:13px!important;line-height:1.4!important;margin-bottom:8px!important}.website-row{padding-bottom:6px!important}
+.contact-item,.single-contact-item{padding:3px 1px!important;font-size:13px!important}.contact-link{white-space:nowrap!important}
+}
+</style>
+</head>
+
+
+<body>
+
+  <table class="email-wrapper" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+      <td class="page-padding" align="center">
+
+        <table class="email-container" width="500" cellpadding="0" cellspacing="0" border="0">
+
+          <tr>
+            <td class="logo-section">
+              <img src="{{shop_logo_url}}" alt="{{shop_name}}" width="100">
+            </td>
+          </tr>
+
+          <tr>
+            <td class="divider-cell">
+              <div class="divider">&nbsp;</div>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="content-section">
+              <div class="content-inner">
+
+                <p>Hello {{customer_first_name}},</p>
+
+                <p>
+                  Thank you for your order
+                  <span class="order-number">{{order_number}}</span>.
+                  Your GST tax invoice
+                  <span class="order-number">{{invoice_number}}</span>
+                  is attached to this email as a PDF.
+                </p>
+
+                <p style="margin-top: 0; margin-bottom: 0;">
+                  Best Wishes &amp; Regards!
+                </p>
+
+                <table class="button-table" width="100%" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td class="button-cell" width="50%">
+                      <a href="{{order_status_url}}" class="email-button">View Your Order</a>
+                    </td>
+                    <td class="button-gap" width="8">&nbsp;</td>
+                    <td class="button-cell" width="50%">
+                      <a href="{{shop_url}}" class="email-button secondary-button">Visit Our Store</a>
+                    </td>
+                  </tr>
+                </table>
+
+              </div>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="divider-cell">
+              <div class="divider">&nbsp;</div>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="footer-section">
+
+              <p class="footer-title">
+                Thanks for choosing {{shop_name}} from the House of Shubh Gems.
+              </p>
+
+              <p class="address">
+                <a href="https://maps.app.goo.gl/vffRkrDyMiM9q895A">
+                  L-75-76, Lajpat Nagar 2, New Delhi - Delhi - 110024, India
+                </a>
+              </p>
+
+              <table class="contact-table" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td class="single-contact-item website-row" align="center">
+                    <table cellpadding="0" cellspacing="0" border="0" align="center">
+                      <tr>
+                        <td valign="middle" style="padding-right: 6px;">
+                          <img src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/website.png?v=1788870868" alt="Website" width="18" height="18" class="contact-icon">
+                        </td>
+                        <td valign="middle">
+                          <a href="{{shop_url}}" class="contact-link">onlynaturalgemstones.com</a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <table class="contact-table" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td class="contact-item" align="center">
+                    <table cellpadding="0" cellspacing="0" border="0" align="center">
+                      <tr>
+                        <td valign="middle" style="padding-right: 6px;">
+                          <a href="https://wa.me/919310400152">
+                            <img src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/whatsapp-svg-icon.svg?v=1787318358" alt="WhatsApp" width="18" height="18" class="contact-icon">
+                          </a>
+                        </td>
+                        <td valign="middle">
+                          <a href="https://wa.me/919310400152" class="contact-link">+91-9310-400-152</a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                  <td class="contact-item" align="center">
+                    <table cellpadding="0" cellspacing="0" border="0" align="center">
+                      <tr>
+                        <td valign="middle" style="padding-right: 6px;">
+                          <img src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/phone.png?v=1788597346" alt="Call" width="18" height="18" class="contact-icon">
+                        </td>
+                        <td valign="middle">
+                          <a href="tel:+918010555111" class="contact-link">+91-8010-555-111</a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <table class="contact-table" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td class="single-contact-item" align="center">
+                    <table cellpadding="0" cellspacing="0" border="0" align="center">
+                      <tr>
+                        <td valign="middle" style="padding-right: 6px;">
+                          <img src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/Email.png?v=1788596216" alt="Email" width="18" height="18" class="contact-icon">
+                        </td>
+                        <td valign="middle">
+                          <a href="mailto:{{shop_email}}" class="contact-link">{{shop_email}}</a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+            </td>
+          </tr>
+
+        </table>
+
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>`;
+}
+
+/** Resolves which HTML actually gets sent as the invoice EMAIL body -- a
+ * saved AppSettings.invoiceEmailTemplate wins, the built-in default
+ * above otherwise. Separate resolution function from
+ * getOrderInvoiceTemplate (the attached PDF's own template) so the two
+ * "use the default" fallbacks can never be confused for each other. */
+export function getInvoiceEmailTemplate(settings) {
+  return (settings && settings.invoiceEmailTemplate) || getDefaultInvoiceEmailTemplate();
 }
 
 /** Plain {{token}} substitution -- deliberately not a templating engine
@@ -243,6 +533,8 @@ export async function fetchOrderForInvoice(admin, orderGid) {
         name
         createdAt
         email
+        paymentGatewayNames
+        shippingLine { title }
         customer { firstName lastName email }
         billingAddress { name address1 address2 city province provinceCode zip country countryCodeV2 phone }
         shippingAddress { name address1 address2 city province provinceCode zip country countryCodeV2 phone }
@@ -254,10 +546,12 @@ export async function fetchOrderForInvoice(admin, orderGid) {
             quantity
             discountedTotalSet { shopMoney { amount currencyCode } }
             originalTotalSet { shopMoney { amount currencyCode } }
+            originalUnitPriceSet { shopMoney { amount currencyCode } }
             customAttributes { key value }
             variant {
               id
               title
+              sku
               product {
                 title
                 collections(first: 10) { nodes { id title } }
@@ -277,6 +571,65 @@ export async function fetchOrderForInvoice(admin, orderGid) {
   const order = json.data?.order;
   if (!order) throw new Error(`Order ${orderGid} not found`);
   return order;
+}
+
+/** Bulk version of fetchOrderForInvoice -- same field selection (kept in
+ * sync by hand, small enough that a shared fragment isn't worth the
+ * indirection), but for the last N orders in one call rather than one
+ * order by id. Powers the /app/invoices page's "show every order with
+ * its tax already computed" list -- per explicit request, a merchant
+ * shouldn't have to search for an order before seeing anything. */
+export async function fetchRecentOrdersForInvoice(admin, first = 30, after = null) {
+  const res = await admin.graphql(
+    `#graphql
+    query RecentOrdersForInvoice($first: Int!, $after: String) {
+      orders(first: $first, after: $after, sortKey: CREATED_AT, reverse: true) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          id
+          name
+          createdAt
+          email
+          paymentGatewayNames
+          shippingLine { title }
+          customer { firstName lastName email }
+          billingAddress { name address1 address2 city province provinceCode zip country countryCodeV2 phone }
+          shippingAddress { name address1 address2 city province provinceCode zip country countryCodeV2 phone }
+          currentSubtotalPriceSet { shopMoney { amount currencyCode } }
+          lineItems(first: 100) {
+            nodes {
+              id
+              title
+              quantity
+              discountedTotalSet { shopMoney { amount currencyCode } }
+              originalTotalSet { shopMoney { amount currencyCode } }
+              originalUnitPriceSet { shopMoney { amount currencyCode } }
+              customAttributes { key value }
+              variant {
+                id
+                title
+                sku
+                product {
+                  title
+                  collections(first: 10) { nodes { id title } }
+                }
+                inventoryItem { harmonizedSystemCode }
+              }
+            }
+          }
+        }
+      }
+    }`,
+    { variables: { first, after } },
+  );
+  const json = await res.json();
+  if (json.errors?.length) {
+    throw new Error(`RecentOrdersForInvoice query failed: ${JSON.stringify(json.errors)}`);
+  }
+  return {
+    orders: json.data?.orders?.nodes || [],
+    pageInfo: json.data?.orders?.pageInfo || { hasNextPage: false, endCursor: null },
+  };
 }
 
 /** Splits an order's lines into GST-computed rows, aggregates the tax
@@ -337,6 +690,7 @@ export function computeInvoiceGst(order, settings) {
 
   for (const line of order.lineItems?.nodes || []) {
     const taxableValue = parseFloat(line.discountedTotalSet?.shopMoney?.amount ?? line.originalTotalSet?.shopMoney?.amount ?? 0) || 0;
+    const unitRate = parseFloat(line.originalUnitPriceSet?.shopMoney?.amount ?? 0) || 0;
     subtotal += taxableValue;
 
     // GST always applies -- domestic or international -- at this line's
@@ -361,27 +715,44 @@ export function computeInvoiceGst(order, settings) {
     }
     const gstAmount = (taxableValue * rate) / 100;
 
+    // Same bucketing decision for every line on the order (it's driven by
+    // one shipping address, not per-line) -- only the RATE varies line to
+    // line, matching the reference invoice's per-line CGST/SGST/IGST
+    // columns (each showing both the amount and the % that produced it).
+    let lineCgst = 0, lineSgst = 0, lineIgst = 0;
+    let cgstPct = 0, sgstPct = 0, igstPct = 0;
     if (sameState) {
-      totalCgst += gstAmount / 2;
-      totalSgst += gstAmount / 2;
+      lineCgst = gstAmount / 2;
+      lineSgst = gstAmount / 2;
+      cgstPct = rate / 2;
+      sgstPct = rate / 2;
     } else {
-      totalIgst += gstAmount;
+      lineIgst = gstAmount;
+      igstPct = rate;
     }
+    totalCgst += lineCgst;
+    totalSgst += lineSgst;
+    totalIgst += lineIgst;
 
     const hsn = line.variant?.inventoryItem?.harmonizedSystemCode || "";
+    const sku = line.variant?.sku || "";
+    const lineTotal = taxableValue + gstAmount;
+    const pct = (n) => (Number.isInteger(n) ? n : n.toFixed(2)).toString();
     itemRows.push(
-      `<tr><td>${esc(line.title)}</td><td>${esc(hsn)}</td><td>${line.quantity}</td><td>${formatMoney(taxableValue, currency)}</td></tr>`,
+      `<tr>` +
+        `<td>${esc(line.title)}${sku ? `<br><span style="color:#888;font-size:9px;">SKU: ${esc(sku)}</span>` : ""}</td>` +
+        `<td>${esc(hsn)}</td>` +
+        `<td>${line.quantity}</td>` +
+        `<td>${formatMoney(unitRate, currency)}</td>` +
+        `<td>${formatMoney(lineCgst, currency)}<br><span style="color:#888;font-size:9px;">(${pct(cgstPct)}%)</span></td>` +
+        `<td>${formatMoney(lineSgst, currency)}<br><span style="color:#888;font-size:9px;">(${pct(sgstPct)}%)</span></td>` +
+        `<td>${formatMoney(lineIgst, currency)}<br><span style="color:#888;font-size:9px;">(${pct(igstPct)}%)</span></td>` +
+        `<td>${formatMoney(lineTotal, currency)}</td>` +
+      `</tr>`,
     );
   }
 
   const totalGst = totalCgst + totalSgst + totalIgst;
-  const gstRows = [];
-  if (totalCgst > 0 || totalSgst > 0) {
-    gstRows.push(`<tr><td class="label">CGST</td><td class="value">${formatMoney(totalCgst, currency)}</td></tr>`);
-    gstRows.push(`<tr><td class="label">SGST</td><td class="value">${formatMoney(totalSgst, currency)}</td></tr>`);
-  } else if (totalIgst > 0) {
-    gstRows.push(`<tr><td class="label">IGST</td><td class="value">${formatMoney(totalIgst, currency)}</td></tr>`);
-  }
 
   return {
     currency,
@@ -390,11 +761,49 @@ export function computeInvoiceGst(order, settings) {
     totalGst,
     grandTotal: subtotal + totalGst,
     lineItemsRowsHtml: itemRows.join(""),
-    gstBreakdownRowsHtml: gstRows.join(""),
     // No special export/zero-rated note -- GST is charged on
     // international orders here too (as IGST), not exempted.
     taxTreatmentNote: "",
   };
+}
+
+const ONES = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten",
+  "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+const TENS = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+
+/** Indian-numbering (lakh/crore) integer-to-words, rupees only -- e.g.
+ * 132000 -> "One Lakh Thirty Two Thousand". Used for the invoice's
+ * "Total In Words" line, matching the reference invoice's wording style
+ * ("Indian Rupee One Only"). */
+function numberToWordsIndian(num) {
+  num = Math.max(0, Math.round(num));
+  if (num === 0) return "Zero";
+  const twoDigits = (n) => (n < 20 ? ONES[n] : TENS[Math.floor(n / 10)] + (n % 10 ? " " + ONES[n % 10] : ""));
+  const threeDigits = (n) => {
+    let str = "";
+    if (n >= 100) {
+      str += ONES[Math.floor(n / 100)] + " Hundred";
+      n %= 100;
+      if (n) str += " ";
+    }
+    if (n) str += twoDigits(n);
+    return str;
+  };
+  const crore = Math.floor(num / 10000000); num %= 10000000;
+  const lakh = Math.floor(num / 100000); num %= 100000;
+  const thousand = Math.floor(num / 1000); num %= 1000;
+  const rest = num;
+  const parts = [];
+  if (crore) parts.push(threeDigits(crore) + " Crore");
+  if (lakh) parts.push(threeDigits(lakh) + " Lakh");
+  if (thousand) parts.push(threeDigits(thousand) + " Thousand");
+  if (rest) parts.push(threeDigits(rest));
+  return parts.join(" ");
+}
+
+function totalInWords(amount, currencyCode) {
+  const currencyName = currencyCode === "INR" || !currencyCode ? "Indian Rupee" : currencyCode;
+  return `${currencyName} ${numberToWordsIndian(amount)} Only`;
 }
 
 /** Renders the merchant's invoice template into a PDF Buffer via
@@ -445,23 +854,46 @@ export async function sendOrderInvoiceEmail(admin, settings, shop, orderGid) {
     order.shippingAddress?.name ||
     "Customer";
 
+  // DD/MM/YYYY throughout, matching the reference invoice's date format
+  // exactly (not the "13 August 2026" long form used elsewhere in this
+  // app's emails).
+  const formatDateDMY = (date) =>
+    new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
+
+  const deliveryDays = parseInt(settings.invoiceDeliveryDays, 10) || 10;
+  const orderDate = order.createdAt ? new Date(order.createdAt) : new Date();
+  const deliveryBeforeDate = new Date(orderDate.getTime() + deliveryDays * 24 * 60 * 60 * 1000);
+
+  // "razorpay" -> "Razorpay" -- paymentGatewayNames is Shopify's own
+  // lowercase gateway identifier array, not a display-ready label.
+  const paymentMode = (order.paymentGatewayNames || [])[0]
+    ? order.paymentGatewayNames[0].replace(/(^|[\s_-])\w/g, (c) => c.toUpperCase()).replace(/[_-]/g, " ")
+    : "—";
+
   const template = getOrderInvoiceTemplate(settings);
   const html = renderOrderInvoiceTemplate(template, {
     invoice_number: esc(invoiceNumber),
-    invoice_date: new Date().toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" }),
+    invoice_date: formatDateDMY(new Date()),
     order_number: esc(order.name),
     customer_name: esc(customerName),
     customer_email: esc(email),
+    customer_phone: esc(order.billingAddress?.phone || order.shippingAddress?.phone || "—"),
     billing_address: formatAddress(order.billingAddress),
     shipping_address: formatAddress(order.shippingAddress || order.billingAddress),
     seller_legal_name: esc(settings.invoiceSellerLegalName || "Only Natural Gemstones"),
     seller_address: esc(settings.invoiceSellerAddress || "").split("\n").map(esc).join("<br>"),
+    seller_phone: esc(settings.invoiceSellerPhone || "—"),
+    seller_email: esc(settings.invoiceSellerEmail || "—"),
     seller_gstin: esc(settings.invoiceGstin),
+    sales_person: esc(settings.invoiceSellerLegalName || "Only Natural Gemstones"),
+    delivery_mode: esc(order.shippingLine?.title || "—"),
+    delivery_before: formatDateDMY(deliveryBeforeDate),
+    payment_mode: esc(paymentMode),
     line_items_rows: gst.lineItemsRowsHtml,
-    gst_breakdown_rows: gst.gstBreakdownRowsHtml,
     subtotal: formatMoney(gst.subtotal, gst.currency),
     total_gst: formatMoney(gst.totalGst, gst.currency),
     grand_total: formatMoney(gst.grandTotal, gst.currency),
+    total_in_words: esc(totalInWords(gst.grandTotal, gst.currency)),
     tax_treatment_note: esc(gst.taxTreatmentNote),
     shop_name: esc(settings.invoiceSellerLegalName || "Only Natural Gemstones"),
     shop_url: "https://onlynaturalgemstones.com",
@@ -479,6 +911,26 @@ export async function sendOrderInvoiceEmail(admin, settings, shop, orderGid) {
     return `FAILED: PDF generation error: ${err.message}`;
   }
 
+  const shopInfo = await getShopFooterInfo(admin);
+  const orderStatusUrl = shopInfo.url;
+  const firstName = order.customer?.firstName || customerName.split(" ")[0] || "there";
+
+  const emailTemplate = getInvoiceEmailTemplate(settings);
+  const emailHtml = renderOrderInvoiceTemplate(emailTemplate, {
+    customer_first_name: esc(firstName),
+    order_number: esc(order.name),
+    invoice_number: esc(invoiceNumber),
+    order_status_url: esc(orderStatusUrl),
+    shop_name: esc(shopInfo.name),
+    shop_url: esc(shopInfo.url),
+    shop_email: esc(shopInfo.email),
+    shop_logo_url: esc(shopInfo.logoUrl),
+  });
+  const emailText =
+    `Hello ${firstName},\n\n` +
+    `Thank you for your order ${order.name}. Your GST tax invoice ${invoiceNumber} is attached to this email as a PDF.\n\n` +
+    `Best Wishes & Regards!`;
+
   const transporter = nodemailer.createTransport({
     service: "gmail",
     auth: { user: settings.gmailUser, pass: settings.gmailAppPassword },
@@ -492,8 +944,8 @@ export async function sendOrderInvoiceEmail(admin, settings, shop, orderGid) {
       from: `"${settings.invoiceSellerLegalName || "Only Natural Gemstones"}" <${settings.gmailUser}>`,
       to: email,
       subject: `Invoice ${invoiceNumber} for your order ${order.name}`,
-      text: `Hello ${customerName},\n\nThank you for your business.\n\nPlease find the invoice as attachment herewith.\n\nThe Invoice ${invoiceNumber} can be viewed, printed and downloaded as PDF for further use.`,
-      html: `<p>Hello ${esc(customerName)},</p><p>Thank you for your business.</p><p>Please find the invoice as attachment herewith.</p><p>The Invoice <b>${esc(invoiceNumber)}</b> can be viewed, printed and downloaded as PDF for further use.</p>`,
+      text: emailText,
+      html: emailHtml,
       attachments: [
         {
           filename: `${invoiceNumber}.pdf`,

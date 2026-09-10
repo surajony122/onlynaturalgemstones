@@ -33,7 +33,7 @@ import { FALLBACK_LOGO_URL } from "../utils/astroAdvice.server";
 import { sendGemRecommendationWhatsApp, getOrCreateInteraktCampaignId, sendOrderProcessingWhatsApp, sendWishlistWhatsApp } from "../utils/interakt.server";
 import { checkGmail, checkGoogleSheets, checkInterakt, checkGooglePlaces } from "../utils/serviceHealth.server";
 import { getOrderProcessingEmailTemplate, ORDER_PROCESSING_EMAIL_PLACEHOLDERS } from "../utils/orderProcessingEmail.server";
-import { getOrderInvoiceTemplate, ORDER_INVOICE_PLACEHOLDERS, DEFAULT_INVOICE_NUMBER_PREFIX } from "../utils/orderInvoice.server";
+import { getOrderInvoiceTemplate, ORDER_INVOICE_PLACEHOLDERS, DEFAULT_INVOICE_NUMBER_PREFIX, getInvoiceEmailTemplate, ORDER_INVOICE_EMAIL_PLACEHOLDERS } from "../utils/orderInvoice.server";
 import { brand, Icon, Card, PageHeader, PageIn } from "../components/table-kit";
 import { useToast } from "../components/toast";
 
@@ -107,15 +107,21 @@ export const loader = async ({ request }) => {
     invoiceGstin: row?.invoiceGstin || "",
     invoiceSellerLegalName: row?.invoiceSellerLegalName || "",
     invoiceSellerAddress: row?.invoiceSellerAddress || "",
+    invoiceSellerPhone: row?.invoiceSellerPhone || "",
+    invoiceSellerEmail: row?.invoiceSellerEmail || "",
     invoiceSellerState: row?.invoiceSellerState || "",
     invoiceGstRateLoose: row?.invoiceGstRateLoose || "",
     invoiceGstRateCustomisation: row?.invoiceGstRateCustomisation || "",
     invoiceNumberPrefix: row?.invoiceNumberPrefix || "",
     defaultInvoiceNumberPrefix: DEFAULT_INVOICE_NUMBER_PREFIX,
     invoiceNextNumber: row?.invoiceNextNumber ?? null,
+    invoiceDeliveryDays: row?.invoiceDeliveryDays || "",
     invoicePdfTemplate: row?.invoicePdfTemplate || "",
     defaultInvoicePdfTemplate: getOrderInvoiceTemplate({}),
     orderInvoicePlaceholders: ORDER_INVOICE_PLACEHOLDERS,
+    invoiceEmailTemplate: row?.invoiceEmailTemplate || "",
+    defaultInvoiceEmailTemplate: getInvoiceEmailTemplate({}),
+    orderInvoiceEmailPlaceholders: ORDER_INVOICE_EMAIL_PLACEHOLDERS,
     collections,
     invoiceCollectionGstRates: row?.invoiceCollectionGstRates || {},
     // So the page can say which env vars are filling in for anything
@@ -280,11 +286,15 @@ export const action = async ({ request }) => {
     invoiceGstin: formData.get("invoiceGstin")?.trim() || "",
     invoiceSellerLegalName: formData.get("invoiceSellerLegalName")?.trim() || "",
     invoiceSellerAddress: formData.get("invoiceSellerAddress")?.trim() || "",
+    invoiceSellerPhone: formData.get("invoiceSellerPhone")?.trim() || "",
+    invoiceSellerEmail: formData.get("invoiceSellerEmail")?.trim() || "",
     invoiceSellerState: formData.get("invoiceSellerState")?.trim() || "",
     invoiceGstRateLoose: formData.get("invoiceGstRateLoose")?.trim() || "",
     invoiceGstRateCustomisation: formData.get("invoiceGstRateCustomisation")?.trim() || "",
     invoiceNumberPrefix: formData.get("invoiceNumberPrefix")?.trim() || "",
+    invoiceDeliveryDays: formData.get("invoiceDeliveryDays")?.trim() || "",
     invoicePdfTemplate: formData.get("invoicePdfTemplate")?.trim() || "",
+    invoiceEmailTemplate: formData.get("invoiceEmailTemplate")?.trim() || "",
   });
 
   // JSON, not a plain string -- saved via its own setter (see that
@@ -411,24 +421,37 @@ function Explain({ summary, children, defaultOpen }) {
 // from the client bundle. Kept in sync by hand.
 const INVOICE_PREVIEW_SAMPLE_VALUES = {
   invoice_number: "INV-000123",
-  invoice_date: "10 September 2026",
+  invoice_date: "10/09/2026",
   order_number: "#1000031314",
   customer_name: "Suraj Kumar",
   customer_email: "suraj@example.com",
+  customer_phone: "09968034137",
   billing_address: "Suraj Kumar<br>123 MG Road<br>Delhi, Delhi, 110024<br>India",
   shipping_address: "Suraj Kumar<br>123 MG Road<br>Delhi, Delhi, 110024<br>India",
   seller_legal_name: "Only Natural Gemstones",
   seller_address: "L-75-76, Lajpat Nagar 2<br>New Delhi, Delhi, 110024<br>India",
+  seller_phone: "+91-8010-555-111",
+  seller_email: "support@onlynaturalgemstones.com",
   seller_gstin: "07ABCDE1234F1Z5",
+  sales_person: "Only Natural Gemstones",
+  delivery_mode: "By Courier",
+  delivery_before: "20/09/2026",
+  payment_mode: "Razorpay",
   line_items_rows:
-    '<tr><td>Blue Sapphire - 4.12 Carat</td><td>7103</td><td>1</td><td>&#8377;18,500.00</td></tr>' +
-    '<tr><td>Gemstone Customisation</td><td>7113</td><td>1</td><td>&#8377;2,150.00</td></tr>',
-  gst_breakdown_rows:
-    '<tr><td style="text-align:right;">CGST</td><td style="text-align:right; width:110px;">&#8377;310.13</td></tr>' +
-    '<tr><td style="text-align:right;">SGST</td><td style="text-align:right; width:110px;">&#8377;310.13</td></tr>',
+    '<tr><td>Blue Sapphire - 4.12 Carat</td><td>7103</td><td>1</td><td>&#8377;18,500.00</td>' +
+    '<td>&#8377;277.50<br><span style="color:#888;font-size:9px;">(1.5%)</span></td>' +
+    '<td>&#8377;277.50<br><span style="color:#888;font-size:9px;">(1.5%)</span></td>' +
+    '<td>&#8377;0.00<br><span style="color:#888;font-size:9px;">(0%)</span></td>' +
+    '<td>&#8377;19,055.00</td></tr>' +
+    '<tr><td>Gemstone Customisation</td><td>7113</td><td>1</td><td>&#8377;2,150.00</td>' +
+    '<td>&#8377;32.25<br><span style="color:#888;font-size:9px;">(1.5%)</span></td>' +
+    '<td>&#8377;32.25<br><span style="color:#888;font-size:9px;">(1.5%)</span></td>' +
+    '<td>&#8377;0.00<br><span style="color:#888;font-size:9px;">(0%)</span></td>' +
+    '<td>&#8377;2,214.50</td></tr>',
   subtotal: "₹20,650.00",
-  total_gst: "₹620.25",
-  grand_total: "₹21,270.25",
+  total_gst: "₹619.50",
+  grand_total: "₹21,269.50",
+  total_in_words: "Indian Rupee Twenty One Thousand Two Hundred Sixty Nine Only",
   tax_treatment_note: "",
   shop_name: "Only Natural Gemstones",
   shop_url: "https://onlynaturalgemstones.com",
@@ -436,6 +459,27 @@ const INVOICE_PREVIEW_SAMPLE_VALUES = {
 function renderInvoicePreview(templateHtml) {
   let html = templateHtml || "";
   for (const [key, value] of Object.entries(INVOICE_PREVIEW_SAMPLE_VALUES)) {
+    html = html.split(`{{${key}}}`).join(value).split(`{{ ${key} }}`).join(value);
+  }
+  return html;
+}
+
+// Same reasoning as INVOICE_PREVIEW_SAMPLE_VALUES above -- a client-side
+// duplicate of orderInvoice.server.js's own invoice-EMAIL substitution
+// (separate from the PDF's), since that's a .server.js module.
+const INVOICE_EMAIL_PREVIEW_SAMPLE_VALUES = {
+  customer_first_name: "Suraj",
+  order_number: "#1000031314",
+  invoice_number: "INV-000123",
+  order_status_url: "https://onlynaturalgemstones.com/",
+  shop_name: "Only Natural Gemstones",
+  shop_url: "https://onlynaturalgemstones.com",
+  shop_email: "info@onlynaturalgemstones.com",
+  shop_logo_url: "https://onlynaturalgemstones.com/cdn/shop/files/ONG_logo_home.png",
+};
+function renderInvoiceEmailPreview(templateHtml) {
+  let html = templateHtml || "";
+  for (const [key, value] of Object.entries(INVOICE_EMAIL_PREVIEW_SAMPLE_VALUES)) {
     html = html.split(`{{${key}}}`).join(value).split(`{{ ${key} }}`).join(value);
   }
   return html;
@@ -612,12 +656,22 @@ export default function SettingsPage() {
   const [invoiceGstin, setInvoiceGstin] = useState(data.invoiceGstin);
   const [invoiceSellerLegalName, setInvoiceSellerLegalName] = useState(data.invoiceSellerLegalName);
   const [invoiceSellerAddress, setInvoiceSellerAddress] = useState(data.invoiceSellerAddress);
+  const [invoiceSellerPhone, setInvoiceSellerPhone] = useState(data.invoiceSellerPhone);
+  const [invoiceSellerEmail, setInvoiceSellerEmail] = useState(data.invoiceSellerEmail);
   const [invoiceSellerState, setInvoiceSellerState] = useState(data.invoiceSellerState);
   const [invoiceGstRateLoose, setInvoiceGstRateLoose] = useState(data.invoiceGstRateLoose);
   const [invoiceGstRateCustomisation, setInvoiceGstRateCustomisation] = useState(data.invoiceGstRateCustomisation);
   const [invoiceNumberPrefix, setInvoiceNumberPrefix] = useState(data.invoiceNumberPrefix);
+  const [invoiceDeliveryDays, setInvoiceDeliveryDays] = useState(data.invoiceDeliveryDays);
   const [invoicePdfTemplate, setInvoicePdfTemplate] = useState(data.invoicePdfTemplate || data.defaultInvoicePdfTemplate);
   const [showInvoicePreview, setShowInvoicePreview] = useState(false);
+  const [invoiceEmailTemplate, setInvoiceEmailTemplate] = useState(data.invoiceEmailTemplate || data.defaultInvoiceEmailTemplate);
+  const [showInvoiceEmailPreview, setShowInvoiceEmailPreview] = useState(false);
+  // Which of the two GST Tax Invoice tabs is active -- "email" (the
+  // message the customer receives) or "pdf" (the attached invoice
+  // document's own layout), per explicit request to split these into
+  // separate tabs rather than one long stacked section.
+  const [invoiceTab, setInvoiceTab] = useState("email");
   const [collectionGstRates, setCollectionGstRates] = useState(data.invoiceCollectionGstRates || {});
   const setCollectionRate = (gid, value) => {
     setCollectionGstRates((prev) => ({ ...prev, [gid]: value }));
@@ -733,16 +787,23 @@ export default function SettingsPage() {
         invoiceGstin,
         invoiceSellerLegalName,
         invoiceSellerAddress,
+        invoiceSellerPhone,
+        invoiceSellerEmail,
         invoiceSellerState,
         invoiceGstRateLoose,
         invoiceGstRateCustomisation,
         invoiceNumberPrefix,
+        invoiceDeliveryDays,
         // Same "don't freeze today's default as a permanent customization"
         // reasoning as orderProcessingEmailTemplate above.
         invoicePdfTemplate:
           invoicePdfTemplate.replace(/\r\n/g, "\n") === data.defaultInvoicePdfTemplate.replace(/\r\n/g, "\n")
             ? ""
             : invoicePdfTemplate,
+        invoiceEmailTemplate:
+          invoiceEmailTemplate.replace(/\r\n/g, "\n") === data.defaultInvoiceEmailTemplate.replace(/\r\n/g, "\n")
+            ? ""
+            : invoiceEmailTemplate,
         invoiceCollectionGstRates: JSON.stringify(collectionGstRates),
       },
       { method: "POST" }
@@ -921,199 +982,322 @@ export default function SettingsPage() {
           <TemplateCard icon={<Icon name="tag" size={15} color={brand.accent} />} title="GST Tax Invoice">
             <p style={{ ...hintStyle, marginTop: 0 }}>
               Never sends automatically — only when someone clicks "Send Invoice" on an order's page in Shopify
-              Admin. Generates a GST invoice PDF and emails it to the customer.
+              Admin (or from the <a href="/app/invoices" style={{ color: brand.accent }}>GST Invoices</a> page).
+              Generates a GST invoice PDF and emails it to the customer.
             </p>
 
-            <label style={labelStyle} htmlFor="invoiceSellerLegalName">Registered business name</label>
-            <input
-              id="invoiceSellerLegalName"
-              style={fieldStyle}
-              type="text"
-              value={invoiceSellerLegalName}
-              onChange={(e) => setInvoiceSellerLegalName(e.target.value)}
-              placeholder="Only Natural Gemstones"
-            />
-
-            <label style={labelStyle} htmlFor="invoiceSellerAddress">Registered business address</label>
-            <textarea
-              id="invoiceSellerAddress"
-              style={{ ...fieldStyle, height: "70px", resize: "vertical" }}
-              value={invoiceSellerAddress}
-              onChange={(e) => setInvoiceSellerAddress(e.target.value)}
-              placeholder={"L-75-76, Lajpat Nagar 2\nNew Delhi, Delhi, 110024\nIndia"}
-            />
-
-            <label style={labelStyle} htmlFor="invoiceGstin">GSTIN</label>
-            <input
-              id="invoiceGstin"
-              style={fieldStyle}
-              type="text"
-              value={invoiceGstin}
-              onChange={(e) => setInvoiceGstin(e.target.value)}
-              placeholder="e.g. 07ABCDE1234F1Z5"
-            />
-
-            <label style={labelStyle} htmlFor="invoiceSellerState">Your state (for CGST+SGST vs IGST)</label>
-            <input
-              id="invoiceSellerState"
-              style={fieldStyle}
-              type="text"
-              value={invoiceSellerState}
-              onChange={(e) => setInvoiceSellerState(e.target.value)}
-              placeholder="e.g. Delhi — must match how the customer's state is spelled on their order"
-            />
-
-            <div style={{ display: "flex", gap: "12px" }}>
-              <div style={{ flex: 1 }}>
-                <label style={labelStyle} htmlFor="invoiceGstRateLoose">GST rate — loose gemstones (%)</label>
-                <input
-                  id="invoiceGstRateLoose"
-                  style={fieldStyle}
-                  type="text"
-                  inputMode="decimal"
-                  value={invoiceGstRateLoose}
-                  onChange={(e) => setInvoiceGstRateLoose(e.target.value)}
-                  placeholder="e.g. 3"
-                />
-              </div>
-              <div style={{ flex: 1 }}>
-                <label style={labelStyle} htmlFor="invoiceGstRateCustomisation">GST rate — customisation (%)</label>
-                <input
-                  id="invoiceGstRateCustomisation"
-                  style={fieldStyle}
-                  type="text"
-                  inputMode="decimal"
-                  value={invoiceGstRateCustomisation}
-                  onChange={(e) => setInvoiceGstRateCustomisation(e.target.value)}
-                  placeholder="e.g. 5"
-                />
-              </div>
+            <div style={{ display: "flex", gap: "6px", marginBottom: "18px", borderBottom: `1px solid ${brand.divider}` }}>
+              {[
+                { id: "email", label: "Invoice Email" },
+                { id: "pdf", label: "Invoice PDF" },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setInvoiceTab(tab.id)}
+                  style={{
+                    padding: "9px 16px",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    border: "none",
+                    background: "transparent",
+                    color: invoiceTab === tab.id ? brand.accent : brand.muted,
+                    borderBottom: invoiceTab === tab.id ? `2px solid ${brand.accent}` : "2px solid transparent",
+                    marginBottom: "-1px",
+                    cursor: "pointer",
+                  }}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </div>
-            <p style={{ ...hintStyle, marginTop: "-10px" }}>
-              International orders are still taxed (as IGST), at whichever rate applies to each line —
-              never zero-rated.
-            </p>
 
-            <label style={labelStyle}>GST rate by collection (optional overrides)</label>
-            <p style={{ ...hintStyle, marginTop: "5px" }}>
-              Leave blank to use the loose-gemstone rate above. If a gemstone belongs to a collection listed here,
-              its own line AND its linked "Gemstone Customisation" charge line (if customised) both use this rate
-              instead of the two defaults above.
-            </p>
-            {data.collections.length === 0 ? (
-              <p style={hintStyle}>No collections found on this store.</p>
-            ) : (
-              <div style={{ border: `1px solid ${brand.border}`, borderRadius: "10px", overflow: "hidden", marginBottom: "16px" }}>
-                {data.collections.map((c, i) => (
-                  <div
-                    key={c.id}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: "10px",
-                      padding: "8px 12px",
-                      borderTop: i === 0 ? "none" : `1px solid ${brand.divider}`,
-                      background: i % 2 === 0 ? "#fff" : brand.panel,
-                    }}
-                  >
-                    <span style={{ fontSize: "12.5px", color: brand.body }}>{c.title}</span>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      style={{ width: "80px", padding: "6px 8px", borderRadius: "6px", border: `1px solid ${brand.border}`, fontSize: "12.5px", textAlign: "right" }}
-                      value={collectionGstRates[c.id] || ""}
-                      onChange={(e) => setCollectionRate(c.id, e.target.value)}
-                      placeholder="e.g. 0.25"
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <label style={labelStyle} htmlFor="invoiceNumberPrefix">Invoice number prefix</label>
-            <input
-              id="invoiceNumberPrefix"
-              style={fieldStyle}
-              type="text"
-              value={invoiceNumberPrefix}
-              onChange={(e) => setInvoiceNumberPrefix(e.target.value)}
-              placeholder={`${data.defaultInvoiceNumberPrefix} (default if left blank)`}
-            />
-
-            <label style={labelStyle}>Invoice numbering</label>
-            {data.invoiceNextNumber ? (
-              <p style={{ ...hintStyle, marginTop: "5px" }}>
-                Next invoice will be <strong>{invoiceNumberPrefix || data.defaultInvoiceNumberPrefix}{String(data.invoiceNextNumber).padStart(6, "0")}</strong>.
-                The starting number can no longer be changed — at least one invoice has already been issued.
-              </p>
-            ) : (
+            {invoiceTab === "email" && (
               <>
-                <p style={{ ...hintStyle, marginTop: "5px" }}>
-                  No invoice has been issued yet — set where the sequence should start (e.g. 1, or wherever your
-                  existing paper/accounting records leave off). This can only be set once, before the first invoice.
+                <p style={{ ...hintStyle, marginTop: 0 }}>
+                  The message the customer actually receives, with the invoice PDF attached. Edit the raw HTML
+                  below, or leave it as-is to keep using the built-in design (matches this store's other
+                  transactional emails).
                 </p>
-                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                  <input
-                    style={{ ...fieldStyle, marginBottom: 0, maxWidth: "160px" }}
-                    type="number"
-                    min="1"
-                    value={invoiceStartNumber}
-                    onChange={(e) => setInvoiceStartNumber(e.target.value)}
-                    placeholder="1"
-                  />
-                  <button type="button" onClick={saveInvoiceStartNumber} disabled={isSettingInvoiceStartNumber || !invoiceStartNumber} style={{ ...secondaryBtn, padding: "9px 16px", fontSize: "12.5px" }}>
-                    {isSettingInvoiceStartNumber ? "Setting…" : "Set starting number"}
+                <Explain summary="ℹ️ Available placeholders (substituted automatically when the invoice email sends)">
+                  <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "12px", color: brand.muted, lineHeight: 1.8 }}>
+                    {data.orderInvoiceEmailPlaceholders.map((p) => (
+                      <li key={p.token}>
+                        <code style={{ background: brand.panel, padding: "1px 5px", borderRadius: "4px" }}>{`{{${p.token}}}`}</code> — {p.description}
+                      </li>
+                    ))}
+                  </ul>
+                </Explain>
+                <label style={labelStyle} htmlFor="invoiceEmailTemplate">Invoice email HTML</label>
+                <textarea
+                  id="invoiceEmailTemplate"
+                  value={invoiceEmailTemplate}
+                  onChange={(e) => setInvoiceEmailTemplate(e.target.value)}
+                  spellCheck={false}
+                  style={{ ...fieldStyle, fontFamily: brand.mono, fontSize: "11.5px", lineHeight: 1.5, height: "260px", resize: "vertical", whiteSpace: "pre" }}
+                />
+                <div style={{ display: "flex", gap: "8px", marginTop: "6px", flexWrap: "wrap" }}>
+                  <button type="button" onClick={() => setShowInvoiceEmailPreview((v) => !v)} style={{ ...primaryBtn, padding: "8px 16px", fontSize: "12.5px" }}>
+                    {showInvoiceEmailPreview ? "Hide preview" : "Preview"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm("Reset to the built-in default template? This discards your current edits (not saved until you click Save settings).")) {
+                        setInvoiceEmailTemplate(data.defaultInvoiceEmailTemplate);
+                      }
+                    }}
+                    style={{ ...secondaryBtn, padding: "8px 16px", fontSize: "12.5px" }}
+                  >
+                    Reset to default
                   </button>
                 </div>
+                {showInvoiceEmailPreview && (
+                  <div style={{ marginTop: "10px", border: `1px solid ${brand.border}`, borderRadius: "10px", overflow: "hidden" }}>
+                    <div style={{ padding: "6px 10px", background: brand.panel, borderBottom: `1px solid ${brand.divider}`, fontSize: "11px", color: brand.muted }}>
+                      Preview with sample data — this reflects what's in the box above right now, even if unsaved.
+                    </div>
+                    <iframe title="Invoice email preview" srcDoc={renderInvoiceEmailPreview(invoiceEmailTemplate)} style={{ width: "100%", height: "500px", border: "none", display: "block" }} />
+                  </div>
+                )}
               </>
             )}
 
-            <Explain summary="ℹ️ Available placeholders (substituted automatically when the invoice is generated)">
-              <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "12px", color: brand.muted, lineHeight: 1.8 }}>
-                {data.orderInvoicePlaceholders.map((p) => (
-                  <li key={p.token}>
-                    <code style={{ background: brand.panel, padding: "1px 5px", borderRadius: "4px" }}>{`{{${p.token}}}`}</code> — {p.description}
-                  </li>
-                ))}
-              </ul>
-            </Explain>
-            <label style={labelStyle} htmlFor="invoicePdfTemplate">Invoice PDF HTML</label>
-            <textarea
-              id="invoicePdfTemplate"
-              value={invoicePdfTemplate}
-              onChange={(e) => setInvoicePdfTemplate(e.target.value)}
-              spellCheck={false}
-              style={{ ...fieldStyle, fontFamily: brand.mono, fontSize: "11.5px", lineHeight: 1.5, height: "260px", resize: "vertical", whiteSpace: "pre" }}
-            />
-            <p style={{ ...hintStyle, marginTop: "6px" }}>
-              Rendered without a browser engine (no Puppeteer) to keep this app's hosting light — stick to
-              table-based layouts like this default, not flexbox/grid/absolute positioning, which won't render.
-            </p>
-            <div style={{ display: "flex", gap: "8px", marginTop: "6px", flexWrap: "wrap" }}>
-              <button type="button" onClick={() => setShowInvoicePreview((v) => !v)} style={{ ...primaryBtn, padding: "8px 16px", fontSize: "12.5px" }}>
-                {showInvoicePreview ? "Hide preview" : "Preview"}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (window.confirm("Reset to the built-in default template? This discards your current edits (not saved until you click Save settings).")) {
-                    setInvoicePdfTemplate(data.defaultInvoicePdfTemplate);
-                  }
-                }}
-                style={{ ...secondaryBtn, padding: "8px 16px", fontSize: "12.5px" }}
-              >
-                Reset to default
-              </button>
-            </div>
-            {showInvoicePreview && (
-              <div style={{ marginTop: "10px", border: `1px solid ${brand.border}`, borderRadius: "10px", overflow: "hidden" }}>
-                <div style={{ padding: "6px 10px", background: brand.panel, borderBottom: `1px solid ${brand.divider}`, fontSize: "11px", color: brand.muted }}>
-                  Preview with sample data — reflects the HTML box above, even if unsaved. The real PDF's exact fonts/
-                  spacing may differ slightly from this browser preview since the PDF is rendered by pdfmake, not a browser.
+            {invoiceTab === "pdf" && (
+              <>
+                <label style={labelStyle} htmlFor="invoiceSellerLegalName">Registered business name</label>
+                <input
+                  id="invoiceSellerLegalName"
+                  style={fieldStyle}
+                  type="text"
+                  value={invoiceSellerLegalName}
+                  onChange={(e) => setInvoiceSellerLegalName(e.target.value)}
+                  placeholder="Only Natural Gemstones"
+                />
+
+                <label style={labelStyle} htmlFor="invoiceSellerAddress">Registered business address</label>
+                <textarea
+                  id="invoiceSellerAddress"
+                  style={{ ...fieldStyle, height: "70px", resize: "vertical" }}
+                  value={invoiceSellerAddress}
+                  onChange={(e) => setInvoiceSellerAddress(e.target.value)}
+                  placeholder={"L-75-76, Lajpat Nagar 2\nNew Delhi, Delhi, 110024\nIndia"}
+                />
+
+                <div style={{ display: "flex", gap: "12px" }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle} htmlFor="invoiceSellerPhone">Business phone</label>
+                    <input
+                      id="invoiceSellerPhone"
+                      style={fieldStyle}
+                      type="text"
+                      value={invoiceSellerPhone}
+                      onChange={(e) => setInvoiceSellerPhone(e.target.value)}
+                      placeholder="+91-8010-555-111"
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle} htmlFor="invoiceSellerEmail">Business email</label>
+                    <input
+                      id="invoiceSellerEmail"
+                      style={fieldStyle}
+                      type="text"
+                      value={invoiceSellerEmail}
+                      onChange={(e) => setInvoiceSellerEmail(e.target.value)}
+                      placeholder="support@onlynaturalgemstones.com"
+                    />
+                  </div>
                 </div>
-                <iframe title="Invoice preview" srcDoc={renderInvoicePreview(invoicePdfTemplate)} style={{ width: "100%", height: "500px", border: "none", display: "block" }} />
-              </div>
+
+                <label style={labelStyle} htmlFor="invoiceGstin">GSTIN</label>
+                <input
+                  id="invoiceGstin"
+                  style={fieldStyle}
+                  type="text"
+                  value={invoiceGstin}
+                  onChange={(e) => setInvoiceGstin(e.target.value)}
+                  placeholder="e.g. 07ABCDE1234F1Z5"
+                />
+
+                <label style={labelStyle} htmlFor="invoiceSellerState">Your state (for CGST+SGST vs IGST)</label>
+                <input
+                  id="invoiceSellerState"
+                  style={fieldStyle}
+                  type="text"
+                  value={invoiceSellerState}
+                  onChange={(e) => setInvoiceSellerState(e.target.value)}
+                  placeholder="e.g. Delhi — must match how the customer's state is spelled on their order"
+                />
+
+                <div style={{ display: "flex", gap: "12px" }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle} htmlFor="invoiceGstRateLoose">GST rate — loose gemstones (%)</label>
+                    <input
+                      id="invoiceGstRateLoose"
+                      style={fieldStyle}
+                      type="text"
+                      inputMode="decimal"
+                      value={invoiceGstRateLoose}
+                      onChange={(e) => setInvoiceGstRateLoose(e.target.value)}
+                      placeholder="e.g. 3"
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle} htmlFor="invoiceGstRateCustomisation">GST rate — customisation (%)</label>
+                    <input
+                      id="invoiceGstRateCustomisation"
+                      style={fieldStyle}
+                      type="text"
+                      inputMode="decimal"
+                      value={invoiceGstRateCustomisation}
+                      onChange={(e) => setInvoiceGstRateCustomisation(e.target.value)}
+                      placeholder="e.g. 5"
+                    />
+                  </div>
+                </div>
+                <p style={{ ...hintStyle, marginTop: "-10px" }}>
+                  International orders are still taxed (as IGST), at whichever rate applies to each line —
+                  never zero-rated.
+                </p>
+
+                <label style={labelStyle}>GST rate by collection (optional overrides)</label>
+                <p style={{ ...hintStyle, marginTop: "5px" }}>
+                  Leave blank to use the loose-gemstone rate above. If a gemstone belongs to a collection listed here,
+                  its own line AND its linked "Gemstone Customisation" charge line (if customised) both use this rate
+                  instead of the two defaults above.
+                </p>
+                {data.collections.length === 0 ? (
+                  <p style={hintStyle}>No collections found on this store.</p>
+                ) : (
+                  <div style={{ border: `1px solid ${brand.border}`, borderRadius: "10px", overflow: "hidden", marginBottom: "16px" }}>
+                    {data.collections.map((c, i) => (
+                      <div
+                        key={c.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: "10px",
+                          padding: "8px 12px",
+                          borderTop: i === 0 ? "none" : `1px solid ${brand.divider}`,
+                          background: i % 2 === 0 ? "#fff" : brand.panel,
+                        }}
+                      >
+                        <span style={{ fontSize: "12.5px", color: brand.body }}>{c.title}</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          style={{ width: "80px", padding: "6px 8px", borderRadius: "6px", border: `1px solid ${brand.border}`, fontSize: "12.5px", textAlign: "right" }}
+                          value={collectionGstRates[c.id] || ""}
+                          onChange={(e) => setCollectionRate(c.id, e.target.value)}
+                          placeholder="e.g. 0.25"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: "12px" }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle} htmlFor="invoiceNumberPrefix">Invoice number prefix</label>
+                    <input
+                      id="invoiceNumberPrefix"
+                      style={fieldStyle}
+                      type="text"
+                      value={invoiceNumberPrefix}
+                      onChange={(e) => setInvoiceNumberPrefix(e.target.value)}
+                      placeholder={`${data.defaultInvoiceNumberPrefix} (default if left blank)`}
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle} htmlFor="invoiceDeliveryDays">Delivery-before days (shown on PDF)</label>
+                    <input
+                      id="invoiceDeliveryDays"
+                      style={fieldStyle}
+                      type="text"
+                      inputMode="numeric"
+                      value={invoiceDeliveryDays}
+                      onChange={(e) => setInvoiceDeliveryDays(e.target.value)}
+                      placeholder="10 (default if left blank)"
+                    />
+                  </div>
+                </div>
+
+                <label style={labelStyle}>Invoice numbering</label>
+                {data.invoiceNextNumber ? (
+                  <p style={{ ...hintStyle, marginTop: "5px" }}>
+                    Next invoice will be <strong>{invoiceNumberPrefix || data.defaultInvoiceNumberPrefix}{String(data.invoiceNextNumber).padStart(6, "0")}</strong>.
+                    The starting number can no longer be changed — at least one invoice has already been issued.
+                  </p>
+                ) : (
+                  <>
+                    <p style={{ ...hintStyle, marginTop: "5px" }}>
+                      No invoice has been issued yet — set where the sequence should start (e.g. 1, or wherever your
+                      existing paper/accounting records leave off). This can only be set once, before the first invoice.
+                    </p>
+                    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                      <input
+                        style={{ ...fieldStyle, marginBottom: 0, maxWidth: "160px" }}
+                        type="number"
+                        min="1"
+                        value={invoiceStartNumber}
+                        onChange={(e) => setInvoiceStartNumber(e.target.value)}
+                        placeholder="1"
+                      />
+                      <button type="button" onClick={saveInvoiceStartNumber} disabled={isSettingInvoiceStartNumber || !invoiceStartNumber} style={{ ...secondaryBtn, padding: "9px 16px", fontSize: "12.5px" }}>
+                        {isSettingInvoiceStartNumber ? "Setting…" : "Set starting number"}
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                <Explain summary="ℹ️ Available placeholders (substituted automatically when the invoice is generated)">
+                  <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "12px", color: brand.muted, lineHeight: 1.8 }}>
+                    {data.orderInvoicePlaceholders.map((p) => (
+                      <li key={p.token}>
+                        <code style={{ background: brand.panel, padding: "1px 5px", borderRadius: "4px" }}>{`{{${p.token}}}`}</code> — {p.description}
+                      </li>
+                    ))}
+                  </ul>
+                </Explain>
+                <label style={labelStyle} htmlFor="invoicePdfTemplate">Invoice PDF HTML</label>
+                <textarea
+                  id="invoicePdfTemplate"
+                  value={invoicePdfTemplate}
+                  onChange={(e) => setInvoicePdfTemplate(e.target.value)}
+                  spellCheck={false}
+                  style={{ ...fieldStyle, fontFamily: brand.mono, fontSize: "11.5px", lineHeight: 1.5, height: "260px", resize: "vertical", whiteSpace: "pre" }}
+                />
+                <p style={{ ...hintStyle, marginTop: "6px" }}>
+                  Rendered without a browser engine (no Puppeteer) to keep this app's hosting light — stick to
+                  table-based layouts like this default, not flexbox/grid/absolute positioning, which won't render.
+                </p>
+                <div style={{ display: "flex", gap: "8px", marginTop: "6px", flexWrap: "wrap" }}>
+                  <button type="button" onClick={() => setShowInvoicePreview((v) => !v)} style={{ ...primaryBtn, padding: "8px 16px", fontSize: "12.5px" }}>
+                    {showInvoicePreview ? "Hide preview" : "Preview"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm("Reset to the built-in default template? This discards your current edits (not saved until you click Save settings).")) {
+                        setInvoicePdfTemplate(data.defaultInvoicePdfTemplate);
+                      }
+                    }}
+                    style={{ ...secondaryBtn, padding: "8px 16px", fontSize: "12.5px" }}
+                  >
+                    Reset to default
+                  </button>
+                </div>
+                {showInvoicePreview && (
+                  <div style={{ marginTop: "10px", border: `1px solid ${brand.border}`, borderRadius: "10px", overflow: "hidden" }}>
+                    <div style={{ padding: "6px 10px", background: brand.panel, borderBottom: `1px solid ${brand.divider}`, fontSize: "11px", color: brand.muted }}>
+                      Preview with sample data — reflects the HTML box above, even if unsaved. The real PDF's exact fonts/
+                      spacing may differ slightly from this browser preview since the PDF is rendered by pdfmake, not a browser.
+                    </div>
+                    <iframe title="Invoice PDF preview" srcDoc={renderInvoicePreview(invoicePdfTemplate)} style={{ width: "100%", height: "500px", border: "none", display: "block" }} />
+                  </div>
+                )}
+              </>
             )}
           </TemplateCard>
 
