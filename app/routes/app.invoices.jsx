@@ -121,7 +121,6 @@ function formatMoney(amount, currency) {
 
 export default function InvoicesPage() {
   const data = useLoaderData();
-  const [searchParams] = useSearchParams();
   const sendFetcher = useFetcher();
   const toast = useToast();
 
