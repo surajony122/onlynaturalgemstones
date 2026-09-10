@@ -57,6 +57,7 @@ export const ORDER_INVOICE_PLACEHOLDERS = [
   { token: "customer_phone", description: "Customer's phone number, if on the order" },
   { token: "billing_address", description: "Formatted billing address (multi-line HTML)" },
   { token: "shipping_address", description: "Formatted shipping address (multi-line HTML)" },
+  { token: "info_block_rows", description: "Pre-built 3-column seller/customer/delivery block, one real table row per line (keeps columns top-aligned regardless of length)" },
   { token: "seller_legal_name", description: "Your registered business name (Settings page)" },
   { token: "seller_address", description: "Your registered business address (Settings page)" },
   { token: "seller_phone", description: "Your business phone (Settings page)" },
@@ -154,27 +155,13 @@ function getDefaultOrderInvoiceTemplate() {
       </td>
     </tr>
     <tr>
-      <td style="${boxSides}padding:0;">
+      <td style="${boxSides}padding:8px 0 0;">
         <table style="width:100%;border-collapse:collapse;">
+          {{info_block_rows}}
           <tr>
-            <td style="border:none;border-bottom:1px solid #333;width:38%;vertical-align:top;padding:8px 10px;font-size:10px;line-height:1.6;">
-              <div style="font-weight:bold;margin-bottom:3px;">{{seller_legal_name}}</div>
-              {{seller_address}}<br>
-              Tel : {{seller_phone}}<br>
-              Email : {{seller_email}}<br>
-              GSTIN : {{seller_gstin}}
-            </td>
-            <td style="border:none;border-bottom:1px solid #333;width:38%;vertical-align:top;padding:8px 10px;font-size:10px;line-height:1.6;">
-              <div style="font-weight:bold;margin-bottom:3px;">Customer Details</div>
-              {{customer_name}}<br>
-              {{billing_address}}<br>
-              Tel : {{customer_phone}}
-            </td>
-            <td style="border:none;border-bottom:1px solid #333;width:24%;vertical-align:top;padding:8px 10px;font-size:10px;line-height:1.6;">
-              Delivery Before : {{delivery_before}}<br>
-              Sales Person : {{sales_person}}<br>
-              Delivery Mode : {{delivery_mode}}
-            </td>
+            <td style="border:none;border-bottom:1px solid #333;padding-top:6px;font-size:1px;line-height:1px;">&nbsp;</td>
+            <td style="border:none;border-bottom:1px solid #333;padding-top:6px;font-size:1px;line-height:1px;">&nbsp;</td>
+            <td style="border:none;border-bottom:1px solid #333;padding-top:6px;font-size:1px;line-height:1px;">&nbsp;</td>
           </tr>
         </table>
       </td>
@@ -589,16 +576,46 @@ function formatMoney(amount, currencyCode) {
  * billing/shipping fallback logic) -- passing both false there avoids
  * printing the same name and phone number twice, once from this
  * function's own lines and once from the template's dedicated tokens. */
-function formatAddress(address, { includeName = true, includePhone = true } = {}) {
-  if (!address) return "";
-  const lines = [
+function formatAddressLines(address, { includeName = true, includePhone = true } = {}) {
+  if (!address) return [];
+  return [
     includeName ? address.name : null,
     [address.address1, address.address2].filter(Boolean).join(", "),
     [address.city, address.province, address.zip].filter(Boolean).join(", "),
     address.country,
     includePhone && address.phone ? `Phone: ${address.phone}` : null,
-  ].filter(Boolean);
-  return lines.map(esc).join("<br>");
+  ].filter(Boolean).map(esc);
+}
+
+function formatAddress(address, opts) {
+  return formatAddressLines(address, opts).join("<br>");
+}
+
+/** Builds the invoice PDF's 3-column info block (seller | customer |
+ * delivery) as real per-line table ROWS -- one <tr> per line index,
+ * zipped across all three columns, blank <td> once a column runs out
+ * of lines -- rather than one <td> per column each containing a
+ * multi-line stack. This is deliberate, not just a style choice:
+ * pdfmake does not reliably respect `vertical-align: top` when cells
+ * in the same row hold a different number of lines (confirmed live --
+ * the shorter columns visibly drifted instead of staying pinned to the
+ * row's top edge). Giving every line its own real table row sidesteps
+ * that entirely, since a single-line cell has nothing to vertically
+ * misalign in the first place. Matches the reference invoice's own
+ * layout, which stays top-aligned per column regardless of how many
+ * lines each one has. */
+function buildInfoBlockRows(col1Lines, col2Lines, col3Lines) {
+  const maxLen = Math.max(col1Lines.length, col2Lines.length, col3Lines.length);
+  let rows = "";
+  for (let i = 0; i < maxLen; i++) {
+    rows +=
+      `<tr>` +
+      `<td style="border:none;width:38%;padding:1px 10px 1px 0;font-size:10px;line-height:1.5;">${col1Lines[i] || ""}</td>` +
+      `<td style="border:none;width:38%;padding:1px 10px;font-size:10px;line-height:1.5;">${col2Lines[i] || ""}</td>` +
+      `<td style="border:none;width:24%;padding:1px 0 1px 10px;font-size:10px;line-height:1.5;">${col3Lines[i] || ""}</td>` +
+      `</tr>`;
+  }
+  return rows;
 }
 
 /** Fetches everything about the order this invoice needs, in one
@@ -1025,10 +1042,35 @@ export async function sendOrderInvoiceEmail(admin, settings, shop, orderGid) {
     ? `<img src="${sealDataUri}" style="max-width:90px;max-height:90px;">`
     : "<br><br>";
 
+  // Built as real per-line table rows (see buildInfoBlockRows's own
+  // comment) rather than one multi-line cell per column, so the three
+  // columns stay top-aligned in the real PDF even though they always
+  // have different numbers of lines in practice.
+  const sellerLines = [
+    `<b>${esc(settings.invoiceSellerLegalName || "Only Natural Gemstones")}</b>`,
+    ...(settings.invoiceSellerAddress || "").split("\n").filter(Boolean).map(esc),
+    `Tel : ${esc(settings.invoiceSellerPhone || "—")}`,
+    `Email : ${esc(settings.invoiceSellerEmail || "—")}`,
+    `GSTIN : ${esc(settings.invoiceGstin)}`,
+  ];
+  const customerLines = [
+    `<b>Customer Details</b>`,
+    esc(customerName),
+    ...formatAddressLines(order.billingAddress, { includeName: false, includePhone: false }),
+    `Tel : ${esc(order.billingAddress?.phone || order.shippingAddress?.phone || "—")}`,
+  ];
+  const deliveryLines = [
+    `Delivery Before : ${formatDateDMY(deliveryBeforeDate)}`,
+    `Sales Person : ${esc(settings.invoiceSellerLegalName || "Only Natural Gemstones")}`,
+    `Delivery Mode : ${esc(order.shippingLine?.title || "—")}`,
+  ];
+  const infoBlockRows = buildInfoBlockRows(sellerLines, customerLines, deliveryLines);
+
   const template = getOrderInvoiceTemplate(settings);
   const html = renderOrderInvoiceTemplate(template, {
     brand_header_html: brandHeaderHtml,
     seal_html: sealHtml,
+    info_block_rows: infoBlockRows,
     invoice_number: esc(invoiceNumber),
     invoice_date: formatDateDMY(new Date()),
     order_number: esc(order.name),

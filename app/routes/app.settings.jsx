@@ -511,22 +511,7 @@ function getPdfPresetHtml(id) {
   <table style="width:100%;border-collapse:collapse;margin-bottom:16px;"><tr><td style="border:none;border-bottom:2px solid #d97b3f;padding:0;font-size:1px;line-height:1px;">&nbsp;</td></tr></table>
 
   <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-    <tr>
-      <td style="border:none;width:38%;vertical-align:top;padding:0 10px 0 0;font-size:10px;line-height:1.7;">
-        <div style="font-size:9px;color:#999;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">From</div>
-        <div style="font-weight:600;">{{seller_legal_name}}</div>
-        {{seller_address}}<br>{{seller_phone}} · {{seller_email}}<br>GSTIN {{seller_gstin}}
-      </td>
-      <td style="border:none;width:38%;vertical-align:top;padding:0 10px;font-size:10px;line-height:1.7;">
-        <div style="font-size:9px;color:#999;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">Bill To</div>
-        <div style="font-weight:600;">{{customer_name}}</div>
-        {{billing_address}}<br>{{customer_phone}}
-      </td>
-      <td style="border:none;width:24%;vertical-align:top;padding:0 0 0 10px;font-size:10px;line-height:1.7;">
-        <div style="font-size:9px;color:#999;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">Shipment</div>
-        Before {{delivery_before}}<br>{{delivery_mode}}<br>Sales: {{sales_person}}
-      </td>
-    </tr>
+    {{info_block_rows}}
   </table>
 
   <table style="width:100%;border-collapse:collapse;margin-bottom:12px;">
@@ -586,12 +571,13 @@ function getPdfPresetHtml(id) {
       <td style="border:1px solid #444;padding:4px 6px;font-size:9.5px;font-weight:bold;text-align:right;">{{invoice_date}}</td>
     </tr>
     <tr>
-      <td colspan="2" style="border:none;border-left:1px solid #444;border-right:1px solid #444;padding:0;">
+      <td colspan="2" style="border:none;border-left:1px solid #444;border-right:1px solid #444;padding:4px 0 0;">
         <table style="width:100%;border-collapse:collapse;">
+          {{info_block_rows}}
           <tr>
-            <td style="border:none;border-bottom:1px solid #444;width:34%;vertical-align:top;padding:4px 6px;font-size:8px;line-height:1.4;"><b>{{seller_legal_name}}</b><br>{{seller_address}}<br>{{seller_phone}}<br>GSTIN {{seller_gstin}}</td>
-            <td style="border:none;border-bottom:1px solid #444;width:34%;vertical-align:top;padding:4px 6px;font-size:8px;line-height:1.4;"><b>{{customer_name}}</b><br>{{billing_address}}<br>{{customer_phone}}</td>
-            <td style="border:none;border-bottom:1px solid #444;width:32%;vertical-align:top;padding:4px 6px;font-size:8px;line-height:1.4;">Before {{delivery_before}}<br>{{delivery_mode}}<br>{{sales_person}}</td>
+            <td style="border:none;border-bottom:1px solid #444;padding-top:4px;font-size:1px;line-height:1px;">&nbsp;</td>
+            <td style="border:none;border-bottom:1px solid #444;padding-top:4px;font-size:1px;line-height:1px;">&nbsp;</td>
+            <td style="border:none;border-bottom:1px solid #444;padding-top:4px;font-size:1px;line-height:1px;">&nbsp;</td>
           </tr>
         </table>
       </td>
@@ -675,27 +661,13 @@ function getPdfPresetHtml(id) {
       </td>
     </tr>
     <tr>
-      <td style="border:none;border-left:1px solid #333;border-right:1px solid #333;padding:0;">
+      <td style="border:none;border-left:1px solid #333;border-right:1px solid #333;padding:8px 0 0;">
         <table style="width:100%;border-collapse:collapse;">
+          {{info_block_rows}}
           <tr>
-            <td style="border:none;border-bottom:1px solid #333;width:38%;vertical-align:top;padding:8px 10px;font-size:10px;line-height:1.6;">
-              <div style="font-weight:bold;margin-bottom:3px;">{{seller_legal_name}}</div>
-              {{seller_address}}<br>
-              Tel : {{seller_phone}}<br>
-              Email : {{seller_email}}<br>
-              GSTIN : {{seller_gstin}}
-            </td>
-            <td style="border:none;border-bottom:1px solid #333;width:38%;vertical-align:top;padding:8px 10px;font-size:10px;line-height:1.6;">
-              <div style="font-weight:bold;margin-bottom:3px;">Customer Details</div>
-              {{customer_name}}<br>
-              {{billing_address}}<br>
-              Tel : {{customer_phone}}
-            </td>
-            <td style="border:none;border-bottom:1px solid #333;width:24%;vertical-align:top;padding:8px 10px;font-size:10px;line-height:1.6;">
-              Delivery Before : {{delivery_before}}<br>
-              Sales Person : {{sales_person}}<br>
-              Delivery Mode : {{delivery_mode}}
-            </td>
+            <td style="border:none;border-bottom:1px solid #333;padding-top:6px;font-size:1px;line-height:1px;">&nbsp;</td>
+            <td style="border:none;border-bottom:1px solid #333;padding-top:6px;font-size:1px;line-height:1px;">&nbsp;</td>
+            <td style="border:none;border-bottom:1px solid #333;padding-top:6px;font-size:1px;line-height:1px;">&nbsp;</td>
           </tr>
         </table>
       </td>
@@ -1097,6 +1069,19 @@ const INVOICE_PREVIEW_SAMPLE_VALUES = {
   // text/blank fallback a real send would use with nothing configured.
   brand_header_html: '<span style="font-size:22px;font-weight:bold;color:#d97b3f;">Only Natural Gemstones</span>',
   seal_html: "<br><br>",
+  // Mirrors buildInfoBlockRows() in orderInvoice.server.js -- one real
+  // table row per line, zipped across the 3 columns (blank once a
+  // column runs out), rather than one multi-line cell per column.
+  // Deliberately shows UNEQUAL line counts across the 3 sample columns
+  // (5 / 4 / 3) so the preview demonstrates the same top-alignment the
+  // real fix guarantees, not just a lucky case where all 3 happen to
+  // match.
+  info_block_rows:
+    '<tr><td style="border:none;width:38%;padding:1px 10px 1px 0;font-size:10px;line-height:1.5;"><b>Only Natural Gemstones</b></td><td style="border:none;width:38%;padding:1px 10px;font-size:10px;line-height:1.5;"><b>Customer Details</b></td><td style="border:none;width:24%;padding:1px 0 1px 10px;font-size:10px;line-height:1.5;">Delivery Before : 20/09/2026</td></tr>' +
+    '<tr><td style="border:none;width:38%;padding:1px 10px 1px 0;font-size:10px;line-height:1.5;">L-75-76, Lajpat Nagar 2</td><td style="border:none;width:38%;padding:1px 10px;font-size:10px;line-height:1.5;">Suraj Kumar</td><td style="border:none;width:24%;padding:1px 0 1px 10px;font-size:10px;line-height:1.5;">Sales Person : Only Natural Gemstones</td></tr>' +
+    '<tr><td style="border:none;width:38%;padding:1px 10px 1px 0;font-size:10px;line-height:1.5;">New Delhi, Delhi, 110024</td><td style="border:none;width:38%;padding:1px 10px;font-size:10px;line-height:1.5;">123 MG Road</td><td style="border:none;width:24%;padding:1px 0 1px 10px;font-size:10px;line-height:1.5;">Delivery Mode : By Courier</td></tr>' +
+    '<tr><td style="border:none;width:38%;padding:1px 10px 1px 0;font-size:10px;line-height:1.5;">Tel : +91-8010-555-111</td><td style="border:none;width:38%;padding:1px 10px;font-size:10px;line-height:1.5;">Delhi, Delhi, 110024</td><td style="border:none;width:24%;padding:1px 0 1px 10px;font-size:10px;line-height:1.5;"></td></tr>' +
+    '<tr><td style="border:none;width:38%;padding:1px 10px 1px 0;font-size:10px;line-height:1.5;">GSTIN : 07ABCDE1234F1Z5</td><td style="border:none;width:38%;padding:1px 10px;font-size:10px;line-height:1.5;">Tel : 09968034137</td><td style="border:none;width:24%;padding:1px 0 1px 10px;font-size:10px;line-height:1.5;"></td></tr>',
   invoice_number: "INV-000123",
   invoice_date: "10/09/2026",
   order_number: "#1000031314",
