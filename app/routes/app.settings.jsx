@@ -21,6 +21,7 @@ import {
   getAppSettings,
   setInvoiceStartingNumber,
   saveInvoiceCollectionGstRates,
+  saveInvoiceBlocks,
   DEFAULT_WISHLIST_EMAIL_INTERVAL_HOURS,
   DEFAULT_INTERAKT_TEMPLATE_NAME,
   DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME,
@@ -36,6 +37,7 @@ import { getOrderProcessingEmailTemplate, ORDER_PROCESSING_EMAIL_PLACEHOLDERS } 
 import { getOrderInvoiceTemplate, ORDER_INVOICE_PLACEHOLDERS, DEFAULT_INVOICE_NUMBER_PREFIX, getInvoiceEmailTemplate, ORDER_INVOICE_EMAIL_PLACEHOLDERS, fetchShopSellerInfo } from "../utils/orderInvoice.server";
 import { brand, Icon, Card, PageHeader, PageIn } from "../components/table-kit";
 import { useToast } from "../components/toast";
+import { TemplateBuilder, compileBlocksToHtml } from "../components/template-builder";
 
 export const loader = async ({ request }) => {
   const { session, admin } = await authenticate.admin(request);
@@ -120,9 +122,11 @@ export const loader = async ({ request }) => {
     invoicePdfTemplate: row?.invoicePdfTemplate || "",
     defaultInvoicePdfTemplate: getOrderInvoiceTemplate({}),
     orderInvoicePlaceholders: ORDER_INVOICE_PLACEHOLDERS,
+    invoicePdfBlocksJson: row?.invoicePdfBlocksJson || null,
     invoiceEmailTemplate: row?.invoiceEmailTemplate || "",
     defaultInvoiceEmailTemplate: getInvoiceEmailTemplate({}),
     orderInvoiceEmailPlaceholders: ORDER_INVOICE_EMAIL_PLACEHOLDERS,
+    invoiceEmailBlocksJson: row?.invoiceEmailBlocksJson || null,
     collections,
     invoiceCollectionGstRates: row?.invoiceCollectionGstRates || {},
     // So the page can say which env vars are filling in for anything
@@ -332,6 +336,27 @@ export const action = async ({ request }) => {
     }
   }
 
+  // The visual template builder's block arrays -- only present in the
+  // submit when that template's builder mode is active (see the client
+  // component's submit()); omitted entirely in raw-HTML mode, which
+  // deliberately leaves whatever blocks were last saved untouched.
+  const invoicePdfBlocksRaw = formData.get("invoicePdfBlocksJson");
+  if (invoicePdfBlocksRaw) {
+    try {
+      await saveInvoiceBlocks(session.shop, "pdf", JSON.parse(invoicePdfBlocksRaw));
+    } catch (err) {
+      console.error("[app.settings] failed to save invoicePdfBlocksJson:", err);
+    }
+  }
+  const invoiceEmailBlocksRaw = formData.get("invoiceEmailBlocksJson");
+  if (invoiceEmailBlocksRaw) {
+    try {
+      await saveInvoiceBlocks(session.shop, "email", JSON.parse(invoiceEmailBlocksRaw));
+    } catch (err) {
+      console.error("[app.settings] failed to save invoiceEmailBlocksJson:", err);
+    }
+  }
+
   return { intent: "save", ok: true };
 };
 
@@ -427,6 +452,104 @@ function Explain({ summary, children, defaultOpen }) {
       <summary style={{ cursor: "pointer", fontSize: "12.5px", fontWeight: 500, color: brand.muted, userSelect: "none" }}>{summary}</summary>
       <div style={{ marginTop: "8px", fontSize: "13px", color: brand.body, lineHeight: 1.6 }}>{children}</div>
     </details>
+  );
+}
+
+// Starting points for a blank visual-builder canvas -- approximate the
+// two hardcoded default templates' own layouts as blocks, so switching
+// to the builder for the first time isn't a blank, intimidating canvas.
+// Not a byte-for-byte reproduction of the raw-HTML defaults (a plain
+// text/table block can't reproduce every CSS nuance) -- close enough to
+// edit from, which is the actual point.
+function mkBlock(type, props) {
+  return { id: `starter_${type}_${Math.random().toString(36).slice(2, 9)}`, type, ...props };
+}
+function starterPdfBlocks() {
+  return [
+    mkBlock("image", { src: "__SHOP_LOGO__", width: 160, align: "center" }),
+    mkBlock("table", {
+      bordered: true,
+      headerRow: false,
+      borderColor: "#333",
+      rows: [["TAX INVOICE # {{invoice_number}}", "Date : {{invoice_date}}"]],
+    }),
+    mkBlock("table", {
+      bordered: true,
+      headerRow: false,
+      borderColor: "#333",
+      rows: [[
+        "<b>{{seller_legal_name}}</b><br>{{seller_address}}<br>Tel : {{seller_phone}}<br>Email : {{seller_email}}<br>GSTIN : {{seller_gstin}}",
+        "<b>Customer Details</b><br>{{customer_name}}<br>{{billing_address}}<br>Tel : {{customer_phone}}",
+        "Delivery Before : {{delivery_before}}<br>Sales Person : {{sales_person}}<br>Delivery Mode : {{delivery_mode}}",
+      ]],
+    }),
+    mkBlock("itemsTable", { headers: ["ITEM(s) DESCRIPTION", "HSN", "Qty", "RATE (₹)", "CGST", "SGST", "IGST", "AMOUNT (₹)"], headerBg: "#f3efe6", borderColor: "#999" }),
+    mkBlock("table", {
+      bordered: false,
+      headerRow: false,
+      rows: [["Total In Words<br><b>{{total_in_words}}</b><br><br>Payment Mode : {{payment_mode}}", "Sub Total: {{subtotal}}<br>Total GST: {{total_gst}}<br><b>Total: {{grand_total}}</b>"]],
+    }),
+    mkBlock("text", {
+      html: "The Amount Received against Gemstone / Jewellery is Non-refundable. Customised Jewellery is not eligible for return / money back. All matters / disputes subject to Delhi Jurisdiction.",
+      align: "left",
+      fontSize: 9,
+      color: "#555",
+    }),
+    mkBlock("table", {
+      bordered: false,
+      headerRow: false,
+      rows: [["I have read, understood and agreed to the terms &amp; conditions.<br><br>Customer Signature : {{customer_name}}", "For {{seller_legal_name}}<br>{{seal_html}}Authorised Seal &amp; Signatory"]],
+    }),
+    mkBlock("text", { html: "This is a Computer Generated Invoice — {{shop_name}} ({{shop_url}})", align: "center", fontSize: 9, color: "#666" }),
+  ];
+}
+function starterEmailBlocks() {
+  return [
+    mkBlock("image", { src: "__SHOP_LOGO__", width: 100, align: "center" }),
+    mkBlock("divider", { color: "#d5d0c8", thickness: 1, marginY: 14 }),
+    mkBlock("text", {
+      html: "Hello {{customer_first_name}},<br><br>Thank you for your order {{order_number}}. Your GST tax invoice {{invoice_number}} is attached to this email as a PDF.",
+      align: "left",
+      fontSize: 15,
+      color: "#4f5965",
+    }),
+    mkBlock("button", { text: "View Your Order", url: "{{order_status_url}}", bg: "#8c7a4e", color: "#ffffff", align: "center" }),
+    mkBlock("divider", { color: "#d5d0c8", thickness: 1, marginY: 14 }),
+    mkBlock("text", { html: "Thanks for choosing {{shop_name}}.", align: "center", fontSize: 13, color: "#4f5965" }),
+  ];
+}
+
+// Switches a template between the drag-and-drop visual builder and the
+// raw-HTML textarea -- the two don't live-sync with each other (HTML
+// can't be reliably reverse-parsed back into blocks), so switching is a
+// deliberate choice, made clear here rather than silently discarding
+// whichever mode isn't active.
+function EditorModeToggle({ mode, setMode }) {
+  return (
+    <div style={{ display: "flex", gap: "6px", marginBottom: "12px" }}>
+      {[
+        { id: "visual", label: "🧩 Visual Builder" },
+        { id: "raw", label: "</> Raw HTML" },
+      ].map((m) => (
+        <button
+          key={m.id}
+          type="button"
+          onClick={() => setMode(m.id)}
+          style={{
+            padding: "7px 14px",
+            borderRadius: "8px",
+            border: `1px solid ${mode === m.id ? brand.accent : brand.border}`,
+            background: mode === m.id ? brand.accentTint : "#fff",
+            color: mode === m.id ? brand.accent : brand.body,
+            fontSize: "12.5px",
+            fontWeight: 600,
+            cursor: "pointer",
+          }}
+        >
+          {m.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -701,6 +824,24 @@ export default function SettingsPage() {
   const [showInvoicePreview, setShowInvoicePreview] = useState(false);
   const [invoiceEmailTemplate, setInvoiceEmailTemplate] = useState(data.invoiceEmailTemplate || data.defaultInvoiceEmailTemplate);
   const [showInvoiceEmailPreview, setShowInvoiceEmailPreview] = useState(false);
+  // "visual" (drag-and-drop builder) vs "raw" (hand-typed HTML) --
+  // defaults to visual only when blocks were already saved from a
+  // previous builder session, so existing hand-typed-HTML users see no
+  // change at all until they deliberately switch. Editing in one mode
+  // does not update the other's content live -- switching modes is a
+  // deliberate choice, not a live two-way sync (documented in the UI).
+  const [invoicePdfEditorMode, setInvoicePdfEditorMode] = useState(
+    Array.isArray(data.invoicePdfBlocksJson) && data.invoicePdfBlocksJson.length ? "visual" : "raw"
+  );
+  const [invoicePdfBlocks, setInvoicePdfBlocks] = useState(
+    Array.isArray(data.invoicePdfBlocksJson) ? data.invoicePdfBlocksJson : []
+  );
+  const [invoiceEmailEditorMode, setInvoiceEmailEditorMode] = useState(
+    Array.isArray(data.invoiceEmailBlocksJson) && data.invoiceEmailBlocksJson.length ? "visual" : "raw"
+  );
+  const [invoiceEmailBlocks, setInvoiceEmailBlocks] = useState(
+    Array.isArray(data.invoiceEmailBlocksJson) ? data.invoiceEmailBlocksJson : []
+  );
   // Which of the two GST Tax Invoice tabs is active -- "email" (the
   // message the customer receives) or "pdf" (the attached invoice
   // document's own layout), per explicit request to split these into
@@ -806,6 +947,21 @@ export default function SettingsPage() {
 
   const submit = (e) => {
     e.preventDefault();
+    // In visual-builder mode, the blocks (not the raw-HTML textarea
+    // state, which isn't edited in that mode) are the source of truth
+    // -- compile them to the same HTML-string shape a hand-typed
+    // template already is, right before submitting.
+    const compiledPdfHtml = invoicePdfEditorMode === "visual" ? compileBlocksToHtml(invoicePdfBlocks, { title: "Invoice" }) : null;
+    const compiledEmailHtml = invoiceEmailEditorMode === "visual" ? compileBlocksToHtml(invoiceEmailBlocks, { title: "Invoice email" }) : null;
+    // Catches the easy accidental mistake of switching to the visual
+    // builder and saving before adding any blocks -- an empty template
+    // would otherwise silently send a blank invoice/email.
+    if (invoicePdfEditorMode === "visual" && invoicePdfBlocks.length === 0) {
+      if (!window.confirm("Your Invoice PDF has no blocks yet, so it would generate a blank invoice. Save anyway?")) return;
+    }
+    if (invoiceEmailEditorMode === "visual" && invoiceEmailBlocks.length === 0) {
+      if (!window.confirm("Your Invoice Email has no blocks yet, so it would send a blank email. Save anyway?")) return;
+    }
     fetcher.submit(
       {
         gmailUser,
@@ -857,16 +1013,28 @@ export default function SettingsPage() {
         invoiceNumberPrefix,
         invoiceDeliveryDays,
         // Same "don't freeze today's default as a permanent customization"
-        // reasoning as orderProcessingEmailTemplate above.
+        // reasoning as orderProcessingEmailTemplate above -- only applies
+        // in raw mode; visual mode always saves its compiled HTML as-is,
+        // since "matches the built-in default" isn't a meaningful
+        // concept once a merchant is composing from blocks.
         invoicePdfTemplate:
-          invoicePdfTemplate.replace(/\r\n/g, "\n") === data.defaultInvoicePdfTemplate.replace(/\r\n/g, "\n")
-            ? ""
-            : invoicePdfTemplate,
+          compiledPdfHtml != null
+            ? compiledPdfHtml
+            : invoicePdfTemplate.replace(/\r\n/g, "\n") === data.defaultInvoicePdfTemplate.replace(/\r\n/g, "\n")
+              ? ""
+              : invoicePdfTemplate,
         invoiceEmailTemplate:
-          invoiceEmailTemplate.replace(/\r\n/g, "\n") === data.defaultInvoiceEmailTemplate.replace(/\r\n/g, "\n")
-            ? ""
-            : invoiceEmailTemplate,
+          compiledEmailHtml != null
+            ? compiledEmailHtml
+            : invoiceEmailTemplate.replace(/\r\n/g, "\n") === data.defaultInvoiceEmailTemplate.replace(/\r\n/g, "\n")
+              ? ""
+              : invoiceEmailTemplate,
         invoiceCollectionGstRates: JSON.stringify(collectionGstRates),
+        // Only sent while that template's builder mode is active --
+        // omitted in raw mode, which leaves previously-saved blocks
+        // (if any) untouched rather than clobbering them with "[]".
+        ...(invoicePdfEditorMode === "visual" ? { invoicePdfBlocksJson: JSON.stringify(invoicePdfBlocks) } : {}),
+        ...(invoiceEmailEditorMode === "visual" ? { invoiceEmailBlocksJson: JSON.stringify(invoiceEmailBlocks) } : {}),
       },
       { method: "POST" }
     );
@@ -1090,37 +1258,68 @@ export default function SettingsPage() {
                     ))}
                   </ul>
                 </Explain>
-                <label style={labelStyle} htmlFor="invoiceEmailTemplate">Invoice email HTML</label>
-                <textarea
-                  id="invoiceEmailTemplate"
-                  value={invoiceEmailTemplate}
-                  onChange={(e) => setInvoiceEmailTemplate(e.target.value)}
-                  spellCheck={false}
-                  style={{ ...fieldStyle, fontFamily: brand.mono, fontSize: "11.5px", lineHeight: 1.5, height: "260px", resize: "vertical", whiteSpace: "pre" }}
-                />
-                <div style={{ display: "flex", gap: "8px", marginTop: "6px", flexWrap: "wrap" }}>
-                  <button type="button" onClick={() => setShowInvoiceEmailPreview((v) => !v)} style={{ ...primaryBtn, padding: "8px 16px", fontSize: "12.5px" }}>
-                    {showInvoiceEmailPreview ? "Hide preview" : "Preview"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (window.confirm("Reset to the built-in default template? This discards your current edits (not saved until you click Save settings).")) {
-                        setInvoiceEmailTemplate(data.defaultInvoiceEmailTemplate);
-                      }
-                    }}
-                    style={{ ...secondaryBtn, padding: "8px 16px", fontSize: "12.5px" }}
-                  >
-                    Reset to default
-                  </button>
-                </div>
-                {showInvoiceEmailPreview && (
-                  <div style={{ marginTop: "10px", border: `1px solid ${brand.border}`, borderRadius: "10px", overflow: "hidden" }}>
-                    <div style={{ padding: "6px 10px", background: brand.panel, borderBottom: `1px solid ${brand.divider}`, fontSize: "11px", color: brand.muted }}>
-                      Preview with sample data — this reflects what's in the box above right now, even if unsaved.
+                <EditorModeToggle mode={invoiceEmailEditorMode} setMode={setInvoiceEmailEditorMode} />
+
+                {invoiceEmailEditorMode === "visual" ? (
+                  <>
+                    {invoiceEmailBlocks.length === 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setInvoiceEmailBlocks(starterEmailBlocks())}
+                        style={{ ...secondaryBtn, padding: "8px 16px", fontSize: "12.5px", marginBottom: "10px" }}
+                      >
+                        ✨ Load starter blocks
+                      </button>
+                    )}
+                    <TemplateBuilder
+                      blocks={invoiceEmailBlocks}
+                      onChange={setInvoiceEmailBlocks}
+                      tokens={data.orderInvoiceEmailPlaceholders}
+                      isPdf={false}
+                    />
+                    <Explain summary="Preview this design with sample data" defaultOpen>
+                      <iframe
+                        title="Invoice email builder preview"
+                        srcDoc={renderInvoiceEmailPreview(compileBlocksToHtml(invoiceEmailBlocks, { title: "Invoice email" }))}
+                        style={{ width: "100%", height: "500px", border: `1px solid ${brand.border}`, borderRadius: "10px", display: "block", marginTop: "8px" }}
+                      />
+                    </Explain>
+                  </>
+                ) : (
+                  <>
+                    <label style={labelStyle} htmlFor="invoiceEmailTemplate">Invoice email HTML</label>
+                    <textarea
+                      id="invoiceEmailTemplate"
+                      value={invoiceEmailTemplate}
+                      onChange={(e) => setInvoiceEmailTemplate(e.target.value)}
+                      spellCheck={false}
+                      style={{ ...fieldStyle, fontFamily: brand.mono, fontSize: "11.5px", lineHeight: 1.5, height: "260px", resize: "vertical", whiteSpace: "pre" }}
+                    />
+                    <div style={{ display: "flex", gap: "8px", marginTop: "6px", flexWrap: "wrap" }}>
+                      <button type="button" onClick={() => setShowInvoiceEmailPreview((v) => !v)} style={{ ...primaryBtn, padding: "8px 16px", fontSize: "12.5px" }}>
+                        {showInvoiceEmailPreview ? "Hide preview" : "Preview"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm("Reset to the built-in default template? This discards your current edits (not saved until you click Save settings).")) {
+                            setInvoiceEmailTemplate(data.defaultInvoiceEmailTemplate);
+                          }
+                        }}
+                        style={{ ...secondaryBtn, padding: "8px 16px", fontSize: "12.5px" }}
+                      >
+                        Reset to default
+                      </button>
                     </div>
-                    <iframe title="Invoice email preview" srcDoc={renderInvoiceEmailPreview(invoiceEmailTemplate)} style={{ width: "100%", height: "500px", border: "none", display: "block" }} />
-                  </div>
+                    {showInvoiceEmailPreview && (
+                      <div style={{ marginTop: "10px", border: `1px solid ${brand.border}`, borderRadius: "10px", overflow: "hidden" }}>
+                        <div style={{ padding: "6px 10px", background: brand.panel, borderBottom: `1px solid ${brand.divider}`, fontSize: "11px", color: brand.muted }}>
+                          Preview with sample data — this reflects what's in the box above right now, even if unsaved.
+                        </div>
+                        <iframe title="Invoice email preview" srcDoc={renderInvoiceEmailPreview(invoiceEmailTemplate)} style={{ width: "100%", height: "500px", border: "none", display: "block" }} />
+                      </div>
+                    )}
+                  </>
                 )}
               </>
             )}
@@ -1352,42 +1551,79 @@ export default function SettingsPage() {
                     ))}
                   </ul>
                 </Explain>
-                <label style={labelStyle} htmlFor="invoicePdfTemplate">Invoice PDF HTML</label>
-                <textarea
-                  id="invoicePdfTemplate"
-                  value={invoicePdfTemplate}
-                  onChange={(e) => setInvoicePdfTemplate(e.target.value)}
-                  spellCheck={false}
-                  style={{ ...fieldStyle, fontFamily: brand.mono, fontSize: "11.5px", lineHeight: 1.5, height: "260px", resize: "vertical", whiteSpace: "pre" }}
-                />
-                <p style={{ ...hintStyle, marginTop: "6px" }}>
-                  Rendered without a browser engine (no Puppeteer) to keep this app's hosting light — stick to
-                  table-based layouts like this default, not flexbox/grid/absolute positioning, which won't render.
-                </p>
-                <div style={{ display: "flex", gap: "8px", marginTop: "6px", flexWrap: "wrap" }}>
-                  <button type="button" onClick={() => setShowInvoicePreview((v) => !v)} style={{ ...primaryBtn, padding: "8px 16px", fontSize: "12.5px" }}>
-                    {showInvoicePreview ? "Hide preview" : "Preview"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (window.confirm("Reset to the built-in default template? This discards your current edits (not saved until you click Save settings).")) {
-                        setInvoicePdfTemplate(data.defaultInvoicePdfTemplate);
-                      }
-                    }}
-                    style={{ ...secondaryBtn, padding: "8px 16px", fontSize: "12.5px" }}
-                  >
-                    Reset to default
-                  </button>
-                </div>
-                {showInvoicePreview && (
-                  <div style={{ marginTop: "10px", border: `1px solid ${brand.border}`, borderRadius: "10px", overflow: "hidden" }}>
-                    <div style={{ padding: "6px 10px", background: brand.panel, borderBottom: `1px solid ${brand.divider}`, fontSize: "11px", color: brand.muted }}>
-                      Preview with sample data — reflects the HTML box above, even if unsaved. The real PDF's exact fonts/
-                      spacing may differ slightly from this browser preview since the PDF is rendered by pdfmake, not a browser.
+
+                <EditorModeToggle mode={invoicePdfEditorMode} setMode={setInvoicePdfEditorMode} />
+
+                {invoicePdfEditorMode === "visual" ? (
+                  <>
+                    <p style={{ ...hintStyle, marginTop: 0 }}>
+                      Rendered without a browser engine (pdfmake, not Puppeteer) to keep this app's hosting light —
+                      stick to the block types offered here (all table-based under the hood); freeform positioning
+                      isn't supported.
+                    </p>
+                    {invoicePdfBlocks.length === 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setInvoicePdfBlocks(starterPdfBlocks())}
+                        style={{ ...secondaryBtn, padding: "8px 16px", fontSize: "12.5px", marginBottom: "10px" }}
+                      >
+                        ✨ Load starter blocks
+                      </button>
+                    )}
+                    <TemplateBuilder
+                      blocks={invoicePdfBlocks}
+                      onChange={setInvoicePdfBlocks}
+                      tokens={data.orderInvoicePlaceholders}
+                      isPdf
+                    />
+                    <Explain summary="Preview this design with sample data (browser preview — the real PDF's exact fonts/spacing may differ slightly)" defaultOpen>
+                      <iframe
+                        title="Invoice PDF builder preview"
+                        srcDoc={renderInvoicePreview(compileBlocksToHtml(invoicePdfBlocks, { title: "Invoice" }))}
+                        style={{ width: "100%", height: "500px", border: `1px solid ${brand.border}`, borderRadius: "10px", display: "block", marginTop: "8px" }}
+                      />
+                    </Explain>
+                  </>
+                ) : (
+                  <>
+                    <label style={labelStyle} htmlFor="invoicePdfTemplate">Invoice PDF HTML</label>
+                    <textarea
+                      id="invoicePdfTemplate"
+                      value={invoicePdfTemplate}
+                      onChange={(e) => setInvoicePdfTemplate(e.target.value)}
+                      spellCheck={false}
+                      style={{ ...fieldStyle, fontFamily: brand.mono, fontSize: "11.5px", lineHeight: 1.5, height: "260px", resize: "vertical", whiteSpace: "pre" }}
+                    />
+                    <p style={{ ...hintStyle, marginTop: "6px" }}>
+                      Rendered without a browser engine (no Puppeteer) to keep this app's hosting light — stick to
+                      table-based layouts like this default, not flexbox/grid/absolute positioning, which won't render.
+                    </p>
+                    <div style={{ display: "flex", gap: "8px", marginTop: "6px", flexWrap: "wrap" }}>
+                      <button type="button" onClick={() => setShowInvoicePreview((v) => !v)} style={{ ...primaryBtn, padding: "8px 16px", fontSize: "12.5px" }}>
+                        {showInvoicePreview ? "Hide preview" : "Preview"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm("Reset to the built-in default template? This discards your current edits (not saved until you click Save settings).")) {
+                            setInvoicePdfTemplate(data.defaultInvoicePdfTemplate);
+                          }
+                        }}
+                        style={{ ...secondaryBtn, padding: "8px 16px", fontSize: "12.5px" }}
+                      >
+                        Reset to default
+                      </button>
                     </div>
-                    <iframe title="Invoice PDF preview" srcDoc={renderInvoicePreview(invoicePdfTemplate)} style={{ width: "100%", height: "500px", border: "none", display: "block" }} />
-                  </div>
+                    {showInvoicePreview && (
+                      <div style={{ marginTop: "10px", border: `1px solid ${brand.border}`, borderRadius: "10px", overflow: "hidden" }}>
+                        <div style={{ padding: "6px 10px", background: brand.panel, borderBottom: `1px solid ${brand.divider}`, fontSize: "11px", color: brand.muted }}>
+                          Preview with sample data — reflects the HTML box above, even if unsaved. The real PDF's exact fonts/
+                          spacing may differ slightly from this browser preview since the PDF is rendered by pdfmake, not a browser.
+                        </div>
+                        <iframe title="Invoice PDF preview" srcDoc={renderInvoicePreview(invoicePdfTemplate)} style={{ width: "100%", height: "500px", border: "none", display: "block" }} />
+                      </div>
+                    )}
+                  </>
                 )}
               </>
             )}

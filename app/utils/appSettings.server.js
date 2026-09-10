@@ -145,6 +145,14 @@ export async function getAppSettings(shop) {
   // See computeInvoiceGst() in orderInvoice.server.js for how this is
   // used, and saveInvoiceCollectionGstRates() below for how it's saved.
   resolved.invoiceCollectionGstRates = (row && row.invoiceCollectionGstRates) || {};
+  // The visual template builder's own block arrays (see
+  // app/components/template-builder.jsx) -- JSON, purely so the builder
+  // can restore the same blocks next time it's opened. The actual send
+  // path never reads these; it only ever reads invoicePdfTemplate/
+  // invoiceEmailTemplate (compiled HTML strings), same as a hand-typed
+  // template. null means "never used the visual builder for this one".
+  resolved.invoicePdfBlocksJson = (row && row.invoicePdfBlocksJson) || null;
+  resolved.invoiceEmailBlocksJson = (row && row.invoiceEmailBlocksJson) || null;
   return resolved;
 }
 
@@ -165,6 +173,25 @@ export async function saveInvoiceCollectionGstRates(shop, rates) {
     where: { shop },
     create: { shop, invoiceCollectionGstRates: clean },
     update: { invoiceCollectionGstRates: clean },
+  });
+}
+
+/** Persists the visual template builder's block array for one of the two
+ * invoice templates -- JSON, not a string, so kept out of the generic
+ * FIELDS/saveAppSettings loop like invoiceCollectionGstRates above.
+ * `which` is "pdf" or "email". Called alongside a normal settings save
+ * whenever the Settings page's builder mode is active for that
+ * template -- the compiled HTML (from compileBlocksToHtml) is what
+ * actually gets saved into invoicePdfTemplate/invoiceEmailTemplate via
+ * the regular saveAppSettings() call; this only persists the blocks
+ * themselves, so re-opening the builder later restores the same
+ * editable blocks instead of starting blank. */
+export async function saveInvoiceBlocks(shop, which, blocks) {
+  const field = which === "email" ? "invoiceEmailBlocksJson" : "invoicePdfBlocksJson";
+  await prisma.appSettings.upsert({
+    where: { shop },
+    create: { shop, [field]: blocks },
+    update: { [field]: blocks },
   });
 }
 

@@ -486,6 +486,14 @@ model AppSettings {
   // and inlined as base64 server-side on every send -- see
   // fetchImageAsDataUri() in orderInvoice.server.js.
   invoiceSealImageUrl            String?
+  // The visual drag-and-drop template builder's own block arrays (see
+  // app/components/template-builder.jsx) -- purely so the builder can
+  // restore the same editable blocks next time it's opened. The real
+  // send path never reads these directly; it only reads
+  // invoicePdfTemplate/invoiceEmailTemplate (the compiled HTML string
+  // the builder writes there on save), same as a hand-typed template.
+  invoicePdfBlocksJson           Json?
+  invoiceEmailBlocksJson         Json?
   // Per-collection GST rate overrides for the gemstone line -- {"gid://
   // shopify/Collection/123": "0.25", ...} -- since different gemstone
   // types can have different real HSN classifications/rates under GST,
