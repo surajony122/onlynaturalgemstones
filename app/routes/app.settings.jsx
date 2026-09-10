@@ -498,7 +498,7 @@ function getPdfPresetHtml(id) {
     return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
-<body style="font-size: 10px; color: #333;">
+<body style="font-family: Helvetica, Arial, sans-serif; font-size: 10px; color: #333;">
 
   <div style="text-align:center;margin-bottom:16px;">{{brand_header_html}}</div>
 
@@ -561,7 +561,7 @@ function getPdfPresetHtml(id) {
     return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
-<body style="font-size: 8.5px; color: #222;">
+<body style="font-family: Helvetica, Arial, sans-serif; font-size: 8.5px; color: #222;">
 
   <div style="text-align:center;margin-bottom:6px;">{{brand_header_html}}</div>
 
@@ -645,7 +645,7 @@ function getPdfPresetHtml(id) {
 <head>
   <meta charset="utf-8">
 </head>
-<body style="font-size: 10px; color: #222;">
+<body style="font-family: Helvetica, Arial, sans-serif; font-size: 10px; color: #222;">
 
   <div style="text-align:center;margin-bottom:10px;">{{brand_header_html}}</div>
 

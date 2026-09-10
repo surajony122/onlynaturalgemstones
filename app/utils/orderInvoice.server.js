@@ -11,24 +11,25 @@
  * that data isn't reliably readable via the Admin API, and the merchant
  * explicitly asked for these to live in the app instead.
  *
- * PDF rendering is pdfmake + html-to-pdfmake + jsdom -- deliberately NOT
- * a headless-browser approach (Puppeteer etc.) per explicit request, to
- * avoid the RAM a real Chromium process needs on this app's small Render
- * plan. Trade-off: only pdfmake's supported HTML/CSS subset renders
- * (table-based layouts, borders, basic text styling, images) --
- * flexbox/grid/absolute positioning will not. Keep invoicePdfTemplate in
- * that same table-based style the rest of this store's transactional
- * emails already use.
+ * PDF rendering is Puppeteer (a real headless Chromium) -- switched over
+ * from pdfmake + html-to-pdfmake + jsdom after repeatedly hitting real
+ * gaps in pdfmake's supported HTML/CSS subset (no border on a <table>
+ * element, `background` shorthand silently ignored, `vertical-align`
+ * not respected across cells with different line counts, inline images
+ * not inheriting text-align) -- each one looked correct in a browser
+ * preview and wrong in the actual generated PDF, since pdfmake was
+ * translating HTML into its own limited layout model rather than
+ * genuinely rendering it. Puppeteer renders the exact same HTML/CSS a
+ * browser would -- whatever the Settings-page preview shows is what the
+ * PDF will be, since they're now the same rendering engine. Trade-off,
+ * per explicit discussion: a real Chromium process needs meaningfully
+ * more RAM than pdfmake did, which is why this only shipped after the
+ * user upgraded this app's Render plan.
  */
 import nodemailer from "nodemailer";
 import prisma from "../db.server";
 import { esc, getShopFooterInfo } from "./astroAdvice.server";
-import pdfMake from "pdfmake/build/pdfmake.js";
-import pdfFonts from "pdfmake/build/vfs_fonts.js";
-import htmlToPdfmake from "html-to-pdfmake";
-import { JSDOM } from "jsdom";
-
-pdfMake.vfs = pdfFonts;
+import puppeteer from "puppeteer";
 
 export const DEFAULT_INVOICE_NUMBER_PREFIX = "INV-";
 
@@ -77,44 +78,16 @@ export const ORDER_INVOICE_PLACEHOLDERS = [
   { token: "shop_url", description: "Store URL" },
 ];
 
-// IMPORTANT -- pdfmake only, no <style> block: html-to-pdfmake's own
-// parseStyle() (confirmed by reading its source directly) reads ONLY an
-// element's inline `style="..."` attribute -- it never parses a
-// <style> block or matches CSS classes at all, unlike a browser. A
-// <style>-based version of this template would render correctly in the
-// Settings page's iframe preview (a real browser, which DOES apply
-// class-based CSS) while looking completely different in the actual
-// PDF -- this was a real, previously-undiagnosed bug (confirmed live:
-// the "gap on the right side" report was pdfmake auto-sizing the items
-// table's columns to their short content, with no `width:100%` inline
-// style anywhere to trigger its "stretch to fill" behavior, leaving
-// the whole table narrower than the page). Every element below is
-// therefore styled with a `style="..."` attribute directly -- no
-// class, no <style> block -- so the browser preview and the real PDF
-// render identically. If you're hand-editing this template, the same
-// rule applies: styling that isn't inline will look right in the
-// Settings-page preview and silently vanish from the real PDF.
-//
-// SECOND gotcha, also confirmed by hand: do NOT set an inline
-// `font-family` anywhere in this template. Only the four Roboto
-// weights bundled in pdfmake's own vfs_fonts.js are actually
-// registered fonts here (no headless browser means no system fonts
-// either) -- an inline `font-family: Helvetica, Arial, ...` makes
-// html-to-pdfmake emit `font: "Helvetica"`, which pdfmake then can't
-// find and throws `Font 'Helvetica' in style 'normal' is not defined`,
-// failing the PDF generation for every single invoice. Leaving
-// font-family unset falls back to pdfmake's own default (Roboto),
-// which is always safe.
-//
-// THIRD gotcha: use `background-color`, never the `background`
-// shorthand, for any cell shading. html-to-pdfmake's own CSS-property
-// switch only has a case for the literal key "background-color" --
-// "background" matches no case at all and is silently dropped, so a
-// shaded header row or highlighted bar renders with no fill whatsoever
-// in the real PDF while looking correct in the Settings-page preview
-// (a browser understands the shorthand fine). Confirmed by reading
-// html-to-pdfmake's own source, the same way the two gotchas above
-// were confirmed.
+// This template is still written the heavily-inline-styled, per-line-
+// table-row way it was built for pdfmake's limited HTML/CSS subset --
+// none of that is required anymore now that generateInvoicePdfBuffer()
+// renders via Puppeteer (a real browser engine, no subset, no gotchas
+// about `background` shorthand / vertical-align / table-level borders
+// / inline font-family), but the markup itself is still perfectly
+// valid HTML and renders correctly, so it was left as-is rather than
+// rewritten purely for tidiness. Feel free to simplify it back to
+// ordinary CSS classes/a <style> block next time it needs real changes
+// -- there's no longer any correctness reason not to.
 function getDefaultOrderInvoiceTemplate() {
   // pdfmake has NO concept of a border on a <table> element itself --
   // only on individual <td>/<th> CELLS (a per-cell 4-side boolean
@@ -149,7 +122,7 @@ function getDefaultOrderInvoiceTemplate() {
 <head>
   <meta charset="utf-8">
 </head>
-<body style="font-size: 10px; color: #222;">
+<body style="font-family: Helvetica, Arial, sans-serif; font-size: 10px; color: #222;">
 
   <div style="text-align:center;margin-bottom:10px;">{{brand_header_html}}</div>
 
@@ -962,16 +935,45 @@ function totalInWords(amount, currencyCode) {
   return `${currencyName} ${numberToWordsIndian(amount)} Only`;
 }
 
-/** Renders the merchant's invoice template into a PDF Buffer via
- * pdfmake, going through html-to-pdfmake/jsdom to convert the (already
- * placeholder-substituted) HTML — see this file's own header comment
- * for why this path was chosen over a headless browser. */
+// Launched once per PDF (not kept warm as a shared instance) --
+// simpler and safer than pooling a long-lived browser across requests
+// on a low-traffic, manual-trigger-only feature like this one (an
+// invoice is generated when a merchant clicks a button, never in a
+// hot loop), at the cost of Chromium's own ~1-2s startup time per
+// send. `--no-sandbox` is required in Render's containerized
+// environment, which doesn't support Chrome's normal sandboxing;
+// `--disable-dev-shm-usage` avoids Chromium running out of the tiny
+// /dev/shm a container typically has, a common headless-Chrome-in-
+// Docker failure mode.
+const PUPPETEER_LAUNCH_ARGS = ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"];
+
+/** Renders the merchant's invoice template into a PDF Buffer via a real
+ * headless Chromium (Puppeteer) -- see this file's own header comment
+ * for why this replaced pdfmake. `printBackground: true` is required
+ * or Chromium's normal print behavior (matching a browser's own
+ * Ctrl+P, which omits background colors/images by default) would
+ * silently drop the invoice's header shading and shaded table rows. */
 export async function generateInvoicePdfBuffer(html) {
-  const { window } = new JSDOM("");
-  const converted = htmlToPdfmake(html, { window });
-  const docDefinition = { content: converted, defaultStyle: { fontSize: 10 }, pageMargins: [30, 30, 30, 30] };
-  const pdfDoc = pdfMake.createPdf(docDefinition);
-  return pdfDoc.getBuffer();
+  const browser = await puppeteer.launch({ args: PUPPETEER_LAUNCH_ARGS });
+  try {
+    const page = await browser.newPage();
+    // The Settings page's own preview renders this same HTML in a
+    // "screen" context (a plain iframe) -- emulating "screen" here too
+    // (Chromium's page.pdf() defaults to "print" media otherwise) is
+    // what actually makes "matches the preview" a guarantee rather than
+    // a coincidence: a future template edit that ever adds @media print
+    // rules (or relies on any other screen/print distinction) would
+    // otherwise silently diverge between the two again.
+    await page.emulateMediaType("screen");
+    await page.setContent(html, { waitUntil: "networkidle0" });
+    return await page.pdf({
+      format: "A4",
+      printBackground: true,
+      margin: { top: "24px", right: "24px", bottom: "24px", left: "24px" },
+    });
+  } finally {
+    await browser.close();
+  }
 }
 
 /**
