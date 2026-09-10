@@ -36,6 +36,10 @@ export const NAV_GROUPS = [
     items: [{ id: "whatsapp", href: "/app/whatsapp-events", label: "Messages & Orders", icon: "message", badgeKey: "whatsapp" }],
   },
   {
+    label: "Orders",
+    items: [{ id: "invoices", href: "/app/invoices", label: "GST Invoices", icon: "tag" }],
+  },
+  {
     label: "System",
     items: [
       { id: "server", href: "/app/server-health", label: "System Health", icon: "server" },
