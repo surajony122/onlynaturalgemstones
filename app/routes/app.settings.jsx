@@ -20,6 +20,7 @@ import {
   saveAppSettings,
   getAppSettings,
   setInvoiceStartingNumber,
+  saveInvoiceCollectionGstRates,
   DEFAULT_WISHLIST_EMAIL_INTERVAL_HOURS,
   DEFAULT_INTERAKT_TEMPLATE_NAME,
   DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME,
@@ -37,9 +38,24 @@ import { brand, Icon, Card, PageHeader, PageIn } from "../components/table-kit";
 import { useToast } from "../components/toast";
 
 export const loader = async ({ request }) => {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   const row = await getRawAppSettingsRow(session.shop);
   const settings = await getAppSettings(session.shop);
+
+  // Real collections, for the GST-by-collection rate list below -- fetch
+  // failing (e.g. a transient API hiccup) shouldn't take down the whole
+  // Settings page, just leave that one list empty for this load.
+  let collections = [];
+  try {
+    const collectionsRes = await admin.graphql(
+      `#graphql
+      query SettingsCollections { collections(first: 100) { nodes { id title } } }`,
+    );
+    const collectionsJson = await collectionsRes.json();
+    collections = collectionsJson.data?.collections?.nodes || [];
+  } catch (err) {
+    console.error("[app.settings] failed to fetch collections:", err);
+  }
 
   // Live "is this actually working" check per service — same functions
   // the Server page uses, run here too so each card can show its own
@@ -100,6 +116,8 @@ export const loader = async ({ request }) => {
     invoicePdfTemplate: row?.invoicePdfTemplate || "",
     defaultInvoicePdfTemplate: getOrderInvoiceTemplate({}),
     orderInvoicePlaceholders: ORDER_INVOICE_PLACEHOLDERS,
+    collections,
+    invoiceCollectionGstRates: row?.invoiceCollectionGstRates || {},
     // So the page can say which env vars are filling in for anything
     // not saved here yet.
     envFallback: {
@@ -268,6 +286,18 @@ export const action = async ({ request }) => {
     invoiceNumberPrefix: formData.get("invoiceNumberPrefix")?.trim() || "",
     invoicePdfTemplate: formData.get("invoicePdfTemplate")?.trim() || "",
   });
+
+  // JSON, not a plain string -- saved via its own setter (see that
+  // function's own comment for why this isn't in the generic FIELDS loop
+  // above).
+  const collectionRatesRaw = formData.get("invoiceCollectionGstRates");
+  if (collectionRatesRaw) {
+    try {
+      await saveInvoiceCollectionGstRates(session.shop, JSON.parse(collectionRatesRaw));
+    } catch (err) {
+      console.error("[app.settings] failed to save invoiceCollectionGstRates:", err);
+    }
+  }
 
   return { intent: "save", ok: true };
 };
@@ -588,6 +618,10 @@ export default function SettingsPage() {
   const [invoiceNumberPrefix, setInvoiceNumberPrefix] = useState(data.invoiceNumberPrefix);
   const [invoicePdfTemplate, setInvoicePdfTemplate] = useState(data.invoicePdfTemplate || data.defaultInvoicePdfTemplate);
   const [showInvoicePreview, setShowInvoicePreview] = useState(false);
+  const [collectionGstRates, setCollectionGstRates] = useState(data.invoiceCollectionGstRates || {});
+  const setCollectionRate = (gid, value) => {
+    setCollectionGstRates((prev) => ({ ...prev, [gid]: value }));
+  };
   const [invoiceStartNumber, setInvoiceStartNumber] = useState("");
   const invoiceStartNumberFetcher = useFetcher();
   const isSettingInvoiceStartNumber = invoiceStartNumberFetcher.state !== "idle";
@@ -709,6 +743,7 @@ export default function SettingsPage() {
           invoicePdfTemplate.replace(/\r\n/g, "\n") === data.defaultInvoicePdfTemplate.replace(/\r\n/g, "\n")
             ? ""
             : invoicePdfTemplate,
+        invoiceCollectionGstRates: JSON.stringify(collectionGstRates),
       },
       { method: "POST" }
     );
@@ -955,8 +990,46 @@ export default function SettingsPage() {
               </div>
             </div>
             <p style={{ ...hintStyle, marginTop: "-10px" }}>
-              International orders are always zero-rated (export under LUT) regardless of these rates.
+              International orders are still taxed (as IGST), at whichever rate applies to each line —
+              never zero-rated.
             </p>
+
+            <label style={labelStyle}>GST rate by collection (optional overrides)</label>
+            <p style={{ ...hintStyle, marginTop: "5px" }}>
+              Leave blank to use the loose-gemstone rate above. If a gemstone belongs to a collection listed here,
+              its own line AND its linked "Gemstone Customisation" charge line (if customised) both use this rate
+              instead of the two defaults above.
+            </p>
+            {data.collections.length === 0 ? (
+              <p style={hintStyle}>No collections found on this store.</p>
+            ) : (
+              <div style={{ border: `1px solid ${brand.border}`, borderRadius: "10px", overflow: "hidden", marginBottom: "16px" }}>
+                {data.collections.map((c, i) => (
+                  <div
+                    key={c.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: "10px",
+                      padding: "8px 12px",
+                      borderTop: i === 0 ? "none" : `1px solid ${brand.divider}`,
+                      background: i % 2 === 0 ? "#fff" : brand.panel,
+                    }}
+                  >
+                    <span style={{ fontSize: "12.5px", color: brand.body }}>{c.title}</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      style={{ width: "80px", padding: "6px 8px", borderRadius: "6px", border: `1px solid ${brand.border}`, fontSize: "12.5px", textAlign: "right" }}
+                      value={collectionGstRates[c.id] || ""}
+                      onChange={(e) => setCollectionRate(c.id, e.target.value)}
+                      placeholder="e.g. 0.25"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
 
             <label style={labelStyle} htmlFor="invoiceNumberPrefix">Invoice number prefix</label>
             <input

@@ -136,7 +136,31 @@ export async function getAppSettings(shop) {
   // rest of this function's return, since callers do arithmetic with it.
   // Null means "never invoiced anything yet under this shop".
   resolved.invoiceNextNumber = row ? row.invoiceNextNumber : null;
+  // JSON, not a string like the rest of FIELDS -- {collectionGid: rate}.
+  // See computeInvoiceGst() in orderInvoice.server.js for how this is
+  // used, and saveInvoiceCollectionGstRates() below for how it's saved.
+  resolved.invoiceCollectionGstRates = (row && row.invoiceCollectionGstRates) || {};
   return resolved;
+}
+
+/** Persists the per-collection GST rate overrides (see
+ * AppSettings.invoiceCollectionGstRates's own comment) -- kept as its
+ * own setter rather than folded into the generic FIELDS/saveAppSettings
+ * loop since this one field is JSON, not a string. `rates` is
+ * {collectionGid: rateString}; an empty-string rate for a collection is
+ * dropped entirely (same "blank means unset" convention as every other
+ * field in this file) rather than stored as "". */
+export async function saveInvoiceCollectionGstRates(shop, rates) {
+  const clean = {};
+  for (const [gid, rate] of Object.entries(rates || {})) {
+    const trimmed = String(rate ?? "").trim();
+    if (trimmed) clean[gid] = trimmed;
+  }
+  await prisma.appSettings.upsert({
+    where: { shop },
+    create: { shop, invoiceCollectionGstRates: clean },
+    update: { invoiceCollectionGstRates: clean },
+  });
 }
 
 /** Persists the auto-created Interakt API Campaign id + which template it

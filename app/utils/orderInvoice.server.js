@@ -254,10 +254,14 @@ export async function fetchOrderForInvoice(admin, orderGid) {
             quantity
             discountedTotalSet { shopMoney { amount currencyCode } }
             originalTotalSet { shopMoney { amount currencyCode } }
+            customAttributes { key value }
             variant {
               id
               title
-              product { title }
+              product {
+                title
+                collections(first: 10) { nodes { id title } }
+              }
               inventoryItem { harmonizedSystemCode }
             }
           }
@@ -293,14 +297,37 @@ export function computeInvoiceGst(order, settings) {
   const sameState = isDomestic && sellerState && customerState && sellerState === customerState;
 
   // The gemstone line and the "Gemstone Customisation" charge line each
-  // have their OWN rate, tracked completely independently -- per
-  // explicit request ("separate gst for gemstone and customisation")
+  // have their OWN rate by default, tracked completely independently --
+  // per explicit request ("separate gst for gemstone and customisation")
   // even though they currently happen to both be set to the same
   // number. Whether the order is loose-only or has a customisation line
   // attached doesn't change the gemstone line's own rate at all; it's
   // simply whichever product the line actually is.
   const rateLoose = parseFloat(settings.invoiceGstRateLoose) || 0;
   const rateCustomisation = parseFloat(settings.invoiceGstRateCustomisation) || 0;
+  // Per-collection overrides for the gemstone line -- different gemstone
+  // types can carry different real HSN rates, not just one flat "loose"
+  // number. {collectionGid: rateString} -- see the Settings page.
+  const collectionRates = settings.invoiceCollectionGstRates || {};
+
+  // First pass: for every gemstone (non-customisation) line, resolve its
+  // own collection override (if any of its product's collections has one
+  // configured -- first match wins if it belongs to more than one
+  // configured collection), keyed by its variant id so the second pass
+  // below can look it up by the customisation line's "_Linked Gemstone"
+  // property. Per explicit request, when a gemstone HAS an override, its
+  // OWN linked customisation charge line inherits that same override
+  // rate too, instead of the flat invoiceGstRateCustomisation.
+  const gemstoneOverrideByVariantId = {};
+  for (const line of order.lineItems?.nodes || []) {
+    if (line.variant?.product?.title === CUSTOMISATION_PRODUCT_TITLE) continue;
+    const collectionIds = (line.variant?.product?.collections?.nodes || []).map((c) => c.id);
+    const matchedGid = collectionIds.find((gid) => collectionRates[gid] !== undefined);
+    if (matchedGid && line.variant?.id) {
+      const numericId = line.variant.id.split("/").pop();
+      gemstoneOverrideByVariantId[numericId] = parseFloat(collectionRates[matchedGid]) || 0;
+    }
+  }
 
   let subtotal = 0;
   let totalCgst = 0;
@@ -317,7 +344,21 @@ export function computeInvoiceGst(order, settings) {
     // changes is which bucket (CGST+SGST vs IGST) it's charged under,
     // never whether it's charged at all.
     const isCustomisation = line.variant?.product?.title === CUSTOMISATION_PRODUCT_TITLE;
-    const rate = isCustomisation ? rateCustomisation : rateLoose;
+    const ownVariantId = line.variant?.id ? line.variant.id.split("/").pop() : null;
+    const linkedGemstoneId = isCustomisation
+      ? (line.customAttributes || []).find((a) => a.key === "_Linked Gemstone")?.value || null
+      : null;
+
+    let rate;
+    if (isCustomisation) {
+      rate = linkedGemstoneId && gemstoneOverrideByVariantId[linkedGemstoneId] !== undefined
+        ? gemstoneOverrideByVariantId[linkedGemstoneId]
+        : rateCustomisation;
+    } else {
+      rate = ownVariantId && gemstoneOverrideByVariantId[ownVariantId] !== undefined
+        ? gemstoneOverrideByVariantId[ownVariantId]
+        : rateLoose;
+    }
     const gstAmount = (taxableValue * rate) / 100;
 
     if (sameState) {

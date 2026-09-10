@@ -458,6 +458,16 @@ model AppSettings {
   // emails already use rather than relying on flexbox/grid/absolute
   // positioning, which won't render.
   invoicePdfTemplate             String?
+  // Per-collection GST rate overrides for the gemstone line -- {"gid://
+  // shopify/Collection/123": "0.25", ...} -- since different gemstone
+  // types can have different real HSN classifications/rates under GST,
+  // not just one flat "loose" rate for every gemstone. A gemstone not in
+  // any collection listed here falls back to invoiceGstRateLoose. Per
+  // explicit request, when a gemstone HAS an override, its linked
+  // "Gemstone Customisation" charge line uses that SAME override rate
+  // too (not invoiceGstRateCustomisation) -- see
+  // computeInvoiceGst()'s own comment for the exact precedence.
+  invoiceCollectionGstRates       Json?
   updatedAt                      DateTime @updatedAt
 }
 
