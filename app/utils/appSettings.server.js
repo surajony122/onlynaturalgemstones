@@ -49,6 +49,7 @@ const FIELDS = [
   "invoiceDeliveryDays",
   "invoicePdfTemplate",
   "invoiceEmailTemplate",
+  "invoiceSealImageUrl",
 ];
 
 const ENV_FALLBACK = {

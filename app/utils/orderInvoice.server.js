@@ -47,6 +47,8 @@ const CUSTOMISATION_PRODUCT_TITLE = "Gemstone Customisation";
 // comment for the same reasoning already established for the order-
 // processing email template).
 export const ORDER_INVOICE_PLACEHOLDERS = [
+  { token: "brand_header_html", description: "Your shop's logo image if one loads, otherwise your business name as text" },
+  { token: "seal_html", description: "Your signature/seal image (Settings page) if one's set, otherwise blank" },
   { token: "invoice_number", description: "e.g. INV-000123 -- assigned once per order, permanently" },
   { token: "invoice_date", description: "Date the invoice was generated, DD/MM/YYYY" },
   { token: "order_number", description: "Shopify order number, e.g. #1000031314" },
@@ -102,7 +104,7 @@ function getDefaultOrderInvoiceTemplate() {
 </head>
 <body>
 
-  <div class="brand">{{shop_name}}</div>
+  <div class="brand">{{brand_header_html}}</div>
 
   <table class="outer">
     <tr>
@@ -196,7 +198,8 @@ function getDefaultOrderInvoiceTemplate() {
               Customer Signature : {{customer_name}}
             </td>
             <td style="width: 45%; text-align: right;">
-              For {{seller_legal_name}}<br><br><br>
+              For {{seller_legal_name}}<br>
+              {{seal_html}}
               Authorised Seal &amp; Signatory
             </td>
           </tr>
@@ -495,6 +498,35 @@ export async function getOrCreateInvoiceNumber(shop, orderId, orderName) {
   });
 
   return { invoiceNumber, isNew: true };
+}
+
+/** pdfmake never fetches a remote URL itself -- html-to-pdfmake just
+ * passes an <img>'s `src` straight through as pdfmake's `image`
+ * property, which only accepts a data URI (or a pre-registered vfs
+ * key). So a logo/seal image has to be fetched and inlined as base64
+ * server-side BEFORE the HTML reaches htmlToPdfmake, or pdfmake throws
+ * trying to render it. Returns null (never throws) on any failure --
+ * a slow/broken image URL should degrade to "no image" on the
+ * invoice, not break the whole send. */
+async function fetchImageAsDataUri(url) {
+  if (!url) return null;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!res.ok) return null;
+    const contentType = res.headers.get("content-type") || "image/png";
+    if (!contentType.startsWith("image/")) return null;
+    const buffer = Buffer.from(await res.arrayBuffer());
+    // A logo/seal has no business being this large -- caps how much an
+    // oversized image can bloat every single invoice PDF/email.
+    if (buffer.length > 2 * 1024 * 1024) return null;
+    return `data:${contentType};base64,${buffer.toString("base64")}`;
+  } catch (err) {
+    console.error("[orderInvoice] failed to fetch image for PDF:", url, err.message);
+    return null;
+  }
 }
 
 function formatMoney(amount, currencyCode) {
@@ -913,8 +945,31 @@ export async function sendOrderInvoiceEmail(admin, settings, shop, orderGid) {
     ? order.paymentGatewayNames[0].replace(/(^|[\s_-])\w/g, (c) => c.toUpperCase()).replace(/[_-]/g, " ")
     : "—";
 
+  // Fetched once here (moved up from below, where only the email used to
+  // need it) since the PDF's own brand header now wants the shop's logo
+  // too -- both images fetched in parallel, each independently falling
+  // back to null/"" rather than failing the whole send if one URL is
+  // slow or broken.
+  const shopInfo = await getShopFooterInfo(admin);
+  const [logoDataUri, sealDataUri] = await Promise.all([
+    fetchImageAsDataUri(shopInfo.logoUrl),
+    fetchImageAsDataUri(settings.invoiceSealImageUrl),
+  ]);
+  const brandHeaderHtml = logoDataUri
+    ? `<img src="${logoDataUri}" style="max-width:160px;max-height:80px;">`
+    : esc(settings.invoiceSellerLegalName || "Only Natural Gemstones");
+  // "<br><br>" (not empty) when no seal is set -- keeps the same blank
+  // vertical space above "Authorised Seal & Signatory" that the
+  // original hardcoded default always had, so not configuring a seal
+  // looks exactly like it did before this feature existed.
+  const sealHtml = sealDataUri
+    ? `<img src="${sealDataUri}" style="max-width:90px;max-height:90px;">`
+    : "<br><br>";
+
   const template = getOrderInvoiceTemplate(settings);
   const html = renderOrderInvoiceTemplate(template, {
+    brand_header_html: brandHeaderHtml,
+    seal_html: sealHtml,
     invoice_number: esc(invoiceNumber),
     invoice_date: formatDateDMY(new Date()),
     order_number: esc(order.name),
@@ -944,7 +999,7 @@ export async function sendOrderInvoiceEmail(admin, settings, shop, orderGid) {
     total_in_words: esc(totalInWords(gst.grandTotal, gst.currency)),
     tax_treatment_note: esc(gst.taxTreatmentNote),
     shop_name: esc(settings.invoiceSellerLegalName || "Only Natural Gemstones"),
-    shop_url: "https://onlynaturalgemstones.com",
+    shop_url: esc(shopInfo.url),
   });
 
   let pdfBuffer;
@@ -959,7 +1014,8 @@ export async function sendOrderInvoiceEmail(admin, settings, shop, orderGid) {
     return `FAILED: PDF generation error: ${err.message}`;
   }
 
-  const shopInfo = await getShopFooterInfo(admin);
+  // shopInfo was already fetched above (for the PDF's own logo) --
+  // reused here rather than fetching it a second time.
   const orderStatusUrl = shopInfo.url;
   const firstName = order.customer?.firstName || customerName.split(" ")[0] || "there";
 

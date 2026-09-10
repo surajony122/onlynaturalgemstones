@@ -479,6 +479,13 @@ model AppSettings {
   // card, footer with WhatsApp/call/email rows) already used by this
   // store's other transactional emails, per explicit request.
   invoiceEmailTemplate           String?
+  // A publicly-reachable URL to a signature/seal image (e.g. uploaded to
+  // Shopify Files, then paste its CDN link here) -- shown above
+  // "Authorised Seal & Signatory" on the invoice PDF when set. pdfmake
+  // can't fetch a remote URL itself at render time, so this gets fetched
+  // and inlined as base64 server-side on every send -- see
+  // fetchImageAsDataUri() in orderInvoice.server.js.
+  invoiceSealImageUrl            String?
   // Per-collection GST rate overrides for the gemstone line -- {"gid://
   // shopify/Collection/123": "0.25", ...} -- since different gemstone
   // types can have different real HSN classifications/rates under GST,

@@ -109,6 +109,7 @@ export const loader = async ({ request }) => {
     invoiceSellerAddress: row?.invoiceSellerAddress || "",
     invoiceSellerPhone: row?.invoiceSellerPhone || "",
     invoiceSellerEmail: row?.invoiceSellerEmail || "",
+    invoiceSealImageUrl: row?.invoiceSealImageUrl || "",
     invoiceSellerState: row?.invoiceSellerState || "",
     invoiceGstRateLoose: row?.invoiceGstRateLoose || "",
     invoiceGstRateCustomisation: row?.invoiceGstRateCustomisation || "",
@@ -309,6 +310,7 @@ export const action = async ({ request }) => {
     invoiceSellerAddress: formData.get("invoiceSellerAddress")?.trim() || "",
     invoiceSellerPhone: formData.get("invoiceSellerPhone")?.trim() || "",
     invoiceSellerEmail: formData.get("invoiceSellerEmail")?.trim() || "",
+    invoiceSealImageUrl: formData.get("invoiceSealImageUrl")?.trim() || "",
     invoiceSellerState: formData.get("invoiceSellerState")?.trim() || "",
     invoiceGstRateLoose: formData.get("invoiceGstRateLoose")?.trim() || "",
     invoiceGstRateCustomisation: formData.get("invoiceGstRateCustomisation")?.trim() || "",
@@ -441,13 +443,23 @@ function Explain({ summary, children, defaultOpen }) {
 // substitution, since that's a .server.js module React Router strips
 // from the client bundle. Kept in sync by hand.
 const INVOICE_PREVIEW_SAMPLE_VALUES = {
+  // No <img> here on purpose -- an actual logo/seal is fetched and
+  // inlined as base64 server-side at send time (see
+  // fetchImageAsDataUri() in orderInvoice.server.js), which this
+  // client-side-only preview can't reproduce -- it shows the same
+  // text/blank fallback a real send would use with nothing configured.
+  brand_header_html: "Only Natural Gemstones",
+  seal_html: "<br><br>",
   invoice_number: "INV-000123",
   invoice_date: "10/09/2026",
   order_number: "#1000031314",
   customer_name: "Suraj Kumar",
   customer_email: "suraj@example.com",
   customer_phone: "09968034137",
-  billing_address: "Suraj Kumar<br>123 MG Road<br>Delhi, Delhi, 110024<br>India",
+  // No name/phone here -- the real send excludes them from this
+  // placeholder too (customer_name/customer_phone print separately, see
+  // formatAddress's includeName/includePhone flags).
+  billing_address: "123 MG Road<br>Delhi, Delhi, 110024<br>India",
   shipping_address: "Suraj Kumar<br>123 MG Road<br>Delhi, Delhi, 110024<br>India",
   seller_legal_name: "Only Natural Gemstones",
   seller_address: "L-75-76, Lajpat Nagar 2<br>New Delhi, Delhi, 110024<br>India",
@@ -679,6 +691,7 @@ export default function SettingsPage() {
   const [invoiceSellerAddress, setInvoiceSellerAddress] = useState(data.invoiceSellerAddress);
   const [invoiceSellerPhone, setInvoiceSellerPhone] = useState(data.invoiceSellerPhone);
   const [invoiceSellerEmail, setInvoiceSellerEmail] = useState(data.invoiceSellerEmail);
+  const [invoiceSealImageUrl, setInvoiceSealImageUrl] = useState(data.invoiceSealImageUrl);
   const [invoiceSellerState, setInvoiceSellerState] = useState(data.invoiceSellerState);
   const [invoiceGstRateLoose, setInvoiceGstRateLoose] = useState(data.invoiceGstRateLoose);
   const [invoiceGstRateCustomisation, setInvoiceGstRateCustomisation] = useState(data.invoiceGstRateCustomisation);
@@ -837,6 +850,7 @@ export default function SettingsPage() {
         invoiceSellerAddress,
         invoiceSellerPhone,
         invoiceSellerEmail,
+        invoiceSealImageUrl,
         invoiceSellerState,
         invoiceGstRateLoose,
         invoiceGstRateCustomisation,
@@ -1286,6 +1300,20 @@ export default function SettingsPage() {
                     />
                   </div>
                 </div>
+
+                <label style={labelStyle} htmlFor="invoiceSealImageUrl">Signature/seal image URL (optional)</label>
+                <input
+                  id="invoiceSealImageUrl"
+                  style={fieldStyle}
+                  type="text"
+                  value={invoiceSealImageUrl}
+                  onChange={(e) => setInvoiceSealImageUrl(e.target.value)}
+                  placeholder="https://cdn.shopify.com/... (upload it under Settings → Files in Shopify Admin, then paste its link here)"
+                />
+                <p style={{ ...hintStyle, marginTop: "-10px" }}>
+                  Shown above "Authorised Seal &amp; Signatory" on the invoice PDF. Leave blank to show just the text,
+                  no image, as before.
+                </p>
 
                 <label style={labelStyle}>Invoice numbering</label>
                 {data.invoiceNextNumber ? (
