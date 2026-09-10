@@ -1,22 +1,15 @@
-# Learn more about configuring your admin UI action extension:
-# https://shopify.dev/docs/api/admin-extensions
-
-api_version = "2026-07"
-
+api_version = "2025-10"
 [[extensions]]
-name = "Send GST Invoice"
+name = "t:name"
 handle = "order-invoice-action"
 type = "ui_extension"
-uid = "fd61c9ea-c5e8-49fb-8c46-37ea1ae701e2"
-
-# Adds a "Send Invoice" entry to the order page's action menu. Learn more:
-# https://shopify.dev/docs/api/admin-extensions/latest/targets/order-details-action
+uid = "e981a3f0-9a9b-480b-82fc-bc5d7083ca4b"
 
 [[extensions.targeting]]
-module = "./src/OrderInvoiceAction.jsx"
+module = "./src/ActionExtension.jsx"
 target = "admin.order-details.action.render"
 
 [extensions.capabilities]
-# This extension calls OUR OWN app's backend (Render) to trigger the PDF
-# generation + email send -- not any Shopify API directly.
+# This extension calls our own app's backend (Render) to trigger the PDF
+# generation + email send.
 network_access = true

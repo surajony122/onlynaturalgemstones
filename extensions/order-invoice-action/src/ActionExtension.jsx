@@ -7,6 +7,16 @@
  * the GST invoice PDF and email it — see that route and
  * app/utils/orderInvoice.server.js for the actual work. This extension
  * is deliberately a thin trigger: no invoice logic lives here.
+ *
+ * Rebuilt from `shopify app generate extension -t admin_action` (not
+ * hand-authored, after a hand-authored version silently failed live
+ * with "Failed to fetch" on every attempt) -- confirmed via the real
+ * generated scaffold that this extension type needs api_version
+ * "2025-10" and "@shopify/ui-extensions": "2025.10.x" specifically, not
+ * the "2026-07"/"2026.7.x" copied from the (differently-targeted)
+ * customer-account-hub extension, which is the likely actual root cause
+ * of that failure. shopify.auth.idToken() itself was independently
+ * confirmed correct against this package's own installed .d.ts.
  */
 import '@shopify/ui-extensions/preact';
 import {render} from 'preact';
@@ -29,16 +39,6 @@ function Extension() {
   async function handleSend() {
     setState({status: 'sending', message: null});
     try {
-      // Third try, now confirmed against the target-specific Action
-      // Extension API reference (not a generic guide): the token comes
-      // from the `auth` namespace, NOT a top-level shopify.idToken()
-      // (confirmed live: threw "not a function") and NOT
-      // shopify.sessionToken.get() (customer-account extensions only --
-      // also confirmed live: threw, "sessionToken" is undefined here).
-      // A bare relative-path fetch() with no explicit token also failed
-      // live ("Failed to fetch") -- going back to an absolute URL with
-      // an explicit Bearer header, which is the documented pattern for
-      // this exact target (admin.order-details.action.render).
       const token = await shopify.auth.idToken();
       const res = await fetch(BACKEND_URL, {
         method: 'POST',
@@ -86,7 +86,7 @@ function Extension() {
       <s-button slot="primary-action" onClick={handleSend} disabled={state.status === 'sending' || state.status === 'done' || !orderId}>
         {state.status === 'sending' ? 'Sending…' : 'Send Invoice'}
       </s-button>
-      <s-button slot="secondary-action" onClick={() => close()}>
+      <s-button slot="secondary-actions" onClick={() => close()}>
         {state.status === 'done' ? 'Close' : 'Cancel'}
       </s-button>
     </s-admin-action>
