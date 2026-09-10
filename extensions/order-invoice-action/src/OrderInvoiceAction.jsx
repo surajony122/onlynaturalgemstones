@@ -12,10 +12,6 @@ import '@shopify/ui-extensions/preact';
 import {render} from 'preact';
 import {useState} from 'preact/hooks';
 
-// This app's own backend — same Render domain used throughout the rest
-// of this app.
-const BACKEND_URL = 'https://shubh-gems-customizer-app.onrender.com/api/send-order-invoice';
-
 export default async () => {
   render(<Extension />, document.body);
 };
@@ -29,13 +25,15 @@ function Extension() {
   async function handleSend() {
     setState({status: 'sending', message: null});
     try {
-      const token = await shopify.sessionToken.get();
-      const res = await fetch(BACKEND_URL, {
+      // A relative path here -- NOT shopify.sessionToken.get() (that's
+      // customer-account extensions only) or shopify.idToken() called
+      // directly (confirmed live: both threw). Admin UI extensions
+      // auto-authenticate fetch() calls resolved against the app's own
+      // application_url and add the Authorization header themselves --
+      // see https://shopify.dev/docs/apps/build/admin/actions-blocks/connect-app-backend.
+      const res = await fetch('api/send-order-invoice', {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
+        headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({orderId}),
       });
       const json = await res.json().catch(() => ({}));
