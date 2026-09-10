@@ -29,7 +29,7 @@ function Extension() {
   async function handleSend() {
     setState({status: 'sending', message: null});
     try {
-      const token = await shopify.idToken();
+      const token = await shopify.sessionToken.get();
       const res = await fetch(BACKEND_URL, {
         method: 'POST',
         headers: {
