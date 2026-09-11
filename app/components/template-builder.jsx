@@ -444,7 +444,7 @@ export function TemplateBuilder({ blocks, onChange, tokens, isPdf }) {
               boxShadow: selectedId === b.id ? `0 0 0 2px ${brand.accentTint}` : "none",
             }}
           >
-            <span style={{ color: brand.faint, fontSize: "14px", lineHeight: 1 }}>⠿</span>
+            <span style={{ color: brand.faint, display: "inline-flex", alignItems: "center" }}><Icon name="drag" size={14} color="currentColor" /></span>
             <span style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", color: brand.accent, letterSpacing: "0.03em", minWidth: "72px" }}>
               {BLOCK_TYPES.find((t) => t.type === b.type)?.label || b.type}
             </span>

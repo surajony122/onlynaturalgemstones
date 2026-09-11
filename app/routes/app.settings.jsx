@@ -279,67 +279,134 @@ export const action = async ({ request }) => {
     return { intent, ok: status.startsWith("OK"), status };
   }
 
-  // Blank secret fields mean "leave unchanged", not "clear" — merge with
-  // whatever's already saved so re-saving the non-secret fields doesn't
-  // accidentally wipe a previously-set password/key.
-  const existing = await getRawAppSettingsRow(session.shop);
-  const gmailAppPassword = formData.get("gmailAppPassword")?.trim() || existing?.gmailAppPassword || "";
-  const googleServiceAccountPrivateKey =
-    formData.get("googleServiceAccountPrivateKey")?.trim() || existing?.googleServiceAccountPrivateKey || "";
-  const interaktApiKey = formData.get("interaktApiKey")?.trim() || existing?.interaktApiKey || "";
-  const interaktWebhookSecret = formData.get("interaktWebhookSecret")?.trim() || existing?.interaktWebhookSecret || "";
-  const sheetsRelaySecret = formData.get("sheetsRelaySecret")?.trim() || existing?.sheetsRelaySecret || "";
-  const googlePlacesApiKey = formData.get("googlePlacesApiKey")?.trim() || existing?.googlePlacesApiKey || "";
+  // Per-explicit-request: one independent save action per section on the
+  // page instead of a single form covering every field at once — the
+  // single-form version meant saving ANY one section always resubmitted
+  // EVERY other section's current React state too, so if that state was
+  // ever blank for a field the user wasn't even looking at (a stale page
+  // load, a value that failed to load correctly, etc.), saving something
+  // unrelated would silently blank it out for real. Confirmed live: this
+  // is how a previously-set GST rate went missing. Splitting into
+  // per-section intents makes that structurally impossible -- a section's
+  // save request now only ever mentions its own fields, via the same
+  // hasOwnProperty-guarded saveAppSettings() as before (see that
+  // function's own comment for why only fields actually present in the
+  // submitted data get touched).
+  //
+  // Grabs a field's trimmed value or "" if blank -- the small helper
+  // every branch below uses instead of repeating the same
+  // `formData.get(x)?.trim() || ""` shape a dozen times.
+  const val = (name) => formData.get(name)?.trim() || "";
 
-  await saveAppSettings(session.shop, {
-    gmailUser: formData.get("gmailUser")?.trim() || "",
-    gmailAppPassword,
-    googleServiceAccountEmail: formData.get("googleServiceAccountEmail")?.trim() || "",
-    googleServiceAccountPrivateKey,
-    astroLeadsSpreadsheetId: formData.get("astroLeadsSpreadsheetId")?.trim() || "",
-    sheetsRelayUrl: formData.get("sheetsRelayUrl")?.trim() || "",
-    sheetsRelaySecret,
-    wishlistEmailIntervalHours: formData.get("wishlistEmailIntervalHours")?.trim() || "",
-    interaktApiKey,
-    interaktTemplateName: formData.get("interaktTemplateName")?.trim() || "",
-    interaktOrderTemplateName: formData.get("interaktOrderTemplateName")?.trim() || "",
-    interaktWishlistTemplateName: formData.get("interaktWishlistTemplateName")?.trim() || "",
-    orderProcessingTriggerTag: formData.get("orderProcessingTriggerTag")?.trim() || "",
-    orderProcessingEmailTemplate: formData.get("orderProcessingEmailTemplate")?.trim() || "",
-    orderProcessingEmailSubject: formData.get("orderProcessingEmailSubject")?.trim() || "",
-    whatsappIntervalValue: formData.get("whatsappIntervalValue")?.trim() || "",
-    whatsappIntervalUnit: formData.get("whatsappIntervalUnit")?.trim() || "",
-    interaktWebhookSecret,
-    googlePlacesApiKey,
-    invoiceGstin: formData.get("invoiceGstin")?.trim() || "",
-    invoiceSellerLegalName: formData.get("invoiceSellerLegalName")?.trim() || "",
-    invoiceSellerAddress: formData.get("invoiceSellerAddress")?.trim() || "",
-    invoiceSellerPhone: formData.get("invoiceSellerPhone")?.trim() || "",
-    invoiceSellerEmail: formData.get("invoiceSellerEmail")?.trim() || "",
-    invoiceSealImageUrl: formData.get("invoiceSealImageUrl")?.trim() || "",
-    invoiceLogoImageUrl: formData.get("invoiceLogoImageUrl")?.trim() || "",
-    invoiceSellerState: formData.get("invoiceSellerState")?.trim() || "",
-    invoiceGstRateLoose: formData.get("invoiceGstRateLoose")?.trim() || "",
-    invoiceGstRateCustomisation: formData.get("invoiceGstRateCustomisation")?.trim() || "",
-    invoiceNumberPrefix: formData.get("invoiceNumberPrefix")?.trim() || "",
-    invoiceDeliveryDays: formData.get("invoiceDeliveryDays")?.trim() || "",
-    invoicePdfTemplate: formData.get("invoicePdfTemplate")?.trim() || "",
-    invoiceEmailTemplate: formData.get("invoiceEmailTemplate")?.trim() || "",
-  });
-
-  // JSON, not a plain string -- saved via its own setter (see that
-  // function's own comment for why this isn't in the generic FIELDS loop
-  // above).
-  const collectionRatesRaw = formData.get("invoiceCollectionGstRates");
-  if (collectionRatesRaw) {
-    try {
-      await saveInvoiceCollectionGstRates(session.shop, JSON.parse(collectionRatesRaw));
-    } catch (err) {
-      console.error("[app.settings] failed to save invoiceCollectionGstRates:", err);
-    }
+  if (intent === "saveWishlistTiming") {
+    await saveAppSettings(session.shop, { wishlistEmailIntervalHours: val("wishlistEmailIntervalHours") });
+    return { intent, ok: true };
   }
 
-  return { intent: "save", ok: true };
+  if (intent === "saveInteraktApiKey") {
+    const existing = await getRawAppSettingsRow(session.shop);
+    const interaktApiKey = val("interaktApiKey") || existing?.interaktApiKey || "";
+    await saveAppSettings(session.shop, { interaktApiKey });
+    return { intent, ok: true };
+  }
+
+  if (intent === "saveGemRecommendation") {
+    await saveAppSettings(session.shop, { interaktTemplateName: val("interaktTemplateName") });
+    return { intent, ok: true };
+  }
+
+  if (intent === "saveOrderProcessingWhatsapp") {
+    await saveAppSettings(session.shop, {
+      orderProcessingTriggerTag: val("orderProcessingTriggerTag"),
+      interaktOrderTemplateName: val("interaktOrderTemplateName"),
+    });
+    return { intent, ok: true };
+  }
+
+  if (intent === "saveOrderProcessingEmail") {
+    await saveAppSettings(session.shop, {
+      orderProcessingEmailTemplate: val("orderProcessingEmailTemplate"),
+      orderProcessingEmailSubject: val("orderProcessingEmailSubject"),
+    });
+    return { intent, ok: true };
+  }
+
+  if (intent === "saveGstInvoice") {
+    await saveAppSettings(session.shop, {
+      invoiceGstin: val("invoiceGstin"),
+      invoiceSellerLegalName: val("invoiceSellerLegalName"),
+      invoiceSellerAddress: val("invoiceSellerAddress"),
+      invoiceSellerPhone: val("invoiceSellerPhone"),
+      invoiceSellerEmail: val("invoiceSellerEmail"),
+      invoiceSealImageUrl: val("invoiceSealImageUrl"),
+      invoiceLogoImageUrl: val("invoiceLogoImageUrl"),
+      invoiceSellerState: val("invoiceSellerState"),
+      invoiceGstRateLoose: val("invoiceGstRateLoose"),
+      invoiceGstRateCustomisation: val("invoiceGstRateCustomisation"),
+      invoiceNumberPrefix: val("invoiceNumberPrefix"),
+      invoiceDeliveryDays: val("invoiceDeliveryDays"),
+      invoicePdfTemplate: val("invoicePdfTemplate"),
+      invoiceEmailTemplate: val("invoiceEmailTemplate"),
+    });
+    // JSON, not a plain string -- saved via its own setter (see that
+    // function's own comment for why this isn't in the generic FIELDS
+    // loop above). Part of this same section/save, so it goes with it.
+    const collectionRatesRaw = formData.get("invoiceCollectionGstRates");
+    if (collectionRatesRaw) {
+      try {
+        await saveInvoiceCollectionGstRates(session.shop, JSON.parse(collectionRatesRaw));
+      } catch (err) {
+        console.error("[app.settings] failed to save invoiceCollectionGstRates:", err);
+      }
+    }
+    return { intent, ok: true };
+  }
+
+  if (intent === "saveWishlistReminder") {
+    await saveAppSettings(session.shop, { interaktWishlistTemplateName: val("interaktWishlistTemplateName") });
+    return { intent, ok: true };
+  }
+
+  if (intent === "saveWhatsappAdvanced") {
+    const existing = await getRawAppSettingsRow(session.shop);
+    const interaktWebhookSecret = val("interaktWebhookSecret") || existing?.interaktWebhookSecret || "";
+    await saveAppSettings(session.shop, {
+      whatsappIntervalValue: val("whatsappIntervalValue"),
+      whatsappIntervalUnit: val("whatsappIntervalUnit"),
+      interaktWebhookSecret,
+    });
+    return { intent, ok: true };
+  }
+
+  if (intent === "saveGmail") {
+    const existing = await getRawAppSettingsRow(session.shop);
+    const gmailAppPassword = val("gmailAppPassword") || existing?.gmailAppPassword || "";
+    await saveAppSettings(session.shop, { gmailUser: val("gmailUser"), gmailAppPassword });
+    return { intent, ok: true };
+  }
+
+  if (intent === "saveGoogleSheets") {
+    const existing = await getRawAppSettingsRow(session.shop);
+    const sheetsRelaySecret = val("sheetsRelaySecret") || existing?.sheetsRelaySecret || "";
+    const googleServiceAccountPrivateKey = val("googleServiceAccountPrivateKey") || existing?.googleServiceAccountPrivateKey || "";
+    await saveAppSettings(session.shop, {
+      sheetsRelayUrl: val("sheetsRelayUrl"),
+      sheetsRelaySecret,
+      googleServiceAccountEmail: val("googleServiceAccountEmail"),
+      googleServiceAccountPrivateKey,
+      astroLeadsSpreadsheetId: val("astroLeadsSpreadsheetId"),
+    });
+    return { intent, ok: true };
+  }
+
+  if (intent === "saveGooglePlaces") {
+    const existing = await getRawAppSettingsRow(session.shop);
+    const googlePlacesApiKey = val("googlePlacesApiKey") || existing?.googlePlacesApiKey || "";
+    await saveAppSettings(session.shop, { googlePlacesApiKey });
+    return { intent, ok: true };
+  }
+
+  return { ok: false, error: "Unknown intent" };
 };
 
 // ok === true -> Connected (green) · false -> Failing (red) ·
@@ -348,10 +415,10 @@ export const action = async ({ request }) => {
 // Server page's checks, just rendered as a compact pill instead of a
 // table row.
 const STATUS_STYLE = {
-  true: { bg: brand.successBg, border: brand.successLine, color: brand.success, label: "● Connected" },
-  false: { bg: brand.dangerBg, border: brand.dangerLine, color: brand.danger, label: "● Failing" },
-  warn: { bg: brand.warnBg, border: brand.warnLine, color: brand.warn, label: "● Connected (see note)" },
-  none: { bg: brand.panel, border: brand.border, color: brand.muted, label: "○ Not connected" },
+  true: { bg: brand.successBg, border: brand.successLine, color: brand.success, icon: "check-circle", label: "Connected" },
+  false: { bg: brand.dangerBg, border: brand.dangerLine, color: brand.danger, icon: "x-circle", label: "Failing" },
+  warn: { bg: brand.warnBg, border: brand.warnLine, color: brand.warn, icon: "alert-triangle", label: "Connected (see note)" },
+  none: { bg: brand.panel, border: brand.border, color: brand.muted, icon: null, label: "Not connected" },
 };
 
 function StatusBadge({ status }) {
@@ -361,8 +428,9 @@ function StatusBadge({ status }) {
   return (
     <span
       title={status.detail}
-      style={{ display: "inline-flex", alignItems: "center", fontSize: "12px", fontWeight: 600, padding: "4px 11px", borderRadius: "999px", background: s.bg, border: `1px solid ${s.border}`, color: s.color, whiteSpace: "nowrap" }}
+      style={{ display: "inline-flex", alignItems: "center", gap: "5px", fontSize: "12px", fontWeight: 600, padding: "4px 11px", borderRadius: "999px", background: s.bg, border: `1px solid ${s.border}`, color: s.color, whiteSpace: "nowrap" }}
     >
+      {s.icon && <Icon name={s.icon} size={11} color={s.color} />}
       {s.label}
     </span>
   );
@@ -707,6 +775,22 @@ const hintStyle = { fontSize: "12px", color: brand.muted, marginTop: "-12px", ma
 const primaryBtn = { padding: "10px 18px", borderRadius: "9px", border: "none", background: brand.accent, color: "#fff", fontSize: "13px", fontWeight: 600, cursor: "pointer" };
 const secondaryBtn = { padding: "10px 18px", borderRadius: "9px", border: `1px solid ${brand.border}`, background: "#fff", color: brand.body, fontSize: "13px", fontWeight: 500, cursor: "pointer" };
 
+// One per section, per explicit request (see useSectionSave's own
+// comment) -- each section saves independently instead of one page-wide
+// button submitting every section's state at once.
+function SaveButton({ isSaving, onClick, label = "Save" }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={isSaving}
+      style={{ ...primaryBtn, marginTop: "14px", opacity: isSaving ? 0.7 : 1, cursor: isSaving ? "default" : "pointer" }}
+    >
+      {isSaving ? "Saving…" : label}
+    </button>
+  );
+}
+
 function GroupBanner({ children, tone = "neutral", icon }) {
   const styles =
     tone === "info"
@@ -720,14 +804,39 @@ function GroupBanner({ children, tone = "neutral", icon }) {
   );
 }
 
+// One independent fetcher + save handler per settings section, per
+// explicit request -- replaces the single page-wide save (see the
+// action's own comment for why: any one section's save used to
+// resubmit every OTHER section's current React state too, so a value
+// that was ever blank there for any reason got silently written back
+// as blank the next time ANYTHING on the page was saved). Called a
+// fixed 11 times at the top of SettingsPage below, always in the same
+// order, so this stays valid per React's rules of hooks despite being
+// a loop-like pattern in spirit.
+function useSectionSave(intent, toast, onSuccess) {
+  const fetcher = useFetcher();
+  const isSaving = fetcher.state === "submitting";
+  useEffect(() => {
+    if (fetcher.data?.intent === intent) {
+      if (fetcher.data.ok) {
+        toast.show("Saved");
+        onSuccess?.();
+      } else {
+        toast.show(fetcher.data.error || "Failed to save", { isError: true });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetcher.data]);
+  const save = (payload) => fetcher.submit({ intent, ...payload }, { method: "POST" });
+  return { isSaving, save };
+}
+
 export default function SettingsPage() {
   const data = useLoaderData();
-  const fetcher = useFetcher();
   const testFetcher = useFetcher();
   const testOrderFetcher = useFetcher();
   const testWishlistFetcher = useFetcher();
   const toast = useToast();
-  const isSaving = fetcher.state === "submitting";
   const isSendingTest = testFetcher.state !== "idle";
   const isSendingOrderTest = testOrderFetcher.state !== "idle";
   const isSendingWishlistTest = testWishlistFetcher.state !== "idle";
@@ -791,6 +900,24 @@ export default function SettingsPage() {
     setCollectionGstRates((prev) => ({ ...prev, [gid]: value }));
   };
 
+  // One independent save per section -- see useSectionSave's own comment
+  // above for why. Each returns { isSaving, save }; `save` takes a plain
+  // object of just that section's own fields.
+  const wishlistTiming = useSectionSave("saveWishlistTiming", toast);
+  const interaktApiKeySave = useSectionSave("saveInteraktApiKey", toast, () => setInteraktApiKey(""));
+  const gemRecommendation = useSectionSave("saveGemRecommendation", toast);
+  const orderProcessingWhatsapp = useSectionSave("saveOrderProcessingWhatsapp", toast);
+  const orderProcessingEmail = useSectionSave("saveOrderProcessingEmail", toast);
+  const gstInvoice = useSectionSave("saveGstInvoice", toast);
+  const wishlistReminder = useSectionSave("saveWishlistReminder", toast);
+  const whatsappAdvanced = useSectionSave("saveWhatsappAdvanced", toast, () => setInteraktWebhookSecret(""));
+  const gmailSave = useSectionSave("saveGmail", toast, () => setGmailAppPassword(""));
+  const googleSheetsSave = useSectionSave("saveGoogleSheets", toast, () => {
+    setSheetsRelaySecret("");
+    setGsaKey("");
+  });
+  const googlePlacesSave = useSectionSave("saveGooglePlaces", toast, () => setGooglePlacesApiKey(""));
+
   // "Fetch from Shopify" -- pre-fills legal name/address/phone/state from
   // the shop's own Shopify billing address (Settings -> General/
   // Shipping there). Only fills the FORM; nothing is saved to
@@ -807,7 +934,7 @@ export default function SettingsPage() {
         setInvoiceSellerAddress(fetchShopInfoFetcher.data.address || "");
         setInvoiceSellerPhone(fetchShopInfoFetcher.data.phone || "");
         setInvoiceSellerState(fetchShopInfoFetcher.data.state || "");
-        toast.show("Fetched from Shopify — review below, then Save settings");
+        toast.show("Fetched from Shopify — review below, then click Save in this section");
       } else {
         toast.show(fetchShopInfoFetcher.data.error || "Couldn't fetch shop info", { isError: true });
       }
@@ -817,19 +944,6 @@ export default function SettingsPage() {
   const fetchShopSellerInfoNow = () => {
     fetchShopInfoFetcher.submit({ intent: "fetchShopSellerInfo" }, { method: "POST" });
   };
-
-  useEffect(() => {
-    if (fetcher.data?.intent === "save" && fetcher.data.ok) {
-      toast.show("Settings saved");
-      setGmailAppPassword("");
-      setGsaKey("");
-      setInteraktApiKey("");
-      setInteraktWebhookSecret("");
-      setSheetsRelaySecret("");
-      setGooglePlacesApiKey("");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetcher.data]);
 
   useEffect(() => {
     if (testFetcher.data?.intent === "sendTestWhatsapp") {
@@ -864,77 +978,63 @@ export default function SettingsPage() {
     testFetcher.submit({ intent: "sendTestWhatsapp", testPhone }, { method: "POST" });
   };
 
-  const submit = (e) => {
-    e.preventDefault();
-    fetcher.submit(
-      {
-        gmailUser,
-        gmailAppPassword,
-        googleServiceAccountEmail: gsaEmail,
-        googleServiceAccountPrivateKey: gsaKey,
-        astroLeadsSpreadsheetId: sheetId,
-        sheetsRelayUrl,
-        sheetsRelaySecret,
-        wishlistEmailIntervalHours: wishlistInterval,
-        interaktApiKey,
-        interaktTemplateName,
-        interaktOrderTemplateName,
-        orderProcessingTriggerTag,
-        // Submitting "" (not the literal default HTML) whenever the
-        // textarea still matches the built-in default -- otherwise
-        // saving this form for ANY unrelated reason (e.g. just updating
-        // the Gmail password) would silently freeze today's default
-        // into the database as a permanent "customization" the user
-        // never asked for, and a future improvement to the built-in
-        // default would then never reach this shop again.
-        //
-        // Normalizing \r\n -> \n on BOTH sides before comparing is not
-        // optional -- confirmed live that a plain strict === comparison
-        // fails here even when nothing was actually edited: browsers
-        // normalize a <textarea>'s line endings to \r\n internally the
-        // moment it's interacted with at all (even just focusing and
-        // blurring it, no typing), while the server-rendered default
-        // string keeps whatever the source file's own line endings
-        // happen to be.
-        orderProcessingEmailTemplate:
-          orderProcessingEmailTemplate.replace(/\r\n/g, "\n") === data.defaultOrderProcessingEmailTemplate.replace(/\r\n/g, "\n")
-            ? ""
-            : orderProcessingEmailTemplate,
-        // Same "don't freeze today's default into the DB" reasoning as
-        // the template above.
-        orderProcessingEmailSubject: orderProcessingEmailSubject === data.defaultOrderProcessingEmailSubject ? "" : orderProcessingEmailSubject,
-        interaktWishlistTemplateName,
-        whatsappIntervalValue,
-        whatsappIntervalUnit,
-        interaktWebhookSecret,
-        googlePlacesApiKey,
-        invoiceGstin,
-        invoiceSellerLegalName,
-        invoiceSellerAddress,
-        invoiceSellerPhone,
-        invoiceSellerEmail,
-        invoiceSealImageUrl,
-        invoiceLogoImageUrl,
-        invoiceSellerState,
-        invoiceGstRateLoose,
-        invoiceGstRateCustomisation,
-        invoiceNumberPrefix,
-        invoiceDeliveryDays,
-        // Same "don't freeze today's default as a permanent customization"
-        // reasoning as orderProcessingEmailTemplate above.
-        invoicePdfTemplate:
-          invoicePdfTemplate.replace(/\r\n/g, "\n") === data.defaultInvoicePdfTemplate.replace(/\r\n/g, "\n")
-            ? ""
-            : invoicePdfTemplate,
-        invoiceEmailTemplate:
-          invoiceEmailTemplate.replace(/\r\n/g, "\n") === data.defaultInvoiceEmailTemplate.replace(/\r\n/g, "\n")
-            ? ""
-            : invoiceEmailTemplate,
-        invoiceCollectionGstRates: JSON.stringify(collectionGstRates),
-      },
-      { method: "POST" }
-    );
-  };
+  const saveWishlistTiming = () => wishlistTiming.save({ wishlistEmailIntervalHours: wishlistInterval });
+  const saveInteraktApiKey = () => interaktApiKeySave.save({ interaktApiKey });
+  const saveGemRecommendation = () => gemRecommendation.save({ interaktTemplateName });
+  const saveOrderProcessingWhatsapp = () => orderProcessingWhatsapp.save({ orderProcessingTriggerTag, interaktOrderTemplateName });
+  // Submitting "" (not the literal default HTML) whenever a template
+  // textarea still matches the built-in default -- otherwise saving this
+  // section for ANY reason would silently freeze today's default into
+  // the database as a permanent "customization" nobody asked for, and a
+  // future improvement to the built-in default would never reach this
+  // shop again. Normalizing \r\n -> \n on BOTH sides before comparing is
+  // not optional -- confirmed live that a plain strict === comparison
+  // fails even when nothing was actually edited: browsers normalize a
+  // <textarea>'s line endings to \r\n the moment it's interacted with at
+  // all (even just focusing and blurring it), while the server-rendered
+  // default string keeps whatever the source file's own line endings are.
+  const saveOrderProcessingEmail = () =>
+    orderProcessingEmail.save({
+      orderProcessingEmailTemplate:
+        orderProcessingEmailTemplate.replace(/\r\n/g, "\n") === data.defaultOrderProcessingEmailTemplate.replace(/\r\n/g, "\n")
+          ? ""
+          : orderProcessingEmailTemplate,
+      orderProcessingEmailSubject: orderProcessingEmailSubject === data.defaultOrderProcessingEmailSubject ? "" : orderProcessingEmailSubject,
+    });
+  const saveGstInvoice = () =>
+    gstInvoice.save({
+      invoiceGstin,
+      invoiceSellerLegalName,
+      invoiceSellerAddress,
+      invoiceSellerPhone,
+      invoiceSellerEmail,
+      invoiceSealImageUrl,
+      invoiceLogoImageUrl,
+      invoiceSellerState,
+      invoiceGstRateLoose,
+      invoiceGstRateCustomisation,
+      invoiceNumberPrefix,
+      invoiceDeliveryDays,
+      // Same "don't freeze today's default as a permanent customization"
+      // reasoning as orderProcessingEmailTemplate above.
+      invoicePdfTemplate:
+        invoicePdfTemplate.replace(/\r\n/g, "\n") === data.defaultInvoicePdfTemplate.replace(/\r\n/g, "\n") ? "" : invoicePdfTemplate,
+      invoiceEmailTemplate:
+        invoiceEmailTemplate.replace(/\r\n/g, "\n") === data.defaultInvoiceEmailTemplate.replace(/\r\n/g, "\n") ? "" : invoiceEmailTemplate,
+      invoiceCollectionGstRates: JSON.stringify(collectionGstRates),
+    });
+  const saveWishlistReminder = () => wishlistReminder.save({ interaktWishlistTemplateName });
+  const saveWhatsappAdvanced = () => whatsappAdvanced.save({ whatsappIntervalValue, whatsappIntervalUnit, interaktWebhookSecret });
+  const saveGmail = () => gmailSave.save({ gmailUser, gmailAppPassword });
+  const saveGoogleSheets = () =>
+    googleSheetsSave.save({
+      sheetsRelayUrl,
+      sheetsRelaySecret,
+      googleServiceAccountEmail: gsaEmail,
+      googleServiceAccountPrivateKey: gsaKey,
+      astroLeadsSpreadsheetId: sheetId,
+    });
+  const saveGooglePlaces = () => googlePlacesSave.save({ googlePlacesApiKey });
 
   return (
     <PageIn>
@@ -961,7 +1061,7 @@ export default function SettingsPage() {
         </div>
       </Card>
 
-      <form onSubmit={submit}>
+      <div>
         <GroupBanner tone="info" icon="clock">Message behavior — safe to change any time</GroupBanner>
 
         <Card style={{ marginBottom: "16px" }}>
@@ -974,6 +1074,7 @@ export default function SettingsPage() {
           </Explain>
           <label style={labelStyle} htmlFor="wishlistInterval">Wait time (hours)</label>
           <input id="wishlistInterval" style={{ ...fieldStyle, maxWidth: "120px" }} type="number" min="0" step="0.5" value={wishlistInterval} onChange={(e) => setWishlistInterval(e.target.value)} />
+          <div><SaveButton isSaving={wishlistTiming.isSaving} onClick={saveWishlistTiming} /></div>
         </Card>
 
         <GroupBanner icon="key">Connect your accounts — one-time technical setup</GroupBanner>
@@ -1001,6 +1102,7 @@ export default function SettingsPage() {
               API Campaign: {testFetcher.data.campaignStatus}
             </p>
           )}
+          <SaveButton isSaving={interaktApiKeySave.isSaving} onClick={saveInteraktApiKey} />
         </ServiceCard>
 
         <GroupBanner icon="message">Message templates — one card per WhatsApp message</GroupBanner>
@@ -1024,6 +1126,7 @@ export default function SettingsPage() {
               </button>
             </div>
             <TestResult fetcherData={testFetcher.data} intent="sendTestWhatsapp" />
+            <SaveButton isSaving={gemRecommendation.isSaving} onClick={saveGemRecommendation} />
           </TemplateCard>
 
           <TemplateCard icon={<Icon name="package" size={15} color={brand.accent} />} title="Order Processing">
@@ -1056,6 +1159,7 @@ export default function SettingsPage() {
               </button>
             </div>
             <TestResult fetcherData={testOrderFetcher.data} intent="sendTestOrderWhatsapp" />
+            <SaveButton isSaving={orderProcessingWhatsapp.isSaving} onClick={saveOrderProcessingWhatsapp} />
           </TemplateCard>
 
           <TemplateCard icon={<Icon name="mail" size={15} color={brand.accent} />} title="Order Processing — Email">
@@ -1076,7 +1180,7 @@ export default function SettingsPage() {
               <button
                 type="button"
                 onClick={() => {
-                  if (window.confirm("Reset the subject to the built-in default? This discards your current edit (not saved until you click Save settings).")) {
+                  if (window.confirm("Reset the subject to the built-in default? This discards your current edit (not saved until you click Save below).")) {
                     setOrderProcessingEmailSubject(data.defaultOrderProcessingEmailSubject);
                   }
                 }}
@@ -1112,7 +1216,7 @@ export default function SettingsPage() {
               <button
                 type="button"
                 onClick={() => {
-                  if (window.confirm("Reset to the built-in default template? This discards your current edits (not saved until you click Save settings).")) {
+                  if (window.confirm("Reset to the built-in default template? This discards your current edits (not saved until you click Save below).")) {
                     setOrderProcessingEmailTemplate(data.defaultOrderProcessingEmailTemplate);
                   }
                 }}
@@ -1132,6 +1236,7 @@ export default function SettingsPage() {
                 <iframe title="Order processing email preview" srcDoc={renderEmailPreview(orderProcessingEmailTemplate)} style={{ width: "100%", height: "500px", border: "none", display: "block" }} />
               </div>
             )}
+            <SaveButton isSaving={orderProcessingEmail.isSaving} onClick={saveOrderProcessingEmail} />
           </TemplateCard>
 
           <TemplateCard icon={<Icon name="tag" size={15} color={brand.accent} />} title="GST Tax Invoice">
@@ -1198,7 +1303,7 @@ export default function SettingsPage() {
                   <button
                     type="button"
                     onClick={() => {
-                      if (window.confirm("Reset to the built-in default template? This discards your current edits (not saved until you click Save settings).")) {
+                      if (window.confirm("Reset to the built-in default template? This discards your current edits (not saved until you click Save below).")) {
                         setInvoiceEmailTemplate(data.defaultInvoiceEmailTemplate);
                       }
                     }}
@@ -1226,9 +1331,9 @@ export default function SettingsPage() {
                     type="button"
                     onClick={fetchShopSellerInfoNow}
                     disabled={isFetchingShopInfo}
-                    style={{ ...secondaryBtn, padding: "6px 12px", fontSize: "12px" }}
+                    style={{ ...secondaryBtn, display: "inline-flex", alignItems: "center", gap: "5px", padding: "6px 12px", fontSize: "12px" }}
                   >
-                    {isFetchingShopInfo ? "Fetching…" : "⟳ Fetch from Shopify"}
+                    {isFetchingShopInfo ? "Fetching…" : (<><Icon name="refresh" size={11} color="currentColor" /> Fetch from Shopify</>)}
                   </button>
                 </div>
                 <p style={{ ...hintStyle, marginTop: 0 }}>
@@ -1465,7 +1570,7 @@ export default function SettingsPage() {
                   <button
                     type="button"
                     onClick={() => {
-                      if (window.confirm("Reset to the built-in default template? This discards your current edits (not saved until you click Save settings).")) {
+                      if (window.confirm("Reset to the built-in default template? This discards your current edits (not saved until you click Save below).")) {
                         setInvoicePdfTemplate(data.defaultInvoicePdfTemplate);
                       }
                     }}
@@ -1485,6 +1590,7 @@ export default function SettingsPage() {
                 )}
               </>
             )}
+            <SaveButton isSaving={gstInvoice.isSaving} onClick={saveGstInvoice} />
           </TemplateCard>
 
           <TemplateCard icon={<Icon name="heart" size={15} color={brand.accent} />} title="Wishlist Reminder">
@@ -1509,6 +1615,7 @@ export default function SettingsPage() {
               </button>
             </div>
             <TestResult fetcherData={testWishlistFetcher.data} intent="sendTestWishlistWhatsapp" />
+            <SaveButton isSaving={wishlistReminder.isSaving} onClick={saveWishlistReminder} />
           </TemplateCard>
         </div>
 
@@ -1546,6 +1653,7 @@ export default function SettingsPage() {
             <br />
             <code>https://shubh-gems-customizer-app.onrender.com/public/interakt-webhook</code>
           </Explain>
+          <SaveButton isSaving={whatsappAdvanced.isSaving} onClick={saveWhatsappAdvanced} />
         </ServiceCard>
 
         <ServiceCard icon={<Icon name="mail" size={19} color={brand.accent} />} title="Email sending (Gmail)" status={data.serviceStatus.gmail}>
@@ -1559,6 +1667,7 @@ export default function SettingsPage() {
 
           <SecretField id="gmailAppPassword" label="App Password" fieldName="gmailAppPassword" isSet={data.gmailAppPasswordSet} value={gmailAppPassword} onChange={setGmailAppPassword} placeholder="16-character App Password" />
           {!data.gmailUser && data.envFallback.gmailUser && <p style={hintStyle}>Currently falling back to the GMAIL_USER env var on Render.</p>}
+          <SaveButton isSaving={gmailSave.isSaving} onClick={saveGmail} />
         </ServiceCard>
 
         <ServiceCard icon={<Icon name="sheets" size={19} color={brand.success} />} title="Google Sheets mirror (optional)" status={data.serviceStatus.sheets}>
@@ -1598,6 +1707,7 @@ export default function SettingsPage() {
 
           <label style={labelStyle} htmlFor="sheetId">Spreadsheet ID</label>
           <input id="sheetId" style={fieldStyle} type="text" value={sheetId} onChange={(e) => setSheetId(e.target.value)} placeholder="the long ID in the Sheet's URL" />
+          <SaveButton isSaving={googleSheetsSave.isSaving} onClick={saveGoogleSheets} />
         </ServiceCard>
 
         <ServiceCard icon={<Icon name="pin" size={19} color={brand.danger} />} title="Location Autocomplete (Google Places)" status={data.serviceStatus.places}>
@@ -1624,14 +1734,9 @@ export default function SettingsPage() {
             placeholder="from Google Cloud Console → Credentials"
             envFallbackHint={data.envFallback.googlePlacesApiKey ? "Currently falling back to the GOOGLE_PLACES_API_KEY env var on Render." : null}
           />
+          <SaveButton isSaving={googlePlacesSave.isSaving} onClick={saveGooglePlaces} />
         </ServiceCard>
-
-        <div style={{ margin: "24px 0" }}>
-          <button type="submit" disabled={isSaving} style={{ ...primaryBtn, opacity: isSaving ? 0.7 : 1, cursor: isSaving ? "default" : "pointer" }}>
-            {isSaving ? "Saving…" : "Save settings"}
-          </button>
-        </div>
-      </form>
+      </div>
 
       <Card>
         <h2 style={{ fontSize: "14px", fontWeight: 700, margin: "0 0 8px", color: brand.ink }}>Where this data goes</h2>

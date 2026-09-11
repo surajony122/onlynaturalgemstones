@@ -434,9 +434,11 @@ export function RowMenu({ items }) {
           padding: "3px 9px",
           borderRadius: "8px",
           lineHeight: 1,
+          display: "inline-flex",
+          alignItems: "center",
         }}
       >
-        ⋯
+        <Icon name="more-horizontal" size={16} color="currentColor" />
       </button>
       {open && (
         <div
