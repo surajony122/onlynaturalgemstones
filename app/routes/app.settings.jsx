@@ -32,7 +32,7 @@ import {
 import { FALLBACK_LOGO_URL } from "../utils/astroAdvice.server";
 import { sendGemRecommendationWhatsApp, getOrCreateInteraktCampaignId, sendOrderProcessingWhatsApp, sendWishlistWhatsApp } from "../utils/interakt.server";
 import { checkGmail, checkGoogleSheets, checkInterakt, checkGooglePlaces } from "../utils/serviceHealth.server";
-import { getOrderProcessingEmailTemplate, ORDER_PROCESSING_EMAIL_PLACEHOLDERS } from "../utils/orderProcessingEmail.server";
+import { getOrderProcessingEmailTemplate, ORDER_PROCESSING_EMAIL_PLACEHOLDERS, getOrderProcessingEmailSubject } from "../utils/orderProcessingEmail.server";
 import { getOrderInvoiceTemplate, ORDER_INVOICE_PLACEHOLDERS, DEFAULT_INVOICE_NUMBER_PREFIX, getInvoiceEmailTemplate, ORDER_INVOICE_EMAIL_PLACEHOLDERS, fetchShopSellerInfo } from "../utils/orderInvoice.server";
 import { brand, Icon, Card, PageHeader, PageIn } from "../components/table-kit";
 import { useToast } from "../components/toast";
@@ -104,6 +104,10 @@ export const loader = async ({ request }) => {
     orderProcessingEmailTemplate: row?.orderProcessingEmailTemplate || "",
     defaultOrderProcessingEmailTemplate: getOrderProcessingEmailTemplate({}),
     orderProcessingEmailPlaceholders: ORDER_PROCESSING_EMAIL_PLACEHOLDERS,
+    // Same "blank means use the default" convention as the template
+    // itself -- see getOrderProcessingEmailSubject's own comment.
+    orderProcessingEmailSubject: row?.orderProcessingEmailSubject || "",
+    defaultOrderProcessingEmailSubject: getOrderProcessingEmailSubject({}),
     invoiceGstin: row?.invoiceGstin || "",
     invoiceSellerLegalName: row?.invoiceSellerLegalName || "",
     invoiceSellerAddress: row?.invoiceSellerAddress || "",
@@ -302,6 +306,7 @@ export const action = async ({ request }) => {
     interaktWishlistTemplateName: formData.get("interaktWishlistTemplateName")?.trim() || "",
     orderProcessingTriggerTag: formData.get("orderProcessingTriggerTag")?.trim() || "",
     orderProcessingEmailTemplate: formData.get("orderProcessingEmailTemplate")?.trim() || "",
+    orderProcessingEmailSubject: formData.get("orderProcessingEmailSubject")?.trim() || "",
     whatsappIntervalValue: formData.get("whatsappIntervalValue")?.trim() || "",
     whatsappIntervalUnit: formData.get("whatsappIntervalUnit")?.trim() || "",
     interaktWebhookSecret,
@@ -365,19 +370,47 @@ function StatusBadge({ status }) {
 
 // One visual "card" per external service — icon + title on the left,
 // live connection badge on the right, so at a glance you can tell which
-// services are actually working without reading a single field. Purely
-// a layout wrapper; doesn't change any field behavior.
-function ServiceCard({ icon, title, status, children }) {
+// services are actually working without reading a single field.
+//
+// Collapsible by default (per explicit request -- the page had grown
+// too long with every section always fully expanded): the header row is
+// itself the toggle, so a section's icon/title/status stays visible and
+// scannable even collapsed, and its own fields only render once opened.
+// `defaultOpen` lets a specific call site start expanded when that
+// makes sense (e.g. the one thing most merchants land here to edit);
+// every other section defaults closed.
+function ServiceCard({ icon, title, status, children, defaultOpen = false }) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
     <Card padding="0" style={{ marginBottom: "16px", overflow: "hidden" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", padding: "14px 18px", background: brand.panel, borderBottom: `1px solid ${brand.divider}` }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "10px",
+          width: "100%",
+          padding: "14px 18px",
+          background: brand.panel,
+          border: "none",
+          borderBottom: open ? `1px solid ${brand.divider}` : "none",
+          cursor: "pointer",
+          textAlign: "left",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
           {icon}
           <span style={{ fontSize: "14px", fontWeight: 700, color: brand.ink }}>{title}</span>
         </div>
-        <StatusBadge status={status} />
-      </div>
-      <div style={{ padding: "18px" }}>{children}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
+          <StatusBadge status={status} />
+          <Icon name={open ? "chevron-up" : "chevron-down"} size={15} color={brand.muted} />
+        </div>
+      </button>
+      {open && <div style={{ padding: "18px" }}>{children}</div>}
     </Card>
   );
 }
@@ -393,26 +426,46 @@ function TestResult({ fetcherData, intent }) {
   );
 }
 
-// Lighter-weight card for the three individual WhatsApp templates —
+// Lighter-weight card for the individual WhatsApp/email templates —
 // visually one notch below a full ServiceCard (no connection badge of
-// its own, since all three share the WhatsApp card's single Connected/
-// Failing status above them), so three of these read as "one connection,
-// three templates" instead of three more independent-looking services.
-function NumberBadge({ n }) {
+// its own, since they all share the WhatsApp card's single Connected/
+// Failing status above them), so these read as "one connection, several
+// templates" instead of each looking like its own independent service.
+// Each now gets a real topical SVG icon (see call sites) rather than the
+// plain numbered circle this used to show -- per explicit request.
+//
+// Collapsible by default (same reasoning as ServiceCard above): these
+// nest inside the "WhatsApp (Interakt)" ServiceCard, and having all of
+// Gem Recommendation / Order Processing (WhatsApp + Email) / GST Tax
+// Invoice / Wishlist Reminder fully expanded at once was most of why
+// the page read as too long.
+function TemplateCard({ icon, title, children, defaultOpen = false }) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "18px", height: "18px", borderRadius: "50%", background: brand.accentTint, color: brand.accent, fontSize: "11px", fontWeight: 700 }}>
-      {n}
-    </span>
-  );
-}
-
-function TemplateCard({ icon, title, children }) {
-  return (
-    <div style={{ background: brand.panel, border: `1px solid ${brand.divider}`, borderRadius: "12px", padding: "16px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13.5px", fontWeight: 700, color: brand.ink, marginBottom: "10px" }}>
-        {icon} {title}
-      </div>
-      {children}
+    <div style={{ background: brand.panel, border: `1px solid ${brand.divider}`, borderRadius: "12px", overflow: "hidden" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "8px",
+          width: "100%",
+          padding: "14px 16px",
+          border: "none",
+          background: "transparent",
+          cursor: "pointer",
+          textAlign: "left",
+        }}
+      >
+        <span style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13.5px", fontWeight: 700, color: brand.ink, minWidth: 0 }}>
+          {icon} {title}
+        </span>
+        <Icon name={open ? "chevron-up" : "chevron-down"} size={14} color={brand.muted} style={{ flexShrink: 0 }} />
+      </button>
+      {open && <div style={{ padding: "0 16px 16px" }}>{children}</div>}
     </div>
   );
 }
@@ -692,6 +745,11 @@ export default function SettingsPage() {
   const [orderProcessingEmailTemplate, setOrderProcessingEmailTemplate] = useState(
     data.orderProcessingEmailTemplate || data.defaultOrderProcessingEmailTemplate
   );
+  // Same "show the real default, not a blank box" reasoning as the
+  // template above.
+  const [orderProcessingEmailSubject, setOrderProcessingEmailSubject] = useState(
+    data.orderProcessingEmailSubject || data.defaultOrderProcessingEmailSubject
+  );
   const [showEmailPreview, setShowEmailPreview] = useState(false);
   const [interaktWishlistTemplateName, setInteraktWishlistTemplateName] = useState(data.interaktWishlistTemplateName);
   const [testPhone, setTestPhone] = useState("");
@@ -836,6 +894,9 @@ export default function SettingsPage() {
           orderProcessingEmailTemplate.replace(/\r\n/g, "\n") === data.defaultOrderProcessingEmailTemplate.replace(/\r\n/g, "\n")
             ? ""
             : orderProcessingEmailTemplate,
+        // Same "don't freeze today's default into the DB" reasoning as
+        // the template above.
+        orderProcessingEmailSubject: orderProcessingEmailSubject === data.defaultOrderProcessingEmailSubject ? "" : orderProcessingEmailSubject,
         interaktWishlistTemplateName,
         whatsappIntervalValue,
         whatsappIntervalUnit,
@@ -939,7 +1000,7 @@ export default function SettingsPage() {
         <GroupBanner>💬 Message templates — one card per WhatsApp message</GroupBanner>
 
         <div style={{ display: "grid", gap: "14px", marginBottom: "16px" }}>
-          <TemplateCard icon={<NumberBadge n={1} />} title="Gem Recommendation">
+          <TemplateCard icon={<Icon name="diamond" size={15} color={brand.accent} />} title="Gem Recommendation">
             <label style={labelStyle} htmlFor="interaktTemplateName">Template name</label>
             <input
               id="interaktTemplateName"
@@ -959,7 +1020,7 @@ export default function SettingsPage() {
             <TestResult fetcherData={testFetcher.data} intent="sendTestWhatsapp" />
           </TemplateCard>
 
-          <TemplateCard icon={<NumberBadge n={2} />} title="Order Processing">
+          <TemplateCard icon={<Icon name="package" size={15} color={brand.accent} />} title="Order Processing">
             <p style={{ ...hintStyle, marginTop: 0 }}>
               Sends once per order, the first time it's <strong>tagged</strong> with the trigger tag below.
             </p>
@@ -996,6 +1057,32 @@ export default function SettingsPage() {
               Sends alongside the WhatsApp message above, to the same order. Edit the raw HTML below, or leave it
               as-is to keep using the built-in design.
             </p>
+            <label style={labelStyle} htmlFor="orderProcessingEmailSubject">Email subject</label>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "6px" }}>
+              <input
+                id="orderProcessingEmailSubject"
+                style={{ ...fieldStyle, marginBottom: 0 }}
+                type="text"
+                value={orderProcessingEmailSubject}
+                onChange={(e) => setOrderProcessingEmailSubject(e.target.value)}
+                placeholder={data.defaultOrderProcessingEmailSubject}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm("Reset the subject to the built-in default? This discards your current edit (not saved until you click Save settings).")) {
+                    setOrderProcessingEmailSubject(data.defaultOrderProcessingEmailSubject);
+                  }
+                }}
+                style={{ ...secondaryBtn, padding: "9px 14px", fontSize: "12.5px", whiteSpace: "nowrap" }}
+              >
+                Reset
+              </button>
+            </div>
+            <p style={hintStyle}>
+              Supports the same placeholders as the HTML below, e.g.{" "}
+              <code style={{ background: brand.panel, padding: "1px 5px", borderRadius: "4px" }}>{"{{order_number}}"}</code>.
+            </p>
             <Explain summary="ℹ️ Available placeholders (substituted automatically when the email actually sends)">
               <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "12px", color: brand.muted, lineHeight: 1.8 }}>
                 {data.orderProcessingEmailPlaceholders.map((p) => (
@@ -1031,7 +1118,10 @@ export default function SettingsPage() {
             {showEmailPreview && (
               <div style={{ marginTop: "10px", border: `1px solid ${brand.border}`, borderRadius: "10px", overflow: "hidden" }}>
                 <div style={{ padding: "6px 10px", background: brand.panel, borderBottom: `1px solid ${brand.divider}`, fontSize: "11px", color: brand.muted }}>
-                  Preview with sample data — this reflects what's in the box above right now, even if unsaved.
+                  Preview with sample data — this reflects what's in the boxes above right now, even if unsaved.
+                </div>
+                <div style={{ padding: "8px 10px", borderBottom: `1px solid ${brand.divider}`, fontSize: "12.5px" }}>
+                  <strong>Subject:</strong> {renderEmailPreview(orderProcessingEmailSubject)}
                 </div>
                 <iframe title="Order processing email preview" srcDoc={renderEmailPreview(orderProcessingEmailTemplate)} style={{ width: "100%", height: "500px", border: "none", display: "block" }} />
               </div>
@@ -1391,7 +1481,7 @@ export default function SettingsPage() {
             )}
           </TemplateCard>
 
-          <TemplateCard icon={<NumberBadge n={3} />} title="Wishlist Reminder">
+          <TemplateCard icon={<Icon name="heart" size={15} color={brand.accent} />} title="Wishlist Reminder">
             <p style={{ ...hintStyle, marginTop: 0 }}>
               Sends alongside the wishlist reminder email, on the timing set below. Per-lead status on{" "}
               <a href="/app/wishlist-leads" style={{ color: brand.accent }}>Wishlist Leads</a>.

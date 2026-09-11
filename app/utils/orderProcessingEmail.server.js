@@ -803,6 +803,22 @@ export function getOrderProcessingEmailTemplate(settings) {
   return (settings && settings.orderProcessingEmailTemplate) || getDefaultOrderProcessingEmailTemplate();
 }
 
+// Same "blank means use this" convention as the template default above,
+// and the same {{token}} substitution (see renderOrderProcessingEmailTemplate)
+// -- {{order_number}} is the one most merchants will actually want here,
+// but any placeholder from ORDER_PROCESSING_EMAIL_PLACEHOLDERS works
+// since it's rendered through the exact same function as the HTML body.
+export const DEFAULT_ORDER_PROCESSING_EMAIL_SUBJECT = "Your Order {{order_number}} Is Being Processed";
+
+/** Resolves which subject line actually gets sent -- same
+ * saved-value-wins-otherwise-default pattern as
+ * getOrderProcessingEmailTemplate() above, kept as its own function for
+ * the same reason: the Settings page's preview and the real send path
+ * must never see different answers. */
+export function getOrderProcessingEmailSubject(settings) {
+  return (settings && settings.orderProcessingEmailSubject) || DEFAULT_ORDER_PROCESSING_EMAIL_SUBJECT;
+}
+
 /** Plain {{token}} substitution -- deliberately not a templating
  * engine (no conditionals/loops): every value this template needs is
  * always available by the time this runs (getShopFooterInfo always
@@ -850,16 +866,25 @@ export async function sendOrderProcessingEmail(admin, settings, payload) {
   const shopInfo = await getShopFooterInfo(admin);
   const orderStatusUrl = payload?.order_status_url || shopInfo.url;
 
+  // The HTML body needs every value HTML-escaped (it's substituted
+  // straight into markup); the subject line is a plain SMTP header, not
+  // HTML, so it must use the RAW values instead -- reusing the escaped
+  // set here would literally show "&amp;" in a customer's inbox for any
+  // shop/order name containing "&". Same underlying data, two separate
+  // vars objects for the two different contexts.
+  const rawVars = {
+    customer_first_name: firstName,
+    order_number: orderNumber,
+    order_status_url: orderStatusUrl,
+    shop_name: shopInfo.name,
+    shop_url: shopInfo.url,
+    shop_email: shopInfo.email,
+    shop_logo_url: shopInfo.logoUrl,
+  };
+  const htmlVars = Object.fromEntries(Object.entries(rawVars).map(([key, value]) => [key, esc(value)]));
   const template = getOrderProcessingEmailTemplate(settings);
-  const html = renderOrderProcessingEmailTemplate(template, {
-    customer_first_name: esc(firstName),
-    order_number: esc(orderNumber),
-    order_status_url: esc(orderStatusUrl),
-    shop_name: esc(shopInfo.name),
-    shop_url: esc(shopInfo.url),
-    shop_email: esc(shopInfo.email),
-    shop_logo_url: esc(shopInfo.logoUrl),
-  });
+  const html = renderOrderProcessingEmailTemplate(template, htmlVars);
+  const subject = renderOrderProcessingEmailTemplate(getOrderProcessingEmailSubject(settings), rawVars);
 
   const text =
     `Hello ${firstName},\n\n` +
@@ -881,7 +906,7 @@ export async function sendOrderProcessingEmail(admin, settings, payload) {
   await transporter.sendMail({
     from: `"${shopInfo.name}" <${settings.gmailUser}>`,
     to: email,
-    subject: `Your Order ${orderNumber} Is Being Processed`,
+    subject,
     text,
     html,
   });

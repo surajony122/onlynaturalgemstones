@@ -415,6 +415,12 @@ model AppSettings {
   // renderOrderProcessingEmailTemplate() in orderProcessingEmail.server.js
   // for the full list.
   orderProcessingEmailTemplate   String?
+  // Editable subject line for the order-processing email above -- same
+  // "blank means use the built-in default" convention as the template
+  // itself (see DEFAULT_ORDER_PROCESSING_EMAIL_SUBJECT in
+  // orderProcessingEmail.server.js). Supports the same {{order_number}}
+  // placeholder the template does, substituted the same way.
+  orderProcessingEmailSubject    String?
   // GST tax invoice settings — see app/utils/orderInvoice.server.js and
   // the order-page "Send Invoice" admin action extension
   // (extensions/order-invoice-action). GSTIN/legal name/address entered
