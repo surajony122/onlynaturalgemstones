@@ -55,83 +55,466 @@ function getDefaultOrderProcessingEmailTemplate() {
 <head>
   <title>Your order is being processed</title>
   <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-  <meta name="viewport" content="width=device-width">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
   <style type="text/css">
-    body { margin: 0; padding: 0; width: 100%; background-color: #ffffff; font-family: Arial, Helvetica, sans-serif; color: #4f5965; }
-    table { border-spacing: 0; border-collapse: collapse; }
-    img { border: 0; display: block; }
-    .email-wrapper { width: 100%; background-color: #ffffff; }
-    .email-container { width: 100%; max-width: 500px; margin: 0 auto; background-color: #ffffff; }
-    .logo-section { padding: 35px 20px 30px; text-align: center; }
-    .logo-section img { max-width: 200px; width: auto; height: auto; margin: 0 auto; }
-    .logo-text { margin: 0; font-size: 30px; font-weight: normal; color: #a76642; }
-    .divider-cell { padding-left: 18px; padding-right: 18px; }
-    .divider { height: 1px; background-color: #b9b9b9; width: 100%; font-size: 1px; line-height: 1px; }
-    .content-section { padding: 30px 20px 20px; font-size: 17px; line-height: 1.6; color: #4f5965; }
-    .content-inner { width: 100%; max-width: 620px; margin: 0 auto; }
-    .content-section p { margin-top: 0; margin-bottom: 18px; }
-    .order-number { font-weight: bold; color: #3d4652; }
-    .button-container { margin-top: 8px; margin-bottom: 10px; }
-    .email-button { display: inline-block; background-color: #8C7A4E; color: #ffffff !important; text-decoration: none !important; padding: 10px 20px; font-size: 15px; font-weight: 400; border-radius: 3px; margin-right: 10px; margin-bottom: 5px; }
-    .secondary-button { background-color: #ffffff; color: #8C7A4E !important; border: 1px solid #8C7A4E; }
-    .footer-section { padding: 15px 18px 20px; text-align: center; color: #4f5965; }
-    .footer-title { margin: 0 0 6px; font-size: 16px; line-height: 1.5; color: #4f5965; }
-    .address { margin: 0 0 12px; font-size: 14px; line-height: 1.6; color: #000000 !important; text-decoration: none !important; font-weight: normal; }
-    .address, .address span, .address a, .address a:link, .address a:visited { color: #000000 !important; text-decoration: none !important; border-bottom: none !important; }
-    .contact-table { width: 100%; max-width: 600px; margin: 0 auto; table-layout: fixed; }
-    .contact-item { width: 50%; padding: 6px 5px; text-align: center; vertical-align: middle; font-size: 14px; }
-    .single-contact-item { padding: 6px 5px; text-align: center; vertical-align: middle; font-size: 14px; }
-    .contact-link { color: #000 !important; text-decoration: none !important; white-space: nowrap; }
-    .contact-icon { font-size: 17px; vertical-align: middle; color: #000; }
-    @media only screen and (max-width: 600px) {
-      .logo-section { padding-top: 25px; padding-bottom: 25px; }
-      .logo-section img { max-width: 200px; }
-      .content-section { padding: 25px 20px 15px; font-size: 16px; }
-      .content-inner { max-width: 100%; }
-      .contact-item, .single-contact-item { font-size: 11px; padding: 6px 2px; }
-      .email-button { padding: 11px 16px; font-size: 14px; }
+
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      background-color: #f3f2ef;
+      font-family: Arial, Helvetica, sans-serif;
+      color: #4f5965;
     }
+
+    table {
+      border-spacing: 0;
+      border-collapse: collapse;
+    }
+
+    img {
+      border: 0;
+      display: block;
+    }
+
+    a {
+      text-decoration: none;
+    }
+
+    /* ==============================
+       PAGE
+    ============================== */
+
+    .email-wrapper {
+      width: 100%;
+      background-color: #f3f2ef;
+    }
+
+    .page-padding {
+      padding: 32px 0;
+    }
+
+    /* ==============================
+       EMAIL CONTAINER
+    ============================== */
+
+    .email-container {
+      width: 500px;
+      max-width: 500px;
+      background-color: #ffffff;
+      border-radius: 0 0 12px 12px;
+      overflow: hidden;
+    }
+
+    /* ==============================
+       HEADER
+    ============================== */
+
+    .logo-section {
+      padding: 28px 20px 25px;
+      text-align: center;
+      background-color: #fffcf3;
+      border-top: 5px solid #8c7a4e;
+    }
+
+    .logo-section img {
+      max-width: 100px;
+      width: auto;
+      height: auto;
+      margin: 0 auto;
+    }
+
+    .logo-text {
+      margin: 0;
+      font-size: 30px;
+      font-weight: normal;
+      color: #a76642;
+    }
+
+    /* ==============================
+       DIVIDER
+    ============================== */
+
+    .divider-cell {
+      padding-left: 0;
+      padding-right: 0;
+    }
+
+    .divider {
+      height: 1px;
+      background-color: #d5d0c8;
+      width: 100%;
+      font-size: 1px;
+      line-height: 1px;
+    }
+
+    /* ==============================
+       MAIN CONTENT
+    ============================== */
+
+    .content-section {
+      padding: 30px 28px 25px;
+      font-size: 15px;
+      line-height: 1.6;
+      color: #4f5965;
+      background-color: #ffffff;
+    }
+
+    .content-inner {
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    .content-section p {
+      margin-top: 0;
+      margin-bottom: 18px;
+    }
+
+    .order-number {
+      font-weight: bold;
+      color: #3d4652;
+    }
+
+    /* ==============================
+       BUTTONS
+    ============================== */
+
+    .button-table {
+      width: 100%;
+      margin-top: 20px;
+      margin-bottom: 10px;
+    }
+
+    .button-cell {
+      width: 50%;
+      vertical-align: middle;
+    }
+
+    .button-gap {
+      width: 8px;
+      min-width: 8px;
+      font-size: 1px;
+      line-height: 1px;
+    }
+
+    .email-button {
+      display: block;
+      width: 100%;
+      box-sizing: border-box;
+      text-align: center;
+      background-color: #8c7a4e;
+      color: #ffffff !important;
+      padding: 11px 5px;
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 16px;
+      border-radius: 3px;
+      white-space: nowrap;
+      text-decoration: none !important;
+    }
+
+    .secondary-button {
+      background-color: #ffffff;
+      color: #8c7a4e !important;
+      border: 1px solid #8c7a4e;
+      padding: 10px 5px;
+    }
+
+    /* ==============================
+       FOOTER
+    ============================== */
+
+    .footer-section {
+      padding: 14px 18px 16px;
+      text-align: center;
+      color: #4f5965;
+      background-color: #fffcf3;
+    }
+
+    .footer-title {
+      margin: 0 0 8px;
+      font-size: 14px;
+      line-height: 1.45;
+      color: #4f5965;
+    }
+
+    .address {
+      margin: 0 0 10px;
+      font-size: 13px;
+      line-height: 1.45;
+      color: #333333 !important;
+    }
+
+    .address a {
+      color: #333333 !important;
+      text-decoration: none !important;
+    }
+
+    /* ==============================
+       CONTACT INFORMATION
+    ============================== */
+
+    .contact-table {
+      width: 100%;
+      margin: 0 auto;
+      table-layout: fixed;
+    }
+
+    .website-row {
+      padding-bottom: 8px;
+    }
+
+    .contact-item {
+      width: 50%;
+      padding: 3px 2px;
+      text-align: center;
+      vertical-align: middle;
+      font-size: 13px;
+      line-height: 18px;
+    }
+
+    .single-contact-item {
+      padding: 3px 2px;
+      text-align: center;
+      vertical-align: middle;
+      font-size: 13px;
+      line-height: 18px;
+    }
+
+    .contact-link {
+      color: #333333 !important;
+      text-decoration: none !important;
+      white-space: nowrap;
+    }
+
+    .contact-icon {
+      width: 18px;
+      height: 18px;
+      display: block;
+    }
+
+    /* ==============================
+       MOBILE
+    ============================== */
+
+    @media only screen and (max-width: 600px) {
+
+      .page-padding {
+        padding: 0 !important;
+      }
+
+      .email-container {
+        width: 100% !important;
+        max-width: 100% !important;
+        border-radius: 0 !important;
+      }
+
+      .logo-section {
+        padding: 22px 15px !important;
+      }
+
+      .logo-section img {
+        max-width: 100px !important;
+      }
+
+      .content-section {
+        padding: 24px 20px 18px !important;
+        font-size: 16px !important;
+      }
+
+      /* BUTTONS STAY IN ONE ROW */
+
+      .button-table {
+        width: 100% !important;
+        margin-top: 18px !important;
+        margin-bottom: 10px !important;
+      }
+
+      .button-gap {
+        width: 8px !important;
+        min-width: 8px !important;
+      }
+
+      .email-button {
+        font-size: 13px !important;
+        line-height: 16px !important;
+        padding: 10px 3px !important;
+      }
+
+      .secondary-button {
+        padding: 9px 3px !important;
+      }
+
+      /* COMPACT FOOTER */
+
+      .footer-section {
+        padding: 12px 12px 14px !important;
+      }
+
+      .footer-title {
+        font-size: 14px !important;
+        line-height: 1.4 !important;
+        margin-bottom: 7px !important;
+      }
+
+      .address {
+        font-size: 13px !important;
+        line-height: 1.4 !important;
+        margin-bottom: 8px !important;
+      }
+
+      .website-row {
+        padding-bottom: 6px !important;
+      }
+
+      .contact-item,
+      .single-contact-item {
+        padding: 3px 1px !important;
+        font-size: 13px !important;
+      }
+
+      .contact-link {
+        white-space: nowrap !important;
+      }
+
+    }
+
   </style>
 </head>
+
 <body>
-  <table class="email-wrapper" width="100%" cellpadding="0" cellspacing="0" border="0">
+
+  <table
+    class="email-wrapper"
+    width="100%"
+    cellpadding="0"
+    cellspacing="0"
+    border="0"
+  >
+
     <tr>
-      <td align="center">
-        <table class="email-container" width="100%" cellpadding="0" cellspacing="0" border="0">
+
+      <td class="page-padding" align="center">
+
+        <table
+          class="email-container"
+          width="500"
+          cellpadding="0"
+          cellspacing="0"
+          border="0"
+        >
+
+          <!-- HEADER -->
 
           <tr>
             <td class="logo-section">
-              <img src="{{shop_logo_url}}" alt="{{shop_name}}" width="200">
+
+              <img
+                src="{{shop_logo_url}}"
+                alt="{{shop_name}}"
+                width="100"
+              >
+
             </td>
           </tr>
+
+          <!-- DIVIDER -->
 
           <tr>
             <td class="divider-cell">
               <div class="divider">&nbsp;</div>
             </td>
           </tr>
+
+          <!-- MAIN CONTENT -->
 
           <tr>
             <td class="content-section">
+
               <div class="content-inner">
+
                 <p>Hello {{customer_first_name}},</p>
+
                 <p>
                   Your order number
                   <span class="order-number">{{order_number}}</span>
-                  has been updated to: <strong>Order under Processing</strong>
+                  has been updated to:
+                  <strong>Order under Processing</strong>
                 </p>
-                <p>Once your order is shipped, We will send an email with details to track your order.</p>
-                <p>For more queries, Please feel free to contact us.</p>
 
-                <div class="button-container">
-                  <a href="{{order_status_url}}" class="email-button">View Your Order</a>
-                  <a href="{{shop_url}}" class="email-button secondary-button">Visit Our Store</a>
-                </div>
+                <p>
+                  You will receive tracking details once your order is shipped from our end.
 
-                <p style="margin-top: 0; margin-bottom: 0;">Best Wishes &amp; Regards!</p>
+                </p>
+
+                <p>
+                  For more queries, Please feel free to contact us.
+                </p>
+
+                <!-- BUTTONS -->
+
+                <table
+                  class="button-table"
+                  width="100%"
+                  cellpadding="0"
+                  cellspacing="0"
+                  border="0"
+                >
+
+                  <tr>
+
+                    <!-- VIEW ORDER -->
+
+                    <td
+                      class="button-cell"
+                      width="50%"
+                    >
+
+                      <a
+                        href="{{order_status_url}}"
+                        class="email-button"
+                      >
+                        View Your Order
+                      </a>
+
+                    </td>
+
+                    <!-- BUTTON GAP -->
+
+                    <td
+                      class="button-gap"
+                      width="8"
+                    >
+                      &nbsp;
+                    </td>
+
+                    <!-- VISIT STORE -->
+
+                    <td
+                      class="button-cell"
+                      width="50%"
+                    >
+
+                      <a
+                        href="{{shop_url}}"
+                        class="email-button secondary-button"
+                      >
+                        Visit Our Store
+                      </a>
+
+                    </td>
+
+                  </tr>
+
+                </table>
+
               </div>
+
             </td>
           </tr>
+
+          <!-- DIVIDER -->
 
           <tr>
             <td class="divider-cell">
@@ -139,77 +522,274 @@ function getDefaultOrderProcessingEmailTemplate() {
             </td>
           </tr>
 
+          <!-- FOOTER -->
+
           <tr>
             <td class="footer-section">
-              <p class="footer-title">Thanks for choosing {{shop_name}} from the House of ONG.</p>
+
+              <p class="footer-title">
+                Thanks for choosing {{shop_name}} from the House of ONG.
+              </p>
 
               <p class="address">
+
                 <a href="https://maps.app.goo.gl/vffRkrDyMiM9q895A">
                   L-75-76, Lajpat Nagar 2, New Delhi - Delhi - 110024, India
                 </a>
+
               </p>
 
-              <table class="contact-table" width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td class="single-contact-item" align="center">
-                    <table cellpadding="0" cellspacing="0" border="0" align="center">
-                      <tr>
-                        <td valign="middle" style="padding-right: 6px;"><span class="contact-icon">&#9678;</span></td>
-                        <td valign="middle"><a href="{{shop_url}}" class="contact-link">onlynaturalgemstones.com</a></td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-              </table>
+              <!-- WEBSITE -->
 
-              <table class="contact-table" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <table
+                class="contact-table"
+                width="100%"
+                cellpadding="0"
+                cellspacing="0"
+                border="0"
+              >
+
                 <tr>
-                  <td class="contact-item" align="center">
-                    <table cellpadding="0" cellspacing="0" border="0" align="center">
+
+                  <td
+                    class="single-contact-item website-row"
+                    align="center"
+                  >
+
+                    <table
+                      cellpadding="0"
+                      cellspacing="0"
+                      border="0"
+                      align="center"
+                    >
+
                       <tr>
-                        <td valign="middle" style="padding-right: 6px;">
-                          <a href="https://wa.me/919310400152">
-                            <img src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/whatsapp-svg-icon.svg?v=1787318358" alt="WhatsApp" width="18" height="18" style="display:block; width:18px; height:18px; border:0;">
+
+                        <td
+                          valign="middle"
+                          style="padding-right:6px;"
+                        >
+
+                          <img
+                            src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/website.png?v=1788870868"
+                            alt="Website"
+                            width="18"
+                            height="18"
+                            class="contact-icon"
+                          >
+
+                        </td>
+
+                        <td valign="middle">
+
+                          <a
+                            href="{{shop_url}}"
+                            class="contact-link"
+                          >
+                            onlynaturalgemstones.com
                           </a>
+
                         </td>
-                        <td valign="middle"><a href="https://wa.me/919310400152" class="contact-link">+91-9310-400-152</a></td>
+
                       </tr>
+
                     </table>
+
                   </td>
-                  <td class="contact-item" align="center">
-                    <table cellpadding="0" cellspacing="0" border="0" align="center">
-                      <tr>
-                        <td valign="middle" style="padding-right: 6px;">
-                          <img src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/phone.png?v=1788597346" alt="Call" width="18" height="18" style="display:block; width:18px; height:18px; border:0;">
-                        </td>
-                        <td valign="middle"><a href="tel:+918010555111" class="contact-link">+91-8010-555-111</a></td>
-                      </tr>
-                    </table>
-                  </td>
+
                 </tr>
+
               </table>
 
-              <table class="contact-table" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <!-- WHATSAPP AND PHONE -->
+
+              <table
+                class="contact-table"
+                width="100%"
+                cellpadding="0"
+                cellspacing="0"
+                border="0"
+              >
+
                 <tr>
-                  <td class="single-contact-item" align="center">
-                    <table cellpadding="0" cellspacing="0" border="0" align="center">
+
+                  <!-- WHATSAPP -->
+
+                  <td
+                    class="contact-item"
+                    align="center"
+                  >
+
+                    <table
+                      cellpadding="0"
+                      cellspacing="0"
+                      border="0"
+                      align="center"
+                    >
+
                       <tr>
-                        <td valign="middle" style="padding-right: 6px;">
-                          <img src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/Email.png?v=1788596216" alt="Email" width="18" height="18" style="display:block; width:auto; height:18px; border:0;">
+
+                        <td
+                          valign="middle"
+                          style="padding-right:5px;"
+                        >
+
+                          <a href="https://wa.me/919310400152">
+
+                            <img
+                              src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/whatsapp-svg-icon.svg?v=1787318358"
+                              alt="WhatsApp"
+                              width="18"
+                              height="18"
+                              class="contact-icon"
+                            >
+
+                          </a>
+
                         </td>
-                        <td valign="middle"><a href="mailto:{{shop_email}}" class="contact-link">{{shop_email}}</a></td>
+
+                        <td valign="middle">
+
+                          <a
+                            href="https://wa.me/919310400152"
+                            class="contact-link"
+                          >
+                            +91-9310-400-152
+                          </a>
+
+                        </td>
+
                       </tr>
+
                     </table>
+
                   </td>
+
+                  <!-- PHONE -->
+
+                  <td
+                    class="contact-item"
+                    align="center"
+                  >
+
+                    <table
+                      cellpadding="0"
+                      cellspacing="0"
+                      border="0"
+                      align="center"
+                    >
+
+                      <tr>
+
+                        <td
+                          valign="middle"
+                          style="padding-right:5px;"
+                        >
+
+                          <img
+                            src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/phone.png?v=1788597346"
+                            alt="Phone"
+                            width="18"
+                            height="18"
+                            class="contact-icon"
+                          >
+
+                        </td>
+
+                        <td valign="middle">
+
+                          <a
+                            href="tel:+918010555111"
+                            class="contact-link"
+                          >
+                            +91-8010-555-111
+                          </a>
+
+                        </td>
+
+                      </tr>
+
+                    </table>
+
+                  </td>
+
                 </tr>
+
               </table>
+
+              <!-- EMAIL -->
+
+              <table
+                class="contact-table"
+                width="100%"
+                cellpadding="0"
+                cellspacing="0"
+                border="0"
+              >
+
+                <tr>
+
+                  <td
+                    class="single-contact-item"
+                    align="center"
+                  >
+
+                    <table
+                      cellpadding="0"
+                      cellspacing="0"
+                      border="0"
+                      align="center"
+                    >
+
+                      <tr>
+
+                        <td
+                          valign="middle"
+                          style="padding-right:6px;"
+                        >
+
+                          <img
+                            src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/Email.png?v=1788596216"
+                            alt="Email"
+                            width="18"
+                            height="18"
+                            class="contact-icon"
+                          >
+
+                        </td>
+
+                        <td valign="middle">
+
+                          <a
+                            href="mailto:{{shop_email}}"
+                            class="contact-link"
+                          >
+                            {{shop_email}}
+                          </a>
+
+                        </td>
+
+                      </tr>
+
+                    </table>
+
+                  </td>
+
+                </tr>
+
+              </table>
+
             </td>
           </tr>
 
         </table>
+
       </td>
+
     </tr>
+
   </table>
+
 </body>
 </html>`;
 }
