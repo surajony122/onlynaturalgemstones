@@ -23,25 +23,27 @@ services:
     # confirmed by the failure mode being a pure connection timeout, not
     # a rejected login). Paid plans don't have this restriction.
     plan: 0.5c-512mb
-    # The extra "mkdir -p ... && npx puppeteer browsers install chrome"
-    # step is required, not optional, even with PUPPETEER_CACHE_DIR set
-    # below -- confirmed live: with only the env var set (no explicit
-    # install step), the build still failed at runtime with "Could not
-    # find Chrome ... your cache path is incorrectly configured (which
-    # is: /opt/render/.cache/puppeteer)". Root cause (confirmed against
-    # Render's own community forum -- see
-    # https://community.render.com/t/puppeteer-fails-to-find-chromium-on-render/9920
-    # -- and Puppeteer's own troubleshooting docs): Render's build phase
-    # doesn't reliably carry `$HOME/.cache` forward into the runtime
-    # container, and puppeteer's own automatic "postinstall" download
-    # (triggered by plain `npm install`) doesn't reliably honor
-    # PUPPETEER_CACHE_DIR either -- so the postinstall hook can silently
-    # download Chrome to the WRONG place (or somewhere that doesn't
-    # survive into the running container) even though the env var is
-    # set correctly on both build and runtime. Running the browser
-    # install as its own explicit command forces it to actually write
-    # into $PUPPETEER_CACHE_DIR, which is the one thing the postinstall
-    # hook wasn't reliably doing.
+    # The "mkdir -p ... && npx puppeteer browsers install chrome" step is
+    # required, not optional -- confirmed live via the actual build log:
+    # it correctly downloaded chrome@148.0.7778.97 to
+    # $PUPPETEER_CACHE_DIR/chrome/linux-148.0.7778.97/chrome-linux64/chrome
+    # during THIS build. And yet the very next deploy's runtime still
+    # failed with "Could not find Chrome" at that exact same path --
+    # proving the file really was written correctly during build but did
+    # NOT survive into the running container. Root cause (confirmed
+    # against Render's own docs -- see
+    # https://render.com/docs/native-runtimes -- and multiple people
+    # hitting this identical failure, e.g.
+    # https://community.render.com/t/puppeteer-fails-to-find-chromium-on-render/9920):
+    # for Render's native Node runtime, ONLY `/opt/render/project/src`
+    # (this app's own source/deploy directory) is guaranteed to carry
+    # forward from the build phase into the running container -- anything
+    # written outside it, including the old `/opt/render/.cache`, is
+    # ephemeral build-container-only storage that gets thrown away before
+    # the service actually starts. Fixed by pointing PUPPETEER_CACHE_DIR
+    # (below) at a path INSIDE /opt/render/project/src instead, so the
+    # exact same Chrome download that already works during build now
+    # actually still exists when the service starts.
     buildCommand: npm install && mkdir -p $PUPPETEER_CACHE_DIR && npx puppeteer browsers install chrome && npx prisma generate && npx prisma migrate deploy && npm run build
     startCommand: npm run start
     envVars:
@@ -52,14 +54,16 @@ services:
       - key: NODE_VERSION
         value: 20.19.0
       # Puppeteer (invoice PDF generation, orderInvoice.server.js) --
-      # where Chrome gets installed at build time (see buildCommand's own
-      # comment above -- this env var alone was NOT enough to fix the
-      # real "Could not find Chrome" failure) and where Puppeteer looks
-      # for it again at runtime. Render env vars apply identically to the
-      # build and the running service, so this one value keeps both
-      # phases pointed at the same directory.
+      # MUST live under /opt/render/project/src (this app's own
+      # source/deploy directory, the one path Render's native Node
+      # runtime carries from build into the running container -- see
+      # buildCommand's own comment above for how this was confirmed).
+      # /opt/render/.cache (the previous value) sits outside that
+      # directory and is build-phase-only storage on Render -- Chrome
+      # downloaded there during build was confirmed gone by the time the
+      # service actually started.
       - key: PUPPETEER_CACHE_DIR
-        value: /opt/render/.cache/puppeteer
+        value: /opt/render/project/src/.cache/puppeteer
       # Set these manually in the Render dashboard after the app is
       # created in Dev Dashboard — see DEPLOYMENT.md.
       - key: SHOPIFY_API_KEY
