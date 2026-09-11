@@ -37,7 +37,10 @@ export const NAV_GROUPS = [
   },
   {
     label: "Orders",
-    items: [{ id: "invoices", href: "/app/invoices", label: "GST Invoices", icon: "tag" }],
+    items: [
+      { id: "invoices", href: "/app/invoices", label: "GST Invoices", icon: "tag" },
+      { id: "order-processing", href: "/app/order-processing", label: "Order Processing", icon: "message" },
+    ],
   },
   {
     label: "System",
