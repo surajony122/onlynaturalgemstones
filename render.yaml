@@ -23,7 +23,26 @@ services:
     # confirmed by the failure mode being a pure connection timeout, not
     # a rejected login). Paid plans don't have this restriction.
     plan: 0.5c-512mb
-    buildCommand: npm install && npx prisma generate && npx prisma migrate deploy && npm run build
+    # The extra "mkdir -p ... && npx puppeteer browsers install chrome"
+    # step is required, not optional, even with PUPPETEER_CACHE_DIR set
+    # below -- confirmed live: with only the env var set (no explicit
+    # install step), the build still failed at runtime with "Could not
+    # find Chrome ... your cache path is incorrectly configured (which
+    # is: /opt/render/.cache/puppeteer)". Root cause (confirmed against
+    # Render's own community forum -- see
+    # https://community.render.com/t/puppeteer-fails-to-find-chromium-on-render/9920
+    # -- and Puppeteer's own troubleshooting docs): Render's build phase
+    # doesn't reliably carry `$HOME/.cache` forward into the runtime
+    # container, and puppeteer's own automatic "postinstall" download
+    # (triggered by plain `npm install`) doesn't reliably honor
+    # PUPPETEER_CACHE_DIR either -- so the postinstall hook can silently
+    # download Chrome to the WRONG place (or somewhere that doesn't
+    # survive into the running container) even though the env var is
+    # set correctly on both build and runtime. Running the browser
+    # install as its own explicit command forces it to actually write
+    # into $PUPPETEER_CACHE_DIR, which is the one thing the postinstall
+    # hook wasn't reliably doing.
+    buildCommand: npm install && mkdir -p $PUPPETEER_CACHE_DIR && npx puppeteer browsers install chrome && npx prisma generate && npx prisma migrate deploy && npm run build
     startCommand: npm run start
     envVars:
       - key: DATABASE_URL
@@ -33,16 +52,12 @@ services:
       - key: NODE_VERSION
         value: 20.19.0
       # Puppeteer (invoice PDF generation, orderInvoice.server.js) --
-      # explicitly pins where its postinstall script downloads Chrome
-      # DURING THE BUILD to the exact same path Puppeteer looks for it
-      # in AT RUNTIME. Without this, the two can silently disagree on
-      # Render (a real, confirmed-live failure: "Could not find Chrome
-      # ... your cache path is incorrectly configured (which is:
-      # /opt/render/.cache/puppeteer)" -- the runtime container was
-      # already looking there, but the build's own install step wasn't
-      # necessarily writing to that same resolved path). Setting this
-      # one env var makes both phases agree, since Render env vars
-      # apply identically to the build and the running service.
+      # where Chrome gets installed at build time (see buildCommand's own
+      # comment above -- this env var alone was NOT enough to fix the
+      # real "Could not find Chrome" failure) and where Puppeteer looks
+      # for it again at runtime. Render env vars apply identically to the
+      # build and the running service, so this one value keeps both
+      # phases pointed at the same directory.
       - key: PUPPETEER_CACHE_DIR
         value: /opt/render/.cache/puppeteer
       # Set these manually in the Render dashboard after the app is
