@@ -138,7 +138,7 @@ function getDefaultOrderInvoiceTemplate() {
       </td>
     </tr>
     <tr>
-      <td style="${boxSides}padding:8px 0 0;">
+      <td style="${boxSides}padding:8px 10px 0;">
         <table style="width:100%;border-collapse:collapse;">
           {{info_block_rows}}
           <tr>
