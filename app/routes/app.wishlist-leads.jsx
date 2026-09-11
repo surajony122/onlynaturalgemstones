@@ -26,6 +26,7 @@ import {
   BulkActionsBar,
   MultiSelect,
   brand,
+  Icon,
   PageHeader,
   PageIn,
 } from "../components/table-kit";
@@ -441,8 +442,8 @@ export default function WishlistLeadsPage() {
         }
       />
 
-      <button type="button" onClick={() => revalidator.revalidate()} disabled={isRefreshing} style={{ ...smallBtn, marginBottom: "12px" }}>
-        {isRefreshing ? "Refreshing…" : "↻ Refresh"}
+      <button type="button" onClick={() => revalidator.revalidate()} disabled={isRefreshing} style={{ ...smallBtn, display: "inline-flex", alignItems: "center", gap: "6px", marginBottom: "12px" }}>
+        {isRefreshing ? "Refreshing…" : (<><Icon name="refresh" size={13} color="currentColor" /> Refresh</>)}
       </button>
       <p style={{ margin: "0 0 14px", fontSize: "12.5px", color: brand.muted }}>
         Most recent {PAGE_SIZE} wishlist syncs · emails don't send immediately — a customer gets one email once

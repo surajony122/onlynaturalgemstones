@@ -232,7 +232,7 @@ export default function Index() {
         <Card style={{ marginBottom: "20px", border: `2px solid ${brand.dangerLine}`, background: brand.dangerBg, display: "flex", justifyContent: "space-between", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "14.5px", fontWeight: 700, color: brand.danger, marginBottom: "6px" }}>
-              <Icon name="alert" size={16} color={brand.danger} />
+              <Icon name="alert-triangle" size={16} color={brand.danger} />
               {failingChecks.length === 1 ? "1 issue needs" : `${failingChecks.length} issues need`} your attention
             </div>
             <ul style={{ margin: 0, paddingLeft: "20px", color: brand.body, fontSize: "13px", lineHeight: 1.7 }}>
@@ -413,8 +413,8 @@ export default function Index() {
               <h2 style={{ fontSize: "15px", fontWeight: 700, margin: 0, color: brand.ink }}>Live Component Health Checks</h2>
               <p style={{ margin: "4px 0 0", color: brand.muted, fontSize: "13px" }}>Real-time verification of your product matrix, sales channels, and theme snippets.</p>
             </div>
-            <button onClick={handleRunDiagnostics} disabled={isChecking} style={{ padding: "8px 14px", borderRadius: "8px", border: `1px solid ${brand.border}`, background: brand.panel, fontWeight: 600, fontSize: "13px", cursor: "pointer", color: brand.body }}>
-              {isChecking ? "Scanning…" : "↻ Re-run Checks"}
+            <button onClick={handleRunDiagnostics} disabled={isChecking} style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "8px 14px", borderRadius: "8px", border: `1px solid ${brand.border}`, background: brand.panel, fontWeight: 600, fontSize: "13px", cursor: "pointer", color: brand.body }}>
+              {isChecking ? "Scanning…" : (<><Icon name="refresh" size={13} color="currentColor" /> Re-run Checks</>)}
             </button>
           </div>
 
@@ -461,15 +461,16 @@ export default function Index() {
               <h2 style={{ fontSize: "15px", fontWeight: 700, margin: 0, color: brand.ink, display: "flex", alignItems: "center", gap: "8px" }}>
                 <Icon name="activity" size={16} color={brand.ink} /> Active Issues Right Now
               </h2>
-              <button onClick={handleRunDiagnostics} disabled={isChecking} style={{ padding: "7px 12px", borderRadius: "8px", border: `1px solid ${brand.border}`, background: brand.panel, fontWeight: 600, fontSize: "12px", cursor: "pointer", color: brand.body }}>
-                {isChecking ? "Scanning…" : "↻ Re-check"}
+              <button onClick={handleRunDiagnostics} disabled={isChecking} style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "7px 12px", borderRadius: "8px", border: `1px solid ${brand.border}`, background: brand.panel, fontWeight: 600, fontSize: "12px", cursor: "pointer", color: brand.body }}>
+                {isChecking ? "Scanning…" : (<><Icon name="refresh" size={12} color="currentColor" /> Re-check</>)}
               </button>
             </div>
             <p style={{ margin: "4px 0 20px", color: brand.muted, fontSize: "13px" }}>Pulled live from the same {checks.length} checks as the Diagnostics tab — not a fixed list.</p>
 
             {failingChecks.length === 0 ? (
-              <div style={{ padding: "14px 16px", borderRadius: "10px", background: brand.successBg, border: `1px solid ${brand.successLine}`, color: brand.success, fontSize: "13px", fontWeight: 600 }}>
-                ✓ No active issues detected — all {checks.length} checks are passing.
+              <div style={{ display: "flex", alignItems: "center", gap: "7px", padding: "14px 16px", borderRadius: "10px", background: brand.successBg, border: `1px solid ${brand.successLine}`, color: brand.success, fontSize: "13px", fontWeight: 600 }}>
+                <Icon name="check-circle" size={15} color="currentColor" style={{ flexShrink: 0 }} />
+                No active issues detected — all {checks.length} checks are passing.
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>

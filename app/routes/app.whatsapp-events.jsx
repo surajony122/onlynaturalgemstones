@@ -678,8 +678,8 @@ export default function WhatsAppEventsPage() {
     <PageIn>
       <PageHeader title={`Messages & order notifications`} description="Delivered and read status comes straight from Interakt's webhook." />
 
-      <button type="button" onClick={() => revalidator.revalidate()} disabled={isRefreshing} style={{ ...smallBtn, marginBottom: "12px" }}>
-        {isRefreshing ? "Refreshing…" : "↻ Refresh"}
+      <button type="button" onClick={() => revalidator.revalidate()} disabled={isRefreshing} style={{ ...smallBtn, display: "inline-flex", alignItems: "center", gap: "6px", marginBottom: "12px" }}>
+        {isRefreshing ? "Refreshing…" : (<><Icon name="refresh" size={13} color="currentColor" /> Refresh</>)}
       </button>
       <p style={{ margin: "0 0 14px", fontSize: "12.5px", color: brand.muted }}>
         Real delivered/read status from Interakt's own webhook — Interakt has no API to fetch this, so nothing

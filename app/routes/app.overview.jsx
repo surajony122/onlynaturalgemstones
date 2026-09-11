@@ -94,7 +94,7 @@ function AttentionPanel({ attention }) {
   return (
     <div style={{ background: "#fff", border: `1px solid ${brand.dangerLine}`, borderRadius: "14px", boxShadow: brand.shadow, overflow: "hidden", marginBottom: "24px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: "9px", padding: "13px 20px", background: brand.dangerBg, borderBottom: `1px solid ${brand.dangerLine}` }}>
-        <Icon name="alert" size={15} color={brand.danger} />
+        <Icon name="alert-triangle" size={15} color={brand.danger} />
         <span style={{ fontSize: "13.5px", fontWeight: 700, color: brand.danger }}>Needs attention</span>
         <span style={{ fontSize: "12.5px", color: brand.muted }}>
           {attention.items.length} thing{attention.items.length === 1 ? "" : "s"} to look at

@@ -395,7 +395,7 @@ function Header({ pathname, healthy, attentionCount }) {
               textDecoration: "none",
             }}
           >
-            <Icon name="alert" size={13} color="currentColor" />
+            <Icon name="alert-triangle" size={13} color="currentColor" />
             {attentionCount} issue{attentionCount === 1 ? "" : "s"} need{attentionCount === 1 ? "s" : ""} you
           </Link>
         )}

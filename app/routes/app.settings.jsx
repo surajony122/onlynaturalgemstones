@@ -479,7 +479,10 @@ function TemplateCard({ icon, title, children, defaultOpen = false }) {
 function Explain({ summary, children, defaultOpen }) {
   return (
     <details open={defaultOpen || undefined} style={{ marginBottom: "14px" }}>
-      <summary style={{ cursor: "pointer", fontSize: "12.5px", fontWeight: 500, color: brand.muted, userSelect: "none" }}>{summary}</summary>
+      <summary style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: "6px", fontSize: "12.5px", fontWeight: 500, color: brand.muted, userSelect: "none" }}>
+        <Icon name="info" size={13} color={brand.muted} style={{ flexShrink: 0 }} />
+        {summary}
+      </summary>
       <div style={{ marginTop: "8px", fontSize: "13px", color: brand.body, lineHeight: 1.6 }}>{children}</div>
     </details>
   );
@@ -704,13 +707,16 @@ const hintStyle = { fontSize: "12px", color: brand.muted, marginTop: "-12px", ma
 const primaryBtn = { padding: "10px 18px", borderRadius: "9px", border: "none", background: brand.accent, color: "#fff", fontSize: "13px", fontWeight: 600, cursor: "pointer" };
 const secondaryBtn = { padding: "10px 18px", borderRadius: "9px", border: `1px solid ${brand.border}`, background: "#fff", color: brand.body, fontSize: "13px", fontWeight: 500, cursor: "pointer" };
 
-function GroupBanner({ children, tone = "neutral" }) {
+function GroupBanner({ children, tone = "neutral", icon }) {
   const styles =
     tone === "info"
       ? { background: brand.accentTint, borderColor: brand.accentLine, color: brand.heading }
       : { background: brand.panel, borderColor: brand.border, color: brand.body };
   return (
-    <div style={{ borderRadius: "10px", padding: "10px 14px", margin: "24px 0 12px", fontSize: "12.5px", fontWeight: 500, border: "1px solid transparent", ...styles }}>{children}</div>
+    <div style={{ display: "flex", alignItems: "center", gap: "7px", borderRadius: "10px", padding: "10px 14px", margin: "24px 0 12px", fontSize: "12.5px", fontWeight: 500, border: "1px solid transparent", ...styles }}>
+      {icon && <Icon name={icon} size={14} color="currentColor" style={{ flexShrink: 0 }} />}
+      {children}
+    </div>
   );
 }
 
@@ -947,7 +953,7 @@ export default function SettingsPage() {
             <Icon name="message" size={14} color={brand.success} /> <span style={{ fontSize: "12.5px", fontWeight: 500 }}>WhatsApp</span> <StatusBadge status={data.serviceStatus.interakt} />
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "7px", padding: "6px 12px", background: brand.panel, border: `1px solid ${brand.divider}`, borderRadius: "10px" }}>
-            <Icon name="sheet" size={14} color={brand.success} /> <span style={{ fontSize: "12.5px", fontWeight: 500 }}>Google Sheets</span> <StatusBadge status={data.serviceStatus.sheets} />
+            <Icon name="sheets" size={14} color={brand.success} /> <span style={{ fontSize: "12.5px", fontWeight: 500 }}>Google Sheets</span> <StatusBadge status={data.serviceStatus.sheets} />
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "7px", padding: "6px 12px", background: brand.panel, border: `1px solid ${brand.divider}`, borderRadius: "10px" }}>
             <Icon name="pin" size={14} color={brand.danger} /> <span style={{ fontSize: "12.5px", fontWeight: 500 }}>Google Places</span> <StatusBadge status={data.serviceStatus.places} />
@@ -956,11 +962,11 @@ export default function SettingsPage() {
       </Card>
 
       <form onSubmit={submit}>
-        <GroupBanner tone="info">⏱️ Message behavior — safe to change any time</GroupBanner>
+        <GroupBanner tone="info" icon="clock">Message behavior — safe to change any time</GroupBanner>
 
         <Card style={{ marginBottom: "16px" }}>
           <h2 style={{ fontSize: "14px", fontWeight: 700, margin: "0 0 10px", color: brand.ink }}>Wishlist email timing</h2>
-          <Explain summary="ℹ️ How this timing works">
+          <Explain summary="How this timing works">
             Hours to wait after a customer's <strong>last</strong> wishlist change before emailing them — each new
             change pushes this out again, so someone actively adding items all day gets one email once they've gone
             quiet, not one per add. See the <a href="/app/wishlist-leads" style={{ color: brand.accent }}>Wishlist Leads</a> page's
@@ -970,7 +976,7 @@ export default function SettingsPage() {
           <input id="wishlistInterval" style={{ ...fieldStyle, maxWidth: "120px" }} type="number" min="0" step="0.5" value={wishlistInterval} onChange={(e) => setWishlistInterval(e.target.value)} />
         </Card>
 
-        <GroupBanner>🔑 Connect your accounts — one-time technical setup</GroupBanner>
+        <GroupBanner icon="key">Connect your accounts — one-time technical setup</GroupBanner>
 
         <ServiceCard icon={<Icon name="message" size={19} color={brand.success} />} title="WhatsApp (Interakt)" status={data.serviceStatus.interakt}>
           <SecretField
@@ -984,7 +990,7 @@ export default function SettingsPage() {
             envFallbackHint={data.envFallback.interaktApiKey ? "Currently falling back to the INTERAKT_API_KEY env var on Render." : null}
           />
 
-          <Explain summary="ℹ️ Every template below needs Meta approval first">
+          <Explain summary="Every template below needs Meta approval first">
             One Interakt account powers all three templates below. Each needs its own template created and{" "}
             <strong>Meta-approved</strong> in Interakt (green dot, Catalog &amp; Templates → Templates Library)
             before it'll actually send.
@@ -997,7 +1003,7 @@ export default function SettingsPage() {
           )}
         </ServiceCard>
 
-        <GroupBanner>💬 Message templates — one card per WhatsApp message</GroupBanner>
+        <GroupBanner icon="message">Message templates — one card per WhatsApp message</GroupBanner>
 
         <div style={{ display: "grid", gap: "14px", marginBottom: "16px" }}>
           <TemplateCard icon={<Icon name="diamond" size={15} color={brand.accent} />} title="Gem Recommendation">
@@ -1083,7 +1089,7 @@ export default function SettingsPage() {
               Supports the same placeholders as the HTML below, e.g.{" "}
               <code style={{ background: brand.panel, padding: "1px 5px", borderRadius: "4px" }}>{"{{order_number}}"}</code>.
             </p>
-            <Explain summary="ℹ️ Available placeholders (substituted automatically when the email actually sends)">
+            <Explain summary="Available placeholders (substituted automatically when the email actually sends)">
               <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "12px", color: brand.muted, lineHeight: 1.8 }}>
                 {data.orderProcessingEmailPlaceholders.map((p) => (
                   <li key={p.token}>
@@ -1167,7 +1173,7 @@ export default function SettingsPage() {
                   The message the customer actually receives, with the invoice PDF attached. Pick a design below,
                   then edit its raw HTML freely — or leave it as-is to keep the built-in design.
                 </p>
-                <Explain summary="ℹ️ Available placeholders (substituted automatically when the invoice email sends)">
+                <Explain summary="Available placeholders (substituted automatically when the invoice email sends)">
                   <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "12px", color: brand.muted, lineHeight: 1.8 }}>
                     {data.orderInvoiceEmailPlaceholders.map((p) => (
                       <li key={p.token}>
@@ -1430,7 +1436,7 @@ export default function SettingsPage() {
                   Assigned once per order and never changes on resend, even if you edit the prefix afterward.
                 </p>
 
-                <Explain summary="ℹ️ Available placeholders (substituted automatically when the invoice is generated)">
+                <Explain summary="Available placeholders (substituted automatically when the invoice is generated)">
                   <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "12px", color: brand.muted, lineHeight: 1.8 }}>
                     {data.orderInvoicePlaceholders.map((p) => (
                       <li key={p.token}>
@@ -1516,7 +1522,7 @@ export default function SettingsPage() {
               <option value="days">Days</option>
             </select>
           </div>
-          <Explain summary="ℹ️ How the follow-up reminder works">
+          <Explain summary="How the follow-up reminder works">
             The first message always sends <strong>instantly</strong> on submission — this adds an optional SECOND
             message (same template, resent) after this much time. <strong>0</strong> turns follow-ups off. Needs an
             external scheduler hitting <code>/cron/whatsapp-queue?secret=…</code>, or use{" "}
@@ -1533,7 +1539,7 @@ export default function SettingsPage() {
             onChange={setInteraktWebhookSecret}
             placeholder="any secret string — pick one, match it in Interakt"
           />
-          <Explain summary="ℹ️ Where to register the webhook URL">
+          <Explain summary="Where to register the webhook URL">
             Interakt has no API to fetch campaign stats — register this URL in Interakt → Settings → Developer
             Setting → Webhooks (pick any secret, match it above) to see real sent/delivered/read status on{" "}
             <a href="/app/whatsapp-events" style={{ color: brand.accent }}>WhatsApp Events</a>:
@@ -1543,7 +1549,7 @@ export default function SettingsPage() {
         </ServiceCard>
 
         <ServiceCard icon={<Icon name="mail" size={19} color={brand.accent} />} title="Email sending (Gmail)" status={data.serviceStatus.gmail}>
-          <Explain summary="ℹ️ What this is for">
+          <Explain summary="What this is for">
             The account the gem-recommendation email sends from. Needs a Gmail App Password (Google account →
             Security → 2-Step Verification → App Passwords), not the account's real password.
           </Explain>
@@ -1555,8 +1561,8 @@ export default function SettingsPage() {
           {!data.gmailUser && data.envFallback.gmailUser && <p style={hintStyle}>Currently falling back to the GMAIL_USER env var on Render.</p>}
         </ServiceCard>
 
-        <ServiceCard icon={<Icon name="sheet" size={19} color={brand.success} />} title="Google Sheets mirror (optional)" status={data.serviceStatus.sheets}>
-          <Explain summary="ℹ️ What this is for, and which fields to use">
+        <ServiceCard icon={<Icon name="sheets" size={19} color={brand.success} />} title="Google Sheets mirror (optional)" status={data.serviceStatus.sheets}>
+          <Explain summary="What this is for, and which fields to use">
             Mirrors every lead/email-event row into a Google Sheet, in addition to this app's own database. Leave
             everything below blank to skip — nothing else depends on this.
             <br />
@@ -1595,7 +1601,7 @@ export default function SettingsPage() {
         </ServiceCard>
 
         <ServiceCard icon={<Icon name="pin" size={19} color={brand.danger} />} title="Location Autocomplete (Google Places)" status={data.serviceStatus.places}>
-          <Explain summary="ℹ️ What this is for, and how to get a key">
+          <Explain summary="What this is for, and how to get a key">
             Powers the city suggestions on the storefront's "Place of Birth" field (Personalised Pooja form). The
             key is only ever used server-side by this app — the theme calls our own endpoint, never Google
             directly, so the key never reaches the customer's browser. Leave blank to keep using the free

@@ -521,9 +521,9 @@ export default function AstroLeadsPage() {
         type="button"
         onClick={() => revalidator.revalidate()}
         disabled={isRefreshing}
-        style={{ ...smallBtn, marginBottom: "12px" }}
+        style={{ ...smallBtn, display: "inline-flex", alignItems: "center", gap: "6px", marginBottom: "12px" }}
       >
-        {isRefreshing ? "Refreshing…" : "↻ Refresh"}
+        {isRefreshing ? "Refreshing…" : (<><Icon name="refresh" size={13} color="currentColor" /> Refresh</>)}
       </button>
       <p style={{ margin: "0 0 14px", fontSize: "12.5px", color: brand.muted }}>
         Most recent {PAGE_SIZE} leads · "Opened" is best-effort (some mail clients pre-fetch/block tracking images)

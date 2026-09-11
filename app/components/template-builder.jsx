@@ -26,7 +26,7 @@
  * renders something instead of nothing.
  */
 import { useRef, useState } from "react";
-import { brand } from "./table-kit";
+import { brand, Icon } from "./table-kit";
 
 // ---- Block model -------------------------------------------------
 
@@ -205,7 +205,7 @@ function TableEditor({ block, onChange, tokens }) {
                 style={{ flex: 1, border: "none", borderRight: ci === row.length - 1 ? "none" : `1px solid ${brand.divider}`, padding: "6px 7px", fontSize: "11px", resize: "vertical", fontFamily: "inherit" }}
               />
             ))}
-            <button type="button" onClick={() => removeRow(ri)} title="Remove row" style={{ ...smallBtn, border: "none", color: brand.danger }}>✕</button>
+            <button type="button" onClick={() => removeRow(ri)} title="Remove row" style={{ ...smallBtn, border: "none", color: brand.danger, display: "inline-flex", alignItems: "center" }}><Icon name="x" size={13} color="currentColor" /></button>
           </div>
         ))}
       </div>
@@ -458,9 +458,9 @@ export function TemplateBuilder({ blocks, onChange, tokens, isPdf }) {
                 removeBlock(b.id);
               }}
               title="Delete block"
-              style={{ border: "none", background: "none", color: brand.danger, cursor: "pointer", fontSize: "13px", padding: "2px 4px" }}
+              style={{ display: "inline-flex", alignItems: "center", border: "none", background: "none", color: brand.danger, cursor: "pointer", fontSize: "13px", padding: "2px 4px" }}
             >
-              ✕
+              <Icon name="x" size={13} color="currentColor" />
             </button>
           </div>
         ))}

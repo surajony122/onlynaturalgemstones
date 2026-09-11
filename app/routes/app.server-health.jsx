@@ -203,10 +203,10 @@ export const loader = async ({ request }) => {
 // "Connected"/"Failing" pill means the same thing and looks the same
 // everywhere in this app.
 const STATUS_STYLE = {
-  true: { bg: brand.successBg, border: brand.successLine, color: brand.success, label: "✓ OK" },
-  false: { bg: brand.dangerBg, border: brand.dangerLine, color: brand.danger, label: "✕ FAILING" },
-  warn: { bg: brand.warnBg, border: brand.warnLine, color: brand.warn, label: "⚠ WARNING" },
-  none: { bg: brand.panel, border: brand.border, color: brand.muted, label: "○ Not configured" },
+  true: { bg: brand.successBg, border: brand.successLine, color: brand.success, icon: "check-circle", label: "OK" },
+  false: { bg: brand.dangerBg, border: brand.dangerLine, color: brand.danger, icon: "x-circle", label: "FAILING" },
+  warn: { bg: brand.warnBg, border: brand.warnLine, color: brand.warn, icon: "alert-triangle", label: "WARNING" },
+  none: { bg: brand.panel, border: brand.border, color: brand.muted, icon: null, label: "Not configured" },
 };
 
 function StatusPill({ ok, title }) {
@@ -218,6 +218,7 @@ function StatusPill({ ok, title }) {
       style={{
         display: "inline-flex",
         alignItems: "center",
+        gap: "5px",
         fontSize: "12px",
         fontWeight: 600,
         padding: "4px 11px",
@@ -228,6 +229,7 @@ function StatusPill({ ok, title }) {
         whiteSpace: "nowrap",
       }}
     >
+      {s.icon && <Icon name={s.icon} size={12} color={s.color} />}
       {s.label}
     </span>
   );
@@ -242,7 +244,10 @@ function ResultPill({ status }) {
 function Explain({ summary, children, defaultOpen }) {
   return (
     <details open={defaultOpen || undefined} style={{ marginBottom: "12px" }}>
-      <summary style={{ cursor: "pointer", fontSize: "12.5px", fontWeight: 500, color: brand.muted, userSelect: "none" }}>{summary}</summary>
+      <summary style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: "6px", fontSize: "12.5px", fontWeight: 500, color: brand.muted, userSelect: "none" }}>
+        <Icon name="info" size={13} color={brand.muted} style={{ flexShrink: 0 }} />
+        {summary}
+      </summary>
       <div style={{ marginTop: "8px", fontSize: "13px", color: brand.body, lineHeight: 1.6 }}>{children}</div>
     </details>
   );
@@ -336,7 +341,7 @@ export default function ServerHealthPage() {
       )}
 
       <SectionTitle>Webhook receipts (definitive)</SectionTitle>
-      <Explain summary="ℹ️ What this table is, and why it's the most trustworthy one on this page">
+      <Explain summary="What this table is, and why it's the most trustworthy one on this page">
         Every real hit this server has received on <code>/webhooks/orders/updated</code> — logged unconditionally,
         before anything else runs. Unlike the other checks below, an empty list here can only mean one thing:
         Shopify never actually called this endpoint. If it's empty even after a real order was marked "as in
@@ -371,7 +376,7 @@ export default function ServerHealthPage() {
       )}
 
       <SectionTitle>Registered webhooks</SectionTitle>
-      <Explain summary="ℹ️ Why this one is unreliable for managed/TOML webhooks — see receipts above instead">
+      <Explain summary="Why this one is unreliable for managed/TOML webhooks — see receipts above instead">
         Queries Shopify's classic <code>webhookSubscriptions</code> API — turns out this does NOT reflect
         TOML-declared "managed" webhooks (confirmed: it showed zero even for <code>orders/create</code>, which
         demonstrably works today). Kept for reference, but the "Webhook receipts" section above is the actual
@@ -403,7 +408,7 @@ export default function ServerHealthPage() {
       )}
 
       <SectionTitle>Order Processing WhatsApp notifications</SectionTitle>
-      <Explain summary="ℹ️ What counts as a row here, and what an empty list means">
+      <Explain summary="What counts as a row here, and what an empty list means">
         One row per order the webhook found IN_PROGRESS and attempted to notify — see{" "}
         <code>webhooks.orders.updated.jsx</code>. An EMPTY list here, after you've actually marked a real order "as
         in progress," is itself the diagnostic: it means the webhook either never fired from Shopify at all, or
@@ -439,7 +444,7 @@ export default function ServerHealthPage() {
       )}
 
       <SectionTitle>Order Processing Email notifications</SectionTitle>
-      <Explain summary="ℹ️ Why this exists, and what an empty list means">
+      <Explain summary="Why this exists, and what an empty list means">
         Shopify has no native "order processing/approved" email template to hook into (only Order
         confirmation/Shipping confirmation/Delivered/Cancelled), so this app sends it directly instead — same
         trigger as the WhatsApp table above, via the merchant's connected Gmail (Settings page). One row per order
@@ -477,15 +482,15 @@ export default function ServerHealthPage() {
 
       <SectionTitle>What each check means</SectionTitle>
       <Card>
-        <Explain summary="ℹ️ read_themes / read_products">
+        <Explain summary="read_themes / read_products">
           If either fails, the recommendation email still sends but falls back to a plain text header (no store
           logo/social links) or a gray box instead of a real collection image.
         </Explain>
-        <Explain summary="ℹ️ Google Sheets">
+        <Explain summary="Google Sheets">
           "Not configured" is expected and harmless if you're not using the Sheet mirror — leads/events still save
           to the database regardless.
         </Explain>
-        <Explain summary="ℹ️ Interakt">
+        <Explain summary="Interakt">
           This only confirms the Secret Key itself is valid — it can't confirm the WhatsApp template is
           Meta-approved (green dot in Interakt's Templates Library), since that's not something the API exposes a
           check for. Use the Settings page's "Send Test" button to confirm the full send path.
