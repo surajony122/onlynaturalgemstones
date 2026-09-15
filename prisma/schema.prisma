@@ -222,6 +222,29 @@ model OrderProcessingEmailNotification {
   @@unique([orderId, triggerKey])
 }
 
+// Send-history log for the Returns & Refunds page's two manual email
+// buttons (Send Return Email / Send Refund Email) -- app.returns-
+// refunds.jsx and orderReturnEmail.server.js. No unique constraint,
+// unlike OrderProcessingEmailNotification above: every send here is
+// already a deliberate manual action (there's no automatic trigger to
+// dedup against), so staff can send the same type again for the same
+// order as many times as they want -- each one just appends a new row.
+// The page reads back the MOST RECENT row per (orderId, type) to show
+// each button's own "last sent" status.
+model OrderReturnEmailNotification {
+  id         String   @id @default(cuid())
+  shop       String?
+  orderId    String
+  type       String // "return" (Return Received) or "refund" (Refund Processed)
+  orderName  String?
+  email      String?
+  amount     String? // refund amount as entered by staff, "refund" rows only
+  status     String? // same "OK: .../skipped: .../threw: ..." shape as elsewhere
+  notifiedAt DateTime @default(now())
+
+  @@index([orderId, type])
+}
+
 // Append-only, unconditional log of every orders/updated webhook receipt
 // — written as the VERY FIRST thing in webhooks.orders.updated.jsx,
 // before the "already notified" check or any GraphQL call. Exists
@@ -421,6 +444,17 @@ model AppSettings {
   // orderProcessingEmail.server.js). Supports the same {{order_number}}
   // placeholder the template does, substituted the same way.
   orderProcessingEmailSubject    String?
+  // "Return Received" and "Refund Processed" emails -- the manual
+  // counterpart to orderProcessingEmailTemplate above, sent one at a
+  // time by staff from the Returns & Refunds page (app.returns-
+  // refunds.jsx) rather than any automatic trigger. Same "blank means
+  // use the built-in default" convention, resolved the one place in
+  // orderReturnEmail.server.js so the Settings page's preview and the
+  // real send path can never drift apart.
+  returnReceivedEmailTemplate    String?
+  returnReceivedEmailSubject     String?
+  refundProcessedEmailTemplate   String?
+  refundProcessedEmailSubject    String?
   // GST tax invoice settings — see app/utils/orderInvoice.server.js and
   // the order-page "Send Invoice" admin action extension
   // (extensions/order-invoice-action). GSTIN/legal name/address entered

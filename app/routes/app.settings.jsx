@@ -33,6 +33,13 @@ import { FALLBACK_LOGO_URL } from "../utils/astroAdvice.server";
 import { sendGemRecommendationWhatsApp, getOrCreateInteraktCampaignId, sendOrderProcessingWhatsApp, sendWishlistWhatsApp } from "../utils/interakt.server";
 import { checkGmail, checkGoogleSheets, checkInterakt, checkGooglePlaces } from "../utils/serviceHealth.server";
 import { getOrderProcessingEmailTemplate, ORDER_PROCESSING_EMAIL_PLACEHOLDERS, getOrderProcessingEmailSubject } from "../utils/orderProcessingEmail.server";
+import {
+  getReturnReceivedEmailTemplate,
+  getReturnReceivedEmailSubject,
+  getRefundProcessedEmailTemplate,
+  getRefundProcessedEmailSubject,
+  ORDER_RETURN_EMAIL_PLACEHOLDERS,
+} from "../utils/orderReturnEmail.server";
 import { getOrderInvoiceTemplate, ORDER_INVOICE_PLACEHOLDERS, DEFAULT_INVOICE_NUMBER_PREFIX, getInvoiceEmailTemplate, ORDER_INVOICE_EMAIL_PLACEHOLDERS, fetchShopSellerInfo } from "../utils/orderInvoice.server";
 import { brand, Icon, Card, PageHeader, PageIn } from "../components/table-kit";
 import { useToast } from "../components/toast";
@@ -108,6 +115,20 @@ export const loader = async ({ request }) => {
     // itself -- see getOrderProcessingEmailSubject's own comment.
     orderProcessingEmailSubject: row?.orderProcessingEmailSubject || "",
     defaultOrderProcessingEmailSubject: getOrderProcessingEmailSubject({}),
+    // Same "blank means use the built-in default" convention as
+    // orderProcessingEmailTemplate/Subject above -- these two are the
+    // manual Return Received / Refund Processed emails sent from the
+    // Returns & Refunds page (app.returns-refunds.jsx), never
+    // automatically.
+    returnReceivedEmailTemplate: row?.returnReceivedEmailTemplate || "",
+    defaultReturnReceivedEmailTemplate: getReturnReceivedEmailTemplate({}),
+    returnReceivedEmailSubject: row?.returnReceivedEmailSubject || "",
+    defaultReturnReceivedEmailSubject: getReturnReceivedEmailSubject({}),
+    refundProcessedEmailTemplate: row?.refundProcessedEmailTemplate || "",
+    defaultRefundProcessedEmailTemplate: getRefundProcessedEmailTemplate({}),
+    refundProcessedEmailSubject: row?.refundProcessedEmailSubject || "",
+    defaultRefundProcessedEmailSubject: getRefundProcessedEmailSubject({}),
+    orderReturnEmailPlaceholders: ORDER_RETURN_EMAIL_PLACEHOLDERS,
     invoiceGstin: row?.invoiceGstin || "",
     invoiceSellerLegalName: row?.invoiceSellerLegalName || "",
     invoiceSellerAddress: row?.invoiceSellerAddress || "",
@@ -327,6 +348,22 @@ export const action = async ({ request }) => {
     await saveAppSettings(session.shop, {
       orderProcessingEmailTemplate: val("orderProcessingEmailTemplate"),
       orderProcessingEmailSubject: val("orderProcessingEmailSubject"),
+    });
+    return { intent, ok: true };
+  }
+
+  if (intent === "saveReturnReceivedEmail") {
+    await saveAppSettings(session.shop, {
+      returnReceivedEmailTemplate: val("returnReceivedEmailTemplate"),
+      returnReceivedEmailSubject: val("returnReceivedEmailSubject"),
+    });
+    return { intent, ok: true };
+  }
+
+  if (intent === "saveRefundProcessedEmail") {
+    await saveAppSettings(session.shop, {
+      refundProcessedEmailTemplate: val("refundProcessedEmailTemplate"),
+      refundProcessedEmailSubject: val("refundProcessedEmailSubject"),
     });
     return { intent, ok: true };
   }
@@ -661,6 +698,10 @@ const EMAIL_PREVIEW_SAMPLE_VALUES = {
   customer_first_name: "Suraj Kumar",
   order_number: "#1000031314",
   order_status_url: "https://onlynaturalgemstones.com/",
+  // Only actually used by the Refund Processed template's preview, but
+  // harmless to include for every preview -- a template that doesn't
+  // reference {{refund_amount}} just never substitutes it.
+  refund_amount: "₹18,500.00",
   shop_name: "Only Natural Gemstones",
   shop_url: "https://onlynaturalgemstones.com",
   shop_email: "info@onlynaturalgemstones.com",
@@ -866,6 +907,22 @@ export default function SettingsPage() {
     data.orderProcessingEmailSubject || data.defaultOrderProcessingEmailSubject
   );
   const [showEmailPreview, setShowEmailPreview] = useState(false);
+  // Same "show the real default, not a blank box" reasoning as
+  // orderProcessingEmailTemplate/Subject above.
+  const [returnReceivedEmailTemplate, setReturnReceivedEmailTemplate] = useState(
+    data.returnReceivedEmailTemplate || data.defaultReturnReceivedEmailTemplate
+  );
+  const [returnReceivedEmailSubject, setReturnReceivedEmailSubject] = useState(
+    data.returnReceivedEmailSubject || data.defaultReturnReceivedEmailSubject
+  );
+  const [showReturnEmailPreview, setShowReturnEmailPreview] = useState(false);
+  const [refundProcessedEmailTemplate, setRefundProcessedEmailTemplate] = useState(
+    data.refundProcessedEmailTemplate || data.defaultRefundProcessedEmailTemplate
+  );
+  const [refundProcessedEmailSubject, setRefundProcessedEmailSubject] = useState(
+    data.refundProcessedEmailSubject || data.defaultRefundProcessedEmailSubject
+  );
+  const [showRefundEmailPreview, setShowRefundEmailPreview] = useState(false);
   const [interaktWishlistTemplateName, setInteraktWishlistTemplateName] = useState(data.interaktWishlistTemplateName);
   const [testPhone, setTestPhone] = useState("");
   const [testOrderPhone, setTestOrderPhone] = useState("");
@@ -908,6 +965,8 @@ export default function SettingsPage() {
   const gemRecommendation = useSectionSave("saveGemRecommendation", toast);
   const orderProcessingWhatsapp = useSectionSave("saveOrderProcessingWhatsapp", toast);
   const orderProcessingEmail = useSectionSave("saveOrderProcessingEmail", toast);
+  const returnReceivedEmail = useSectionSave("saveReturnReceivedEmail", toast);
+  const refundProcessedEmail = useSectionSave("saveRefundProcessedEmail", toast);
   const gstInvoice = useSectionSave("saveGstInvoice", toast);
   const wishlistReminder = useSectionSave("saveWishlistReminder", toast);
   const whatsappAdvanced = useSectionSave("saveWhatsappAdvanced", toast, () => setInteraktWebhookSecret(""));
@@ -1000,6 +1059,24 @@ export default function SettingsPage() {
           ? ""
           : orderProcessingEmailTemplate,
       orderProcessingEmailSubject: orderProcessingEmailSubject === data.defaultOrderProcessingEmailSubject ? "" : orderProcessingEmailSubject,
+    });
+  // Same "don't freeze today's default as a permanent customization"
+  // reasoning as saveOrderProcessingEmail above.
+  const saveReturnReceivedEmail = () =>
+    returnReceivedEmail.save({
+      returnReceivedEmailTemplate:
+        returnReceivedEmailTemplate.replace(/\r\n/g, "\n") === data.defaultReturnReceivedEmailTemplate.replace(/\r\n/g, "\n")
+          ? ""
+          : returnReceivedEmailTemplate,
+      returnReceivedEmailSubject: returnReceivedEmailSubject === data.defaultReturnReceivedEmailSubject ? "" : returnReceivedEmailSubject,
+    });
+  const saveRefundProcessedEmail = () =>
+    refundProcessedEmail.save({
+      refundProcessedEmailTemplate:
+        refundProcessedEmailTemplate.replace(/\r\n/g, "\n") === data.defaultRefundProcessedEmailTemplate.replace(/\r\n/g, "\n")
+          ? ""
+          : refundProcessedEmailTemplate,
+      refundProcessedEmailSubject: refundProcessedEmailSubject === data.defaultRefundProcessedEmailSubject ? "" : refundProcessedEmailSubject,
     });
   const saveGstInvoice = () =>
     gstInvoice.save({
@@ -1237,6 +1314,163 @@ export default function SettingsPage() {
               </div>
             )}
             <SaveButton isSaving={orderProcessingEmail.isSaving} onClick={saveOrderProcessingEmail} />
+          </TemplateCard>
+
+          <TemplateCard icon={<Icon name="return" size={15} color={brand.accent} />} title="Return Received Email">
+            <p style={{ ...hintStyle, marginTop: 0 }}>
+              Sent manually, one order at a time, from the{" "}
+              <a href="/app/returns-refunds" style={{ color: brand.accent }}>Returns &amp; Refunds</a> page — never
+              automatically. Edit the raw HTML below, or leave it as-is to keep using the built-in design.
+            </p>
+            <label style={labelStyle} htmlFor="returnReceivedEmailSubject">Email subject</label>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "6px" }}>
+              <input
+                id="returnReceivedEmailSubject"
+                style={{ ...fieldStyle, marginBottom: 0 }}
+                type="text"
+                value={returnReceivedEmailSubject}
+                onChange={(e) => setReturnReceivedEmailSubject(e.target.value)}
+                placeholder={data.defaultReturnReceivedEmailSubject}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm("Reset the subject to the built-in default? This discards your current edit (not saved until you click Save below).")) {
+                    setReturnReceivedEmailSubject(data.defaultReturnReceivedEmailSubject);
+                  }
+                }}
+                style={{ ...secondaryBtn, padding: "9px 14px", fontSize: "12.5px", whiteSpace: "nowrap" }}
+              >
+                Reset
+              </button>
+            </div>
+            <p style={hintStyle}>
+              Supports the same placeholders as the HTML below, e.g.{" "}
+              <code style={{ background: brand.panel, padding: "1px 5px", borderRadius: "4px" }}>{"{{order_number}}"}</code>.
+            </p>
+            <Explain summary="Available placeholders (substituted automatically when the email actually sends)">
+              <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "12px", color: brand.muted, lineHeight: 1.8 }}>
+                {data.orderReturnEmailPlaceholders.map((p) => (
+                  <li key={p.token}>
+                    <code style={{ background: brand.panel, padding: "1px 5px", borderRadius: "4px" }}>{`{{${p.token}}}`}</code> — {p.description}
+                  </li>
+                ))}
+              </ul>
+            </Explain>
+            <textarea
+              id="returnReceivedEmailTemplate"
+              value={returnReceivedEmailTemplate}
+              onChange={(e) => setReturnReceivedEmailTemplate(e.target.value)}
+              spellCheck={false}
+              style={{ ...fieldStyle, fontFamily: brand.mono, fontSize: "11.5px", lineHeight: 1.5, height: "260px", resize: "vertical", whiteSpace: "pre" }}
+            />
+            <div style={{ display: "flex", gap: "8px", marginTop: "6px", flexWrap: "wrap" }}>
+              <button type="button" onClick={() => setShowReturnEmailPreview((v) => !v)} style={{ ...primaryBtn, padding: "8px 16px", fontSize: "12.5px" }}>
+                {showReturnEmailPreview ? "Hide preview" : "Preview"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm("Reset to the built-in default template? This discards your current edits (not saved until you click Save below).")) {
+                    setReturnReceivedEmailTemplate(data.defaultReturnReceivedEmailTemplate);
+                  }
+                }}
+                style={{ ...secondaryBtn, padding: "8px 16px", fontSize: "12.5px" }}
+              >
+                Reset to default
+              </button>
+            </div>
+            {showReturnEmailPreview && (
+              <div style={{ marginTop: "10px", border: `1px solid ${brand.border}`, borderRadius: "10px", overflow: "hidden" }}>
+                <div style={{ padding: "6px 10px", background: brand.panel, borderBottom: `1px solid ${brand.divider}`, fontSize: "11px", color: brand.muted }}>
+                  Preview with sample data — this reflects what's in the boxes above right now, even if unsaved.
+                </div>
+                <div style={{ padding: "8px 10px", borderBottom: `1px solid ${brand.divider}`, fontSize: "12.5px" }}>
+                  <strong>Subject:</strong> {renderEmailPreview(returnReceivedEmailSubject)}
+                </div>
+                <iframe title="Return received email preview" srcDoc={renderEmailPreview(returnReceivedEmailTemplate)} style={{ width: "100%", height: "500px", border: "none", display: "block" }} />
+              </div>
+            )}
+            <SaveButton isSaving={returnReceivedEmail.isSaving} onClick={saveReturnReceivedEmail} />
+          </TemplateCard>
+
+          <TemplateCard icon={<Icon name="banknote" size={15} color={brand.accent} />} title="Refund Processed Email">
+            <p style={{ ...hintStyle, marginTop: 0 }}>
+              Also sent manually from the{" "}
+              <a href="/app/returns-refunds" style={{ color: brand.accent }}>Returns &amp; Refunds</a> page, alongside a
+              refund amount staff type in there — this is separate from Shopify's own native "Order refund" email, sent
+              automatically when a refund is processed from Admin unless that notification is turned off there.
+            </p>
+            <label style={labelStyle} htmlFor="refundProcessedEmailSubject">Email subject</label>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "6px" }}>
+              <input
+                id="refundProcessedEmailSubject"
+                style={{ ...fieldStyle, marginBottom: 0 }}
+                type="text"
+                value={refundProcessedEmailSubject}
+                onChange={(e) => setRefundProcessedEmailSubject(e.target.value)}
+                placeholder={data.defaultRefundProcessedEmailSubject}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm("Reset the subject to the built-in default? This discards your current edit (not saved until you click Save below).")) {
+                    setRefundProcessedEmailSubject(data.defaultRefundProcessedEmailSubject);
+                  }
+                }}
+                style={{ ...secondaryBtn, padding: "9px 14px", fontSize: "12.5px", whiteSpace: "nowrap" }}
+              >
+                Reset
+              </button>
+            </div>
+            <p style={hintStyle}>
+              Supports the same placeholders as the HTML below, e.g.{" "}
+              <code style={{ background: brand.panel, padding: "1px 5px", borderRadius: "4px" }}>{"{{refund_amount}}"}</code>.
+            </p>
+            <Explain summary="Available placeholders (substituted automatically when the email actually sends)">
+              <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "12px", color: brand.muted, lineHeight: 1.8 }}>
+                {data.orderReturnEmailPlaceholders.map((p) => (
+                  <li key={p.token}>
+                    <code style={{ background: brand.panel, padding: "1px 5px", borderRadius: "4px" }}>{`{{${p.token}}}`}</code> — {p.description}
+                  </li>
+                ))}
+              </ul>
+            </Explain>
+            <textarea
+              id="refundProcessedEmailTemplate"
+              value={refundProcessedEmailTemplate}
+              onChange={(e) => setRefundProcessedEmailTemplate(e.target.value)}
+              spellCheck={false}
+              style={{ ...fieldStyle, fontFamily: brand.mono, fontSize: "11.5px", lineHeight: 1.5, height: "260px", resize: "vertical", whiteSpace: "pre" }}
+            />
+            <div style={{ display: "flex", gap: "8px", marginTop: "6px", flexWrap: "wrap" }}>
+              <button type="button" onClick={() => setShowRefundEmailPreview((v) => !v)} style={{ ...primaryBtn, padding: "8px 16px", fontSize: "12.5px" }}>
+                {showRefundEmailPreview ? "Hide preview" : "Preview"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm("Reset to the built-in default template? This discards your current edits (not saved until you click Save below).")) {
+                    setRefundProcessedEmailTemplate(data.defaultRefundProcessedEmailTemplate);
+                  }
+                }}
+                style={{ ...secondaryBtn, padding: "8px 16px", fontSize: "12.5px" }}
+              >
+                Reset to default
+              </button>
+            </div>
+            {showRefundEmailPreview && (
+              <div style={{ marginTop: "10px", border: `1px solid ${brand.border}`, borderRadius: "10px", overflow: "hidden" }}>
+                <div style={{ padding: "6px 10px", background: brand.panel, borderBottom: `1px solid ${brand.divider}`, fontSize: "11px", color: brand.muted }}>
+                  Preview with sample data — this reflects what's in the boxes above right now, even if unsaved.
+                </div>
+                <div style={{ padding: "8px 10px", borderBottom: `1px solid ${brand.divider}`, fontSize: "12.5px" }}>
+                  <strong>Subject:</strong> {renderEmailPreview(refundProcessedEmailSubject)}
+                </div>
+                <iframe title="Refund processed email preview" srcDoc={renderEmailPreview(refundProcessedEmailTemplate)} style={{ width: "100%", height: "500px", border: "none", display: "block" }} />
+              </div>
+            )}
+            <SaveButton isSaving={refundProcessedEmail.isSaving} onClick={saveRefundProcessedEmail} />
           </TemplateCard>
 
           <TemplateCard icon={<Icon name="tag" size={15} color={brand.accent} />} title="GST Tax Invoice">
