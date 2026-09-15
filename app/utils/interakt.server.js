@@ -25,7 +25,14 @@
  *  https://www.interakt.shop/resource-center/how-to-send-whatsapp-templates-using-apis-webhooks/
  *  https://www.interakt.shop/resource-center/api-campaign-on-whatsapp/
  */
-import { DEFAULT_INTERAKT_TEMPLATE_NAME, DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME, DEFAULT_INTERAKT_WISHLIST_TEMPLATE_NAME, setInteraktCampaign } from "./appSettings.server";
+import {
+  DEFAULT_INTERAKT_TEMPLATE_NAME,
+  DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME,
+  DEFAULT_INTERAKT_WISHLIST_TEMPLATE_NAME,
+  DEFAULT_INTERAKT_RETURN_TEMPLATE_NAME,
+  DEFAULT_INTERAKT_REFUND_TEMPLATE_NAME,
+  setInteraktCampaign,
+} from "./appSettings.server";
 
 const INTERAKT_MESSAGE_URL = "https://api.interakt.ai/v1/public/message/";
 const INTERAKT_CREATE_CAMPAIGN_URL = "https://api.interakt.ai/v1/public/create-campaign/";
@@ -454,6 +461,111 @@ export async function sendOrderProcessingWhatsApp(settings, { phone, firstName, 
   // anywhere in Interakt's own UI; surfacing the full raw response here
   // too so the same investigation is possible for order-processing sends
   // without needing Render logs.
+  return result.status + (result.rawResponse ? " | raw: " + result.rawResponse : "");
+}
+
+/**
+ * Sends the "Return Received" WhatsApp message — sent manually, one
+ * order at a time, from the Returns & Refunds page
+ * (app.returns-refunds.jsx). No automatic trigger.
+ *
+ * ---- TEMPLATE (as configured in Interakt) ----
+ * Name: must match AppSettings.interaktReturnTemplateName /
+ *       INTERAKT_RETURN_TEMPLATE_NAME env var / DEFAULT_INTERAKT_RETURN_TEMPLATE_NAME.
+ * Category: Utility. Language: English. Header: Image (store logo).
+ *
+ * Body:
+ *   Hello {{1}},
+ *
+ *   We've received the item you returned for Order No. #{{2}}. Our
+ *   team is inspecting it now, and your refund will be processed
+ *   shortly.
+ *
+ *   Regards,
+ *   Only Natural Gemstones
+ *   from the House of ONG
+ *
+ * ---- Variable mapping ----
+ *  {{1}} customer first name
+ *  {{2}} order number (Shopify's own order.name, minus the leading "#")
+ */
+export async function sendReturnReceivedWhatsApp(settings, { phone, firstName, orderNumber, headerImageUrl }) {
+  if (!settings.interaktApiKey) {
+    return "skipped: Interakt API key not set (Settings page or INTERAKT_API_KEY env var)";
+  }
+  const split = splitPhoneForInterakt(phone);
+  if (!split) {
+    return "skipped: no usable phone number on this order";
+  }
+
+  const templateName = settings.interaktReturnTemplateName || DEFAULT_INTERAKT_RETURN_TEMPLATE_NAME;
+  const payload = {
+    countryCode: split.countryCode,
+    phoneNumber: split.phoneNumber,
+    type: "Template",
+    callbackData: "return-" + orderNumber,
+    template: {
+      name: templateName,
+      languageCode: "en",
+      headerValues: [headerImageUrl || FALLBACK_HEADER_IMAGE_URL],
+      bodyValues: [firstName || "there", String(orderNumber || "").replace(/^#/, "")],
+    },
+  };
+
+  const result = await sendInteraktTemplateMessage(settings.interaktApiKey, payload);
+  return result.status + (result.rawResponse ? " | raw: " + result.rawResponse : "");
+}
+
+/**
+ * Sends the "Refund Processed" WhatsApp message — same manual-only
+ * pattern as sendReturnReceivedWhatsApp above, with an extra refund
+ * amount variable (whatever staff typed in on the Returns & Refunds
+ * page — not read from Shopify's own refund records).
+ *
+ * ---- TEMPLATE (as configured in Interakt) ----
+ * Name: must match AppSettings.interaktRefundTemplateName /
+ *       INTERAKT_REFUND_TEMPLATE_NAME env var / DEFAULT_INTERAKT_REFUND_TEMPLATE_NAME.
+ * Category: Utility. Language: English. Header: Image (store logo).
+ *
+ * Body:
+ *   Hello {{1}},
+ *
+ *   Your refund of {{2}} for Order No. #{{3}} has been processed. It
+ *   may take 5-7 business days to reflect in your account.
+ *
+ *   Regards,
+ *   Only Natural Gemstones
+ *   from the House of ONG
+ *
+ * ---- Variable mapping ----
+ *  {{1}} customer first name
+ *  {{2}} refund amount, as entered by staff (e.g. "₹1,500.00")
+ *  {{3}} order number (Shopify's own order.name, minus the leading "#")
+ */
+export async function sendRefundProcessedWhatsApp(settings, { phone, firstName, orderNumber, refundAmount, headerImageUrl }) {
+  if (!settings.interaktApiKey) {
+    return "skipped: Interakt API key not set (Settings page or INTERAKT_API_KEY env var)";
+  }
+  const split = splitPhoneForInterakt(phone);
+  if (!split) {
+    return "skipped: no usable phone number on this order";
+  }
+
+  const templateName = settings.interaktRefundTemplateName || DEFAULT_INTERAKT_REFUND_TEMPLATE_NAME;
+  const payload = {
+    countryCode: split.countryCode,
+    phoneNumber: split.phoneNumber,
+    type: "Template",
+    callbackData: "refund-" + orderNumber,
+    template: {
+      name: templateName,
+      languageCode: "en",
+      headerValues: [headerImageUrl || FALLBACK_HEADER_IMAGE_URL],
+      bodyValues: [firstName || "there", refundAmount || "—", String(orderNumber || "").replace(/^#/, "")],
+    },
+  };
+
+  const result = await sendInteraktTemplateMessage(settings.interaktApiKey, payload);
   return result.status + (result.rawResponse ? " | raw: " + result.rawResponse : "");
 }
 

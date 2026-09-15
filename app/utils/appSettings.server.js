@@ -21,6 +21,8 @@ const FIELDS = [
   "interaktTemplateName",
   "interaktOrderTemplateName",
   "interaktWishlistTemplateName",
+  "interaktReturnTemplateName",
+  "interaktRefundTemplateName",
   "orderProcessingTriggerTag",
   "orderProcessingEmailTemplate",
   "orderProcessingEmailSubject",
@@ -71,6 +73,8 @@ const ENV_FALLBACK = {
   interaktTemplateName: "INTERAKT_GEM_TEMPLATE_NAME",
   interaktOrderTemplateName: "INTERAKT_ORDER_TEMPLATE_NAME",
   interaktWishlistTemplateName: "INTERAKT_WISHLIST_TEMPLATE_NAME",
+  interaktReturnTemplateName: "INTERAKT_RETURN_TEMPLATE_NAME",
+  interaktRefundTemplateName: "INTERAKT_REFUND_TEMPLATE_NAME",
   orderProcessingTriggerTag: "ORDER_PROCESSING_TRIGGER_TAG",
   whatsappIntervalValue: "WHATSAPP_INTERVAL_VALUE",
   whatsappIntervalUnit: "WHATSAPP_INTERVAL_UNIT",
@@ -119,6 +123,13 @@ export const DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME = "order_inprocess";
 // wishlist email on the same debounced/interval schedule) — used when
 // the Settings page field is left blank.
 export const DEFAULT_INTERAKT_WISHLIST_TEMPLATE_NAME = "wishlist_reminder";
+
+// Fourth and fifth, separate WhatsApp templates — Return Received /
+// Refund Processed, sent manually from the Returns & Refunds page
+// (app.returns-refunds.jsx). No automatic trigger for either — used
+// when the matching Settings page field is left blank.
+export const DEFAULT_INTERAKT_RETURN_TEMPLATE_NAME = "return_received";
+export const DEFAULT_INTERAKT_REFUND_TEMPLATE_NAME = "refund_processed";
 
 // Tag that triggers the order-processing WhatsApp send when present on
 // an order (see webhooks.orders.updated.jsx) — used when the Settings

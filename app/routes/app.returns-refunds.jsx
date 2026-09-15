@@ -1,22 +1,25 @@
 /**
  * Dedicated in-app page for the manual Return Received / Refund
- * Processed emails -- the counterpart to the (now-removed)
+ * Processed notifications -- the counterpart to the (now-removed)
  * app.order-processing.jsx, same pattern, but per explicit request
- * BOTH emails here are sent manually only: no webhook, no trigger tag,
- * no automatic detection of anything. Staff pick an order, optionally
- * enter a refund amount, and click one of two buttons.
+ * EVERYTHING here is sent manually only: no webhook, no trigger tag, no
+ * automatic detection of anything. Staff pick an order, optionally
+ * enter a refund amount, and click one of four buttons -- Email and
+ * WhatsApp are independent for both Return and Refund.
  *
  * Deliberately does NOT touch Shopify's own native "Order refund" email
  * (Settings -> Notifications -> Order refund, sent automatically when a
  * refund is processed from Admin) or its separate self-serve Returns
  * notifications (Return created/approved/received, if that feature is
- * used) -- this page's two emails are this app's own, sent independently
- * of whatever Shopify does natively for the same order.
+ * used) -- this page's notifications are this app's own, sent
+ * independently of whatever Shopify does natively for the same order.
  *
- * Each row's "Return email" / "Refund email" status comes from
- * OrderReturnEmailNotification (see orderReturnEmail.server.js) --
- * reading back the MOST RECENT row per (orderId, type), same "batch
- * instead of per-row" query pattern as app.invoices.jsx.
+ * Each row's status comes from OrderReturnEmailNotification (see
+ * orderReturnEmail.server.js) -- reading back the MOST RECENT row per
+ * (orderId, type), type being one of "return_email" / "refund_email" /
+ * "return_whatsapp" / "refund_whatsapp" (the table also logs WhatsApp
+ * sends, not just email, despite its name -- kept as one table rather
+ * than a second one since the shape is identical).
  */
 import { useEffect, useMemo, useState } from "react";
 import { useFetcher, useLoaderData } from "react-router";
@@ -24,10 +27,36 @@ import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { getAppSettings } from "../utils/appSettings.server";
 import { sendReturnReceivedEmail, sendRefundProcessedEmail } from "../utils/orderReturnEmail.server";
+import { sendReturnReceivedWhatsApp, sendRefundProcessedWhatsApp } from "../utils/interakt.server";
 import { brand, Card, PageHeader, PageIn, tableWrapStyle, tableStyle, thStyle, tdStyle, Pill } from "../components/table-kit";
 import { useToast } from "../components/toast";
 
 const PAGE_SIZE = 25;
+
+const ORDER_FIELDS = `
+  id
+  legacyResourceId
+  name
+  createdAt
+  email
+  phone
+  cancelledAt
+  displayFulfillmentStatus
+  customer { firstName lastName email phone }
+  shippingAddress { name phone }
+  billingAddress { phone }
+`;
+
+// Same shipping -> customer -> billing -> order-level priority as
+// orderProcessingTrigger.server.js's own phone resolution, for the same
+// reason: the order-level field is the least reliable of the four.
+function resolvePhone(o) {
+  if (o.shippingAddress?.phone) return o.shippingAddress.phone;
+  if (o.customer?.phone) return o.customer.phone;
+  if (o.billingAddress?.phone) return o.billingAddress.phone;
+  if (o.phone) return o.phone;
+  return null;
+}
 
 async function fetchRecentOrdersForReturns(admin, first, after) {
   const res = await admin.graphql(
@@ -35,17 +64,7 @@ async function fetchRecentOrdersForReturns(admin, first, after) {
     query RecentOrdersForReturns($first: Int!, $after: String) {
       orders(first: $first, after: $after, sortKey: CREATED_AT, reverse: true) {
         pageInfo { hasNextPage endCursor }
-        nodes {
-          id
-          legacyResourceId
-          name
-          createdAt
-          email
-          cancelledAt
-          displayFulfillmentStatus
-          customer { firstName lastName email }
-          shippingAddress { name }
-        }
+        nodes { ${ORDER_FIELDS} }
       }
     }`,
     { variables: { first, after } },
@@ -67,6 +86,7 @@ export const loader = async ({ request }) => {
 
   const settings = await getAppSettings(session.shop);
   const gmailConfigured = !!(settings.gmailUser && settings.gmailAppPassword);
+  const whatsappConfigured = !!settings.interaktApiKey;
 
   const { orders, pageInfo } = await fetchRecentOrdersForReturns(admin, PAGE_SIZE, after);
 
@@ -90,8 +110,10 @@ export const loader = async ({ request }) => {
       [o.customer?.firstName, o.customer?.lastName].filter(Boolean).join(" ") ||
       o.shippingAddress?.name ||
       "—";
-    const returnNotif = latestByKey[`${o.legacyResourceId}:return`] || null;
-    const refundNotif = latestByKey[`${o.legacyResourceId}:refund`] || null;
+    const forType = (type) => {
+      const n = latestByKey[`${o.legacyResourceId}:${type}`] || null;
+      return { status: n?.status || null, sentAt: n?.notifiedAt || null, amount: n?.amount || null };
+    };
     return {
       gid: o.id,
       orderId: o.legacyResourceId,
@@ -99,30 +121,24 @@ export const loader = async ({ request }) => {
       createdAt: o.createdAt,
       customerName,
       customerEmail: o.customer?.email || o.email || "—",
+      customerPhone: resolvePhone(o),
       cancelled: !!o.cancelledAt,
       fulfillmentStatus: o.displayFulfillmentStatus || "UNFULFILLED",
-      returnStatus: returnNotif?.status || null,
-      returnLastSentAt: returnNotif?.notifiedAt || null,
-      refundStatus: refundNotif?.status || null,
-      refundLastSentAt: refundNotif?.notifiedAt || null,
-      refundLastAmount: refundNotif?.amount || null,
+      returnEmail: forType("return_email"),
+      returnWhatsapp: forType("return_whatsapp"),
+      refundEmail: forType("refund_email"),
+      refundWhatsapp: forType("refund_whatsapp"),
     };
   });
 
-  return { rows, hasNextPage: pageInfo.hasNextPage, endCursor: pageInfo.endCursor, gmailConfigured };
+  return { rows, hasNextPage: pageInfo.hasNextPage, endCursor: pageInfo.endCursor, gmailConfigured, whatsappConfigured };
 };
 
-async function fetchOrderForResend(admin, orderGid) {
+async function fetchOrderForSend(admin, orderGid) {
   const res = await admin.graphql(
     `#graphql
     query OrderForReturnRefundSend($id: ID!) {
-      order(id: $id) {
-        legacyResourceId
-        name
-        email
-        customer { firstName lastName email }
-        shippingAddress { name }
-      }
+      order(id: $id) { ${ORDER_FIELDS} }
     }`,
     { variables: { id: orderGid } },
   );
@@ -133,38 +149,55 @@ async function fetchOrderForResend(admin, orderGid) {
   return json.data?.order || null;
 }
 
+const SEND_INTENTS = {
+  sendReturnEmail: { type: "return_email", channel: "email" },
+  sendReturnWhatsapp: { type: "return_whatsapp", channel: "whatsapp" },
+  sendRefundEmail: { type: "refund_email", channel: "email" },
+  sendRefundWhatsapp: { type: "refund_whatsapp", channel: "whatsapp" },
+};
+
 export const action = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const formData = await request.formData();
   const intent = formData.get("intent");
+  const spec = SEND_INTENTS[intent];
 
-  if (intent === "sendReturnEmail" || intent === "sendRefundEmail") {
+  if (spec) {
     const orderGid = formData.get("orderGid");
     const orderId = formData.get("orderId");
-    const amount = intent === "sendRefundEmail" ? (formData.get("amount") || "").trim() : null;
+    const isRefund = spec.type.startsWith("refund_");
+    const amount = isRefund ? (formData.get("amount") || "").trim() : null;
     if (!orderGid || !orderId) return { intent, ok: false, error: "Missing order" };
+    if (isRefund && !amount) return { intent, ok: false, error: "Enter a refund amount first", orderId };
 
     try {
       // Re-fetched fresh here rather than trusting the page's own
       // (possibly stale) data -- same reasoning the old order-processing
       // page's resend action followed.
-      const o = await fetchOrderForResend(admin, orderGid);
+      const o = await fetchOrderForSend(admin, orderGid);
       if (!o) return { intent, ok: false, error: "Order not found", orderId };
 
       const settings = await getAppSettings(session.shop);
-      const payload = {
-        id: o.legacyResourceId,
-        name: o.name,
-        email: o.email,
-        customer: o.customer ? { first_name: o.customer.firstName, last_name: o.customer.lastName, email: o.customer.email } : null,
-        shipping_address: o.shippingAddress ? { name: o.shippingAddress.name } : null,
-      };
+      const firstName = o.customer?.firstName || (o.shippingAddress?.name || "").split(" ")[0] || "there";
+      const phone = resolvePhone(o);
 
-      const type = intent === "sendReturnEmail" ? "return" : "refund";
-      const result =
-        type === "return"
-          ? await sendReturnReceivedEmail(admin, settings, payload)
-          : await sendRefundProcessedEmail(admin, settings, payload, amount);
+      let result;
+      if (spec.channel === "email") {
+        const payload = {
+          id: o.legacyResourceId,
+          name: o.name,
+          email: o.email,
+          customer: o.customer ? { first_name: o.customer.firstName, last_name: o.customer.lastName, email: o.customer.email } : null,
+          shipping_address: o.shippingAddress ? { name: o.shippingAddress.name } : null,
+        };
+        result = isRefund
+          ? await sendRefundProcessedEmail(admin, settings, payload, amount)
+          : await sendReturnReceivedEmail(admin, settings, payload);
+      } else {
+        result = isRefund
+          ? await sendRefundProcessedWhatsApp(settings, { phone, firstName, orderNumber: o.name, refundAmount: amount })
+          : await sendReturnReceivedWhatsApp(settings, { phone, firstName, orderNumber: o.name });
+      }
       const ok = result.startsWith("OK:");
 
       await prisma.orderReturnEmailNotification
@@ -172,10 +205,10 @@ export const action = async ({ request }) => {
           data: {
             shop: session.shop,
             orderId,
-            type,
+            type: spec.type,
             orderName: o.name,
-            email: payload.email,
-            amount: type === "refund" ? amount : null,
+            email: spec.channel === "email" ? o.email : null,
+            amount: isRefund ? amount : null,
             status: result,
           },
         })
@@ -202,19 +235,65 @@ function fulfillmentLabel(status) {
   return map[status] || { label: status, color: brand.muted };
 }
 
+// One small "channel row" per send button -- status pill + last-sent
+// time (if ever sent) on top, the actual button below. Used 4 times per
+// table row (Return Email / Return WhatsApp / Refund Email / Refund
+// WhatsApp), so the same rendering + disabled/label logic lives in one
+// place instead of being copy-pasted 4 times with slightly different
+// props each time.
+function ChannelButton({ label, channelInfo, isSending, disabled, onClick }) {
+  const alreadySent = channelInfo.status?.startsWith("OK");
+  return (
+    <div style={{ marginBottom: "8px" }}>
+      {channelInfo.status ? (
+        <div style={{ marginBottom: "4px" }}>
+          <Pill
+            label={alreadySent ? `Sent${channelInfo.amount ? ` (${channelInfo.amount})` : ""}` : channelInfo.status}
+            active
+            color={alreadySent ? "#2e7d32" : "#c0392b"}
+          />
+          <div style={{ fontSize: "10.5px", color: brand.muted, marginTop: "2px" }}>
+            {new Date(channelInfo.sentAt).toLocaleString("en-IN")}
+          </div>
+        </div>
+      ) : (
+        <div style={{ fontSize: "11.5px", color: brand.muted, marginBottom: "4px" }}>Never sent</div>
+      )}
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={isSending || disabled}
+        style={{
+          padding: "6px 12px",
+          borderRadius: "8px",
+          border: "none",
+          background: alreadySent ? brand.panel : brand.accent,
+          color: alreadySent ? brand.body : "#fff",
+          fontSize: "12px",
+          fontWeight: 600,
+          cursor: "pointer",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {isSending ? "Sending…" : alreadySent ? `Resend ${label}` : `Send ${label}`}
+      </button>
+    </div>
+  );
+}
+
 export default function ReturnsRefundsPage() {
   const data = useLoaderData();
-  const returnFetcher = useFetcher();
-  const refundFetcher = useFetcher();
+  const returnEmailFetcher = useFetcher();
+  const returnWhatsappFetcher = useFetcher();
+  const refundEmailFetcher = useFetcher();
+  const refundWhatsappFetcher = useFetcher();
   const toast = useToast();
 
   const [filter, setFilter] = useState("");
-  // Per-row refund amount inputs, keyed by orderId -- kept in local state
-  // here rather than uncontrolled inputs so "Send Refund Email" can read
-  // the current value without a ref per row.
+  // Per-row refund amount inputs, keyed by orderId -- shared by both the
+  // Refund Email and Refund WhatsApp buttons for that row.
   const [refundAmounts, setRefundAmounts] = useState({});
-  const [sendingReturnId, setSendingReturnId] = useState(null);
-  const [sendingRefundId, setSendingRefundId] = useState(null);
+  const [sendingId, setSendingId] = useState({ intent: null, orderId: null });
 
   const filteredRows = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -227,38 +306,48 @@ export default function ReturnsRefundsPage() {
     );
   }, [data.rows, filter]);
 
+  // One effect per fetcher (each fires independently), all doing the
+  // same thing: toast the result and clear the "this row/button is
+  // sending" flag.
   useEffect(() => {
-    if (returnFetcher.data?.intent === "sendReturnEmail") {
-      toast.show(returnFetcher.data.message || returnFetcher.data.error || (returnFetcher.data.ok ? "Sent" : "Failed"), {
-        isError: !returnFetcher.data.ok,
-      });
-      setSendingReturnId(null);
+    const d = returnEmailFetcher.data;
+    if (d?.intent === "sendReturnEmail") {
+      toast.show(d.message || d.error || (d.ok ? "Sent" : "Failed"), { isError: !d.ok });
+      setSendingId({ intent: null, orderId: null });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [returnFetcher.data]);
-
+  }, [returnEmailFetcher.data]);
   useEffect(() => {
-    if (refundFetcher.data?.intent === "sendRefundEmail") {
-      toast.show(refundFetcher.data.message || refundFetcher.data.error || (refundFetcher.data.ok ? "Sent" : "Failed"), {
-        isError: !refundFetcher.data.ok,
-      });
-      setSendingRefundId(null);
+    const d = returnWhatsappFetcher.data;
+    if (d?.intent === "sendReturnWhatsapp") {
+      toast.show(d.message || d.error || (d.ok ? "Sent" : "Failed"), { isError: !d.ok });
+      setSendingId({ intent: null, orderId: null });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refundFetcher.data]);
+  }, [returnWhatsappFetcher.data]);
+  useEffect(() => {
+    const d = refundEmailFetcher.data;
+    if (d?.intent === "sendRefundEmail") {
+      toast.show(d.message || d.error || (d.ok ? "Sent" : "Failed"), { isError: !d.ok });
+      setSendingId({ intent: null, orderId: null });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refundEmailFetcher.data]);
+  useEffect(() => {
+    const d = refundWhatsappFetcher.data;
+    if (d?.intent === "sendRefundWhatsapp") {
+      toast.show(d.message || d.error || (d.ok ? "Sent" : "Failed"), { isError: !d.ok });
+      setSendingId({ intent: null, orderId: null });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refundWhatsappFetcher.data]);
 
-  const handleSendReturn = (row) => {
-    setSendingReturnId(row.orderId);
-    returnFetcher.submit({ intent: "sendReturnEmail", orderGid: row.gid, orderId: row.orderId }, { method: "POST" });
+  const send = (fetcher, intent, row, extra) => {
+    setSendingId({ intent, orderId: row.orderId });
+    fetcher.submit({ intent, orderGid: row.gid, orderId: row.orderId, ...extra }, { method: "POST" });
   };
 
-  const handleSendRefund = (row) => {
-    setSendingRefundId(row.orderId);
-    refundFetcher.submit(
-      { intent: "sendRefundEmail", orderGid: row.gid, orderId: row.orderId, amount: refundAmounts[row.orderId] || "" },
-      { method: "POST" },
-    );
-  };
+  const isSending = (intent, orderId) => sendingId.intent === intent && sendingId.orderId === orderId;
 
   const loadMoreHref = data.endCursor ? `?cursor=${encodeURIComponent(data.endCursor)}` : null;
 
@@ -266,14 +355,22 @@ export default function ReturnsRefundsPage() {
     <PageIn>
       <PageHeader
         title="Returns & Refunds"
-        description="Every recent order — send a Return Received or Refund Processed email manually, whenever you're ready. Nothing here sends automatically."
+        description="Every recent order — send a Return Received or Refund Processed notification manually, by email or WhatsApp, whenever you're ready. Nothing here sends automatically."
       />
 
       {!data.gmailConfigured && (
         <Card style={{ marginBottom: "16px", background: "#fff8ec", borderColor: "#e8c98a" }}>
           <p style={{ margin: 0, fontSize: "13px", color: brand.body }}>
-            Gmail isn't connected yet, so these emails can't be sent — connect it on the{" "}
-            <a href="/app/settings" style={{ color: brand.accent }}>Settings page</a> first.
+            Gmail isn't connected yet, so the email buttons below won't work — connect it on the{" "}
+            <a href="/app/settings" style={{ color: brand.accent }}>Settings page</a>.
+          </p>
+        </Card>
+      )}
+      {!data.whatsappConfigured && (
+        <Card style={{ marginBottom: "16px", background: "#fff8ec", borderColor: "#e8c98a" }}>
+          <p style={{ margin: 0, fontSize: "13px", color: brand.body }}>
+            Interakt isn't connected yet, so the WhatsApp buttons below won't work — connect it on the{" "}
+            <a href="/app/settings" style={{ color: brand.accent }}>Settings page</a>.
           </p>
         </Card>
       )}
@@ -295,8 +392,8 @@ export default function ReturnsRefundsPage() {
               <th style={thStyle}>Order</th>
               <th style={thStyle}>Customer</th>
               <th style={thStyle}>Order status</th>
-              <th style={thStyle}>Return email</th>
-              <th style={thStyle}>Refund email</th>
+              <th style={thStyle}>Return</th>
+              <th style={thStyle}>Refund</th>
             </tr>
           </thead>
           <tbody>
@@ -308,11 +405,8 @@ export default function ReturnsRefundsPage() {
               </tr>
             ) : (
               filteredRows.map((row) => {
-                const isSendingReturn = sendingReturnId === row.orderId && returnFetcher.state !== "idle";
-                const isSendingRefund = sendingRefundId === row.orderId && refundFetcher.state !== "idle";
-                const returnAlreadySent = row.returnStatus?.startsWith("OK");
-                const refundAlreadySent = row.refundStatus?.startsWith("OK");
                 const fulfillment = fulfillmentLabel(row.fulfillmentStatus);
+                const amount = refundAmounts[row.orderId] || "";
                 return (
                   <tr key={row.orderId}>
                     <td style={tdStyle}>
@@ -322,6 +416,7 @@ export default function ReturnsRefundsPage() {
                     <td style={tdStyle}>
                       <div>{row.customerName}</div>
                       <div style={{ fontSize: "11px", color: brand.muted }}>{row.customerEmail}</div>
+                      {row.customerPhone && <div style={{ fontSize: "11px", color: brand.muted }}>{row.customerPhone}</div>}
                     </td>
                     <td style={tdStyle}>
                       {row.cancelled ? (
@@ -331,77 +426,43 @@ export default function ReturnsRefundsPage() {
                       )}
                     </td>
                     <td style={tdStyle}>
-                      {row.returnStatus ? (
-                        <div style={{ marginBottom: "6px" }}>
-                          <Pill label={returnAlreadySent ? "Sent" : row.returnStatus} active color={returnAlreadySent ? "#2e7d32" : "#c0392b"} />
-                          <div style={{ fontSize: "11px", color: brand.muted, marginTop: "3px" }}>
-                            {new Date(row.returnLastSentAt).toLocaleString("en-IN")}
-                          </div>
-                        </div>
-                      ) : (
-                        <div style={{ fontSize: "12px", color: brand.muted, marginBottom: "6px" }}>Never sent</div>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => handleSendReturn(row)}
-                        disabled={isSendingReturn || !data.gmailConfigured}
-                        style={{
-                          padding: "6px 12px",
-                          borderRadius: "8px",
-                          border: "none",
-                          background: returnAlreadySent ? brand.panel : brand.accent,
-                          color: returnAlreadySent ? brand.body : "#fff",
-                          fontSize: "12px",
-                          fontWeight: 600,
-                          cursor: "pointer",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {isSendingReturn ? "Sending…" : returnAlreadySent ? "Resend" : "Send Return Email"}
-                      </button>
+                      <ChannelButton
+                        label="Email"
+                        channelInfo={row.returnEmail}
+                        isSending={isSending("sendReturnEmail", row.orderId)}
+                        disabled={!data.gmailConfigured}
+                        onClick={() => send(returnEmailFetcher, "sendReturnEmail", row)}
+                      />
+                      <ChannelButton
+                        label="WhatsApp"
+                        channelInfo={row.returnWhatsapp}
+                        isSending={isSending("sendReturnWhatsapp", row.orderId)}
+                        disabled={!data.whatsappConfigured}
+                        onClick={() => send(returnWhatsappFetcher, "sendReturnWhatsapp", row)}
+                      />
                     </td>
                     <td style={tdStyle}>
-                      {row.refundStatus ? (
-                        <div style={{ marginBottom: "6px" }}>
-                          <Pill
-                            label={refundAlreadySent ? `Sent${row.refundLastAmount ? ` (${row.refundLastAmount})` : ""}` : row.refundStatus}
-                            active
-                            color={refundAlreadySent ? "#2e7d32" : "#c0392b"}
-                          />
-                          <div style={{ fontSize: "11px", color: brand.muted, marginTop: "3px" }}>
-                            {new Date(row.refundLastSentAt).toLocaleString("en-IN")}
-                          </div>
-                        </div>
-                      ) : (
-                        <div style={{ fontSize: "12px", color: brand.muted, marginBottom: "6px" }}>Never sent</div>
-                      )}
-                      <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-                        <input
-                          type="text"
-                          value={refundAmounts[row.orderId] || ""}
-                          onChange={(e) => setRefundAmounts((prev) => ({ ...prev, [row.orderId]: e.target.value }))}
-                          placeholder="₹ amount"
-                          style={{ width: "90px", padding: "5px 8px", borderRadius: "7px", border: `1px solid ${brand.border}`, fontSize: "12px", boxSizing: "border-box" }}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleSendRefund(row)}
-                          disabled={isSendingRefund || !data.gmailConfigured}
-                          style={{
-                            padding: "6px 12px",
-                            borderRadius: "8px",
-                            border: "none",
-                            background: refundAlreadySent ? brand.panel : brand.accent,
-                            color: refundAlreadySent ? brand.body : "#fff",
-                            fontSize: "12px",
-                            fontWeight: 600,
-                            cursor: "pointer",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {isSendingRefund ? "Sending…" : refundAlreadySent ? "Resend" : "Send Refund Email"}
-                        </button>
-                      </div>
+                      <input
+                        type="text"
+                        value={amount}
+                        onChange={(e) => setRefundAmounts((prev) => ({ ...prev, [row.orderId]: e.target.value }))}
+                        placeholder="₹ amount"
+                        style={{ width: "100px", padding: "5px 8px", borderRadius: "7px", border: `1px solid ${brand.border}`, fontSize: "12px", boxSizing: "border-box", marginBottom: "8px", display: "block" }}
+                      />
+                      <ChannelButton
+                        label="Email"
+                        channelInfo={row.refundEmail}
+                        isSending={isSending("sendRefundEmail", row.orderId)}
+                        disabled={!data.gmailConfigured}
+                        onClick={() => send(refundEmailFetcher, "sendRefundEmail", row, { amount })}
+                      />
+                      <ChannelButton
+                        label="WhatsApp"
+                        channelInfo={row.refundWhatsapp}
+                        isSending={isSending("sendRefundWhatsapp", row.orderId)}
+                        disabled={!data.whatsappConfigured}
+                        onClick={() => send(refundWhatsappFetcher, "sendRefundWhatsapp", row, { amount })}
+                      />
                     </td>
                   </tr>
                 );

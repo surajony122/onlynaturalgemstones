@@ -336,6 +336,14 @@ model AppSettings {
   // argument" error (confirmed live) regardless of what was actually
   // being changed.
   interaktWishlistTemplateName  String?
+  // Fourth and fifth WhatsApp templates -- Return Received / Refund
+  // Processed, sent manually from the Returns & Refunds page
+  // (app.returns-refunds.jsx), same pattern as interaktOrderTemplateName
+  // above but with no automatic trigger at all. Default to
+  // "return_received" / "refund_processed" if left blank -- see
+  // DEFAULT_INTERAKT_RETURN_TEMPLATE_NAME / DEFAULT_INTERAKT_REFUND_TEMPLATE_NAME.
+  interaktReturnTemplateName    String?
+  interaktRefundTemplateName    String?
   // Tag name that, when present on an order, triggers the order-
   // processing WhatsApp send (see webhooks.orders.updated.jsx) — added
   // after confirming live that none of Shopify's own fulfillment-status

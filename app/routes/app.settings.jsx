@@ -25,12 +25,21 @@ import {
   DEFAULT_INTERAKT_TEMPLATE_NAME,
   DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME,
   DEFAULT_INTERAKT_WISHLIST_TEMPLATE_NAME,
+  DEFAULT_INTERAKT_RETURN_TEMPLATE_NAME,
+  DEFAULT_INTERAKT_REFUND_TEMPLATE_NAME,
   DEFAULT_ORDER_PROCESSING_TRIGGER_TAG,
   DEFAULT_WHATSAPP_INTERVAL_VALUE,
   DEFAULT_WHATSAPP_INTERVAL_UNIT,
 } from "../utils/appSettings.server";
 import { FALLBACK_LOGO_URL } from "../utils/astroAdvice.server";
-import { sendGemRecommendationWhatsApp, getOrCreateInteraktCampaignId, sendOrderProcessingWhatsApp, sendWishlistWhatsApp } from "../utils/interakt.server";
+import {
+  sendGemRecommendationWhatsApp,
+  getOrCreateInteraktCampaignId,
+  sendOrderProcessingWhatsApp,
+  sendWishlistWhatsApp,
+  sendReturnReceivedWhatsApp,
+  sendRefundProcessedWhatsApp,
+} from "../utils/interakt.server";
 import { checkGmail, checkGoogleSheets, checkInterakt, checkGooglePlaces } from "../utils/serviceHealth.server";
 import { getOrderProcessingEmailTemplate, ORDER_PROCESSING_EMAIL_PLACEHOLDERS, getOrderProcessingEmailSubject } from "../utils/orderProcessingEmail.server";
 import {
@@ -99,6 +108,10 @@ export const loader = async ({ request }) => {
     defaultOrderProcessingTriggerTag: DEFAULT_ORDER_PROCESSING_TRIGGER_TAG,
     interaktWishlistTemplateName: row?.interaktWishlistTemplateName || "",
     defaultInteraktWishlistTemplateName: DEFAULT_INTERAKT_WISHLIST_TEMPLATE_NAME,
+    interaktReturnTemplateName: row?.interaktReturnTemplateName || "",
+    defaultInteraktReturnTemplateName: DEFAULT_INTERAKT_RETURN_TEMPLATE_NAME,
+    interaktRefundTemplateName: row?.interaktRefundTemplateName || "",
+    defaultInteraktRefundTemplateName: DEFAULT_INTERAKT_REFUND_TEMPLATE_NAME,
     whatsappIntervalValue: row?.whatsappIntervalValue || DEFAULT_WHATSAPP_INTERVAL_VALUE,
     whatsappIntervalUnit: row?.whatsappIntervalUnit || DEFAULT_WHATSAPP_INTERVAL_UNIT,
     interaktWebhookSecretSet: !!row?.interaktWebhookSecret,
@@ -300,6 +313,34 @@ export const action = async ({ request }) => {
     return { intent, ok: status.startsWith("OK"), status };
   }
 
+  if (intent === "sendTestReturnWhatsapp") {
+    const phone = formData.get("testReturnPhone")?.trim();
+    if (!phone) return { intent, ok: false, error: "Enter a phone number first" };
+
+    const settings = await getAppSettings(session.shop);
+    let status;
+    try {
+      status = await sendReturnReceivedWhatsApp(settings, { phone, firstName: "Test", orderNumber: "1001" });
+    } catch (err) {
+      status = "threw: " + String((err && err.message) || err);
+    }
+    return { intent, ok: status.startsWith("OK"), status };
+  }
+
+  if (intent === "sendTestRefundWhatsapp") {
+    const phone = formData.get("testRefundPhone")?.trim();
+    if (!phone) return { intent, ok: false, error: "Enter a phone number first" };
+
+    const settings = await getAppSettings(session.shop);
+    let status;
+    try {
+      status = await sendRefundProcessedWhatsApp(settings, { phone, firstName: "Test", orderNumber: "1001", refundAmount: "₹1,500.00" });
+    } catch (err) {
+      status = "threw: " + String((err && err.message) || err);
+    }
+    return { intent, ok: status.startsWith("OK"), status };
+  }
+
   // Per-explicit-request: one independent save action per section on the
   // page instead of a single form covering every field at once — the
   // single-form version meant saving ANY one section always resubmitted
@@ -340,6 +381,14 @@ export const action = async ({ request }) => {
     await saveAppSettings(session.shop, {
       orderProcessingTriggerTag: val("orderProcessingTriggerTag"),
       interaktOrderTemplateName: val("interaktOrderTemplateName"),
+    });
+    return { intent, ok: true };
+  }
+
+  if (intent === "saveReturnRefundWhatsapp") {
+    await saveAppSettings(session.shop, {
+      interaktReturnTemplateName: val("interaktReturnTemplateName"),
+      interaktRefundTemplateName: val("interaktRefundTemplateName"),
     });
     return { intent, ok: true };
   }
@@ -877,10 +926,14 @@ export default function SettingsPage() {
   const testFetcher = useFetcher();
   const testOrderFetcher = useFetcher();
   const testWishlistFetcher = useFetcher();
+  const testReturnFetcher = useFetcher();
+  const testRefundFetcher = useFetcher();
   const toast = useToast();
   const isSendingTest = testFetcher.state !== "idle";
   const isSendingOrderTest = testOrderFetcher.state !== "idle";
   const isSendingWishlistTest = testWishlistFetcher.state !== "idle";
+  const isSendingReturnTest = testReturnFetcher.state !== "idle";
+  const isSendingRefundTest = testRefundFetcher.state !== "idle";
 
   const [gmailUser, setGmailUser] = useState(data.gmailUser);
   const [gmailAppPassword, setGmailAppPassword] = useState("");
@@ -924,9 +977,13 @@ export default function SettingsPage() {
   );
   const [showRefundEmailPreview, setShowRefundEmailPreview] = useState(false);
   const [interaktWishlistTemplateName, setInteraktWishlistTemplateName] = useState(data.interaktWishlistTemplateName);
+  const [interaktReturnTemplateName, setInteraktReturnTemplateName] = useState(data.interaktReturnTemplateName);
+  const [interaktRefundTemplateName, setInteraktRefundTemplateName] = useState(data.interaktRefundTemplateName);
   const [testPhone, setTestPhone] = useState("");
   const [testOrderPhone, setTestOrderPhone] = useState("");
   const [testWishlistPhone, setTestWishlistPhone] = useState("");
+  const [testReturnPhone, setTestReturnPhone] = useState("");
+  const [testRefundPhone, setTestRefundPhone] = useState("");
   const [whatsappIntervalValue, setWhatsappIntervalValue] = useState(data.whatsappIntervalValue);
   const [whatsappIntervalUnit, setWhatsappIntervalUnit] = useState(data.whatsappIntervalUnit);
   const [interaktWebhookSecret, setInteraktWebhookSecret] = useState("");
@@ -965,6 +1022,7 @@ export default function SettingsPage() {
   const gemRecommendation = useSectionSave("saveGemRecommendation", toast);
   const orderProcessingWhatsapp = useSectionSave("saveOrderProcessingWhatsapp", toast);
   const orderProcessingEmail = useSectionSave("saveOrderProcessingEmail", toast);
+  const returnRefundWhatsapp = useSectionSave("saveReturnRefundWhatsapp", toast);
   const returnReceivedEmail = useSectionSave("saveReturnReceivedEmail", toast);
   const refundProcessedEmail = useSectionSave("saveRefundProcessedEmail", toast);
   const gstInvoice = useSectionSave("saveGstInvoice", toast);
@@ -1025,12 +1083,34 @@ export default function SettingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [testWishlistFetcher.data]);
 
+  useEffect(() => {
+    if (testReturnFetcher.data?.intent === "sendTestReturnWhatsapp") {
+      toast.show(testReturnFetcher.data.status || testReturnFetcher.data.error || (testReturnFetcher.data.ok ? "Sent" : "Failed"), { isError: !testReturnFetcher.data.ok });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [testReturnFetcher.data]);
+
+  useEffect(() => {
+    if (testRefundFetcher.data?.intent === "sendTestRefundWhatsapp") {
+      toast.show(testRefundFetcher.data.status || testRefundFetcher.data.error || (testRefundFetcher.data.ok ? "Sent" : "Failed"), { isError: !testRefundFetcher.data.ok });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [testRefundFetcher.data]);
+
   const sendTestOrderWhatsapp = () => {
     testOrderFetcher.submit({ intent: "sendTestOrderWhatsapp", testOrderPhone }, { method: "POST" });
   };
 
   const sendTestWishlistWhatsapp = () => {
     testWishlistFetcher.submit({ intent: "sendTestWishlistWhatsapp", testWishlistPhone }, { method: "POST" });
+  };
+
+  const sendTestReturnWhatsapp = () => {
+    testReturnFetcher.submit({ intent: "sendTestReturnWhatsapp", testReturnPhone }, { method: "POST" });
+  };
+
+  const sendTestRefundWhatsapp = () => {
+    testRefundFetcher.submit({ intent: "sendTestRefundWhatsapp", testRefundPhone }, { method: "POST" });
   };
 
   const sendTestWhatsapp = () => {
@@ -1041,6 +1121,7 @@ export default function SettingsPage() {
   const saveInteraktApiKey = () => interaktApiKeySave.save({ interaktApiKey });
   const saveGemRecommendation = () => gemRecommendation.save({ interaktTemplateName });
   const saveOrderProcessingWhatsapp = () => orderProcessingWhatsapp.save({ orderProcessingTriggerTag, interaktOrderTemplateName });
+  const saveReturnRefundWhatsapp = () => returnRefundWhatsapp.save({ interaktReturnTemplateName, interaktRefundTemplateName });
   // Submitting "" (not the literal default HTML) whenever a template
   // textarea still matches the built-in default -- otherwise saving this
   // section for ANY reason would silently freeze today's default into
@@ -1314,6 +1395,50 @@ export default function SettingsPage() {
               </div>
             )}
             <SaveButton isSaving={orderProcessingEmail.isSaving} onClick={saveOrderProcessingEmail} />
+          </TemplateCard>
+
+          <TemplateCard icon={<Icon name="message" size={15} color={brand.accent} />} title="Return & Refund WhatsApp">
+            <p style={{ ...hintStyle, marginTop: 0 }}>
+              Sent manually, one order at a time, from the{" "}
+              <a href="/app/returns-refunds" style={{ color: brand.accent }}>Returns &amp; Refunds</a> page —
+              never automatically. Two separate approved WhatsApp templates, one per notification.
+            </p>
+            <label style={labelStyle} htmlFor="interaktReturnTemplateName">Return Received — template name</label>
+            <input
+              id="interaktReturnTemplateName"
+              style={fieldStyle}
+              type="text"
+              value={interaktReturnTemplateName}
+              onChange={(e) => setInteraktReturnTemplateName(e.target.value)}
+              placeholder={`${data.defaultInteraktReturnTemplateName} (default if left blank)`}
+            />
+            <label style={labelStyle} htmlFor="testReturnPhone">Send test message</label>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "5px", marginBottom: "16px" }}>
+              <input id="testReturnPhone" style={{ ...fieldStyle, marginBottom: 0, maxWidth: "220px" }} type="tel" value={testReturnPhone} onChange={(e) => setTestReturnPhone(e.target.value)} placeholder="9876543210 or +919876543210" />
+              <button type="button" onClick={sendTestReturnWhatsapp} disabled={isSendingReturnTest} style={{ ...secondaryBtn, padding: "9px 16px", fontSize: "12.5px" }}>
+                {isSendingReturnTest ? "Sending…" : "Send Test"}
+              </button>
+            </div>
+            <TestResult fetcherData={testReturnFetcher.data} intent="sendTestReturnWhatsapp" />
+
+            <label style={labelStyle} htmlFor="interaktRefundTemplateName">Refund Processed — template name</label>
+            <input
+              id="interaktRefundTemplateName"
+              style={fieldStyle}
+              type="text"
+              value={interaktRefundTemplateName}
+              onChange={(e) => setInteraktRefundTemplateName(e.target.value)}
+              placeholder={`${data.defaultInteraktRefundTemplateName} (default if left blank)`}
+            />
+            <label style={labelStyle} htmlFor="testRefundPhone">Send test message</label>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "5px" }}>
+              <input id="testRefundPhone" style={{ ...fieldStyle, marginBottom: 0, maxWidth: "220px" }} type="tel" value={testRefundPhone} onChange={(e) => setTestRefundPhone(e.target.value)} placeholder="9876543210 or +919876543210" />
+              <button type="button" onClick={sendTestRefundWhatsapp} disabled={isSendingRefundTest} style={{ ...secondaryBtn, padding: "9px 16px", fontSize: "12.5px" }}>
+                {isSendingRefundTest ? "Sending…" : "Send Test"}
+              </button>
+            </div>
+            <TestResult fetcherData={testRefundFetcher.data} intent="sendTestRefundWhatsapp" />
+            <SaveButton isSaving={returnRefundWhatsapp.isSaving} onClick={saveReturnRefundWhatsapp} />
           </TemplateCard>
 
           <TemplateCard icon={<Icon name="return" size={15} color={brand.accent} />} title="Return Received Email">
