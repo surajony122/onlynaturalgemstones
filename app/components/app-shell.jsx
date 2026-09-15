@@ -47,6 +47,7 @@ export const NAV_GROUPS = [
     items: [
       { id: "server", href: "/app/server-health", label: "System Health", icon: "server" },
       { id: "settings", href: "/app/settings", label: "Settings", icon: "gear" },
+      { id: "documentation", href: "/app/documentation", label: "Documentation", icon: "file-text" },
       { id: "additional", href: "/app/additional", label: "Additional page", icon: "package" },
     ],
   },
