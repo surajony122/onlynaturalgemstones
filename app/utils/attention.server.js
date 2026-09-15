@@ -28,7 +28,7 @@ function hasFailure(status) {
 export async function getAttentionSummary() {
   const since = new Date(Date.now() - SINCE_DAYS * 24 * 60 * 60 * 1000);
 
-  const [astroLeads, wishlistLeads, waNotifications, emailNotifications] = await Promise.all([
+  const [astroLeads, wishlistLeads, waNotifications, emailNotifications, returnRefundNotifications, invoices] = await Promise.all([
     prisma.astroLead.findMany({
       where: { createdAt: { gte: since } },
       select: { id: true, name: true, email: true, calculationOk: true, shopifySyncStatus: true, emailSendStatus: true, whatsappSendStatus: true },
@@ -45,6 +45,14 @@ export async function getAttentionSummary() {
       where: { notifiedAt: { gte: since } },
       select: { id: true, status: true },
     }),
+    prisma.orderReturnEmailNotification.findMany({
+      where: { notifiedAt: { gte: since } },
+      select: { id: true, orderName: true, status: true },
+    }),
+    prisma.orderInvoice.findMany({
+      where: { lastSentAt: { gte: since } },
+      select: { id: true, orderName: true, status: true },
+    }),
   ]);
 
   const astroIssues = astroLeads.filter(
@@ -55,6 +63,8 @@ export async function getAttentionSummary() {
     ...waNotifications.filter((n) => hasFailure(n.status)),
     ...emailNotifications.filter((n) => hasFailure(n.status)),
   ];
+  const returnRefundIssues = returnRefundNotifications.filter((n) => hasFailure(n.status));
+  const invoiceIssues = invoices.filter((n) => hasFailure(n.status));
 
   const items = [];
   if (orderFailures.length) {
@@ -89,6 +99,26 @@ export async function getAttentionSummary() {
       severity: "warn",
     });
   }
+  if (returnRefundIssues.length) {
+    items.push({
+      id: "returns-refunds-issues",
+      title: `${returnRefundIssues.length} return/refund notification${returnRefundIssues.length === 1 ? "" : "s"} failed recently`,
+      detail: returnRefundIssues[0] ? `Most recent: order ${returnRefundIssues[0].orderName || returnRefundIssues[0].id} — send failed.` : "",
+      href: "/app/returns-refunds",
+      action: "Open Returns & Refunds",
+      severity: "danger",
+    });
+  }
+  if (invoiceIssues.length) {
+    items.push({
+      id: "invoice-issues",
+      title: `${invoiceIssues.length} GST invoice${invoiceIssues.length === 1 ? "" : "s"} failed to send recently`,
+      detail: invoiceIssues[0] ? `Most recent: order ${invoiceIssues[0].orderName || invoiceIssues[0].id} — send failed.` : "",
+      href: "/app/invoices",
+      action: "Open GST Invoices",
+      severity: "warn",
+    });
+  }
 
   return {
     items,
@@ -96,6 +126,8 @@ export async function getAttentionSummary() {
       astro: astroIssues.length,
       wishlist: wishlistIssues.length,
       whatsapp: orderFailures.length,
+      returnsRefunds: returnRefundIssues.length,
+      invoices: invoiceIssues.length,
     },
     healthy: items.length === 0,
   };

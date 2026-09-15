@@ -38,8 +38,8 @@ export const NAV_GROUPS = [
   {
     label: "Orders",
     items: [
-      { id: "invoices", href: "/app/invoices", label: "GST Invoices", icon: "tag" },
-      { id: "returns-refunds", href: "/app/returns-refunds", label: "Returns & Refunds", icon: "return" },
+      { id: "invoices", href: "/app/invoices", label: "GST Invoices", icon: "tag", badgeKey: "invoices" },
+      { id: "returns-refunds", href: "/app/returns-refunds", label: "Returns & Refunds", icon: "return", badgeKey: "returnsRefunds" },
     ],
   },
   {

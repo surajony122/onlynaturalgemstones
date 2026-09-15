@@ -26,17 +26,33 @@ export const loader = async ({ request }) => {
   todayStart.setHours(0, 0, 0, 0);
   const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
 
-  const [leadsToday, leadsYesterday, wishlistToday, wishlistYesterday, whatsappToday, whatsappYesterday, ordersToday, ordersYesterday] =
-    await Promise.all([
-      prisma.astroLead.count({ where: { createdAt: { gte: todayStart } } }),
-      prisma.astroLead.count({ where: { createdAt: { gte: yesterdayStart, lt: todayStart } } }),
-      prisma.wishlistLead.count({ where: { createdAt: { gte: todayStart } } }),
-      prisma.wishlistLead.count({ where: { createdAt: { gte: yesterdayStart, lt: todayStart } } }),
-      prisma.whatsAppMessageEvent.count({ where: { receivedAt: { gte: todayStart }, eventType: "message_api_sent" } }),
-      prisma.whatsAppMessageEvent.count({ where: { receivedAt: { gte: yesterdayStart, lt: todayStart }, eventType: "message_api_sent" } }),
-      prisma.orderProcessingNotification.count({ where: { notifiedAt: { gte: todayStart } } }),
-      prisma.orderProcessingNotification.count({ where: { notifiedAt: { gte: yesterdayStart, lt: todayStart } } }),
-    ]);
+  const [
+    leadsToday,
+    leadsYesterday,
+    wishlistToday,
+    wishlistYesterday,
+    whatsappToday,
+    whatsappYesterday,
+    ordersToday,
+    ordersYesterday,
+    returnsRefundsToday,
+    returnsRefundsYesterday,
+    invoicesToday,
+    invoicesYesterday,
+  ] = await Promise.all([
+    prisma.astroLead.count({ where: { createdAt: { gte: todayStart } } }),
+    prisma.astroLead.count({ where: { createdAt: { gte: yesterdayStart, lt: todayStart } } }),
+    prisma.wishlistLead.count({ where: { createdAt: { gte: todayStart } } }),
+    prisma.wishlistLead.count({ where: { createdAt: { gte: yesterdayStart, lt: todayStart } } }),
+    prisma.whatsAppMessageEvent.count({ where: { receivedAt: { gte: todayStart }, eventType: "message_api_sent" } }),
+    prisma.whatsAppMessageEvent.count({ where: { receivedAt: { gte: yesterdayStart, lt: todayStart }, eventType: "message_api_sent" } }),
+    prisma.orderProcessingNotification.count({ where: { notifiedAt: { gte: todayStart } } }),
+    prisma.orderProcessingNotification.count({ where: { notifiedAt: { gte: yesterdayStart, lt: todayStart } } }),
+    prisma.orderReturnEmailNotification.count({ where: { notifiedAt: { gte: todayStart } } }),
+    prisma.orderReturnEmailNotification.count({ where: { notifiedAt: { gte: yesterdayStart, lt: todayStart } } }),
+    prisma.orderInvoice.count({ where: { lastSentAt: { gte: todayStart } } }),
+    prisma.orderInvoice.count({ where: { lastSentAt: { gte: yesterdayStart, lt: todayStart } } }),
+  ]);
 
   const attention = await getAttentionSummary();
 
@@ -46,6 +62,8 @@ export const loader = async ({ request }) => {
       wishlistToday: { value: wishlistToday, delta: wishlistToday - wishlistYesterday },
       whatsappSentToday: { value: whatsappToday, delta: whatsappToday - whatsappYesterday },
       ordersNotifiedToday: { value: ordersToday, delta: ordersToday - ordersYesterday },
+      returnsRefundsToday: { value: returnsRefundsToday, delta: returnsRefundsToday - returnsRefundsYesterday },
+      invoicesToday: { value: invoicesToday, delta: invoicesToday - invoicesYesterday },
     },
     attention,
   };
@@ -164,6 +182,8 @@ export default function OverviewPage() {
         <StatCard label="Wishlist syncs today" stat={stats.wishlistToday} />
         <StatCard label="WhatsApp sent today" stat={stats.whatsappSentToday} />
         <StatCard label="Orders notified today" stat={stats.ordersNotifiedToday} />
+        <StatCard label="Returns/refunds sent today" stat={stats.returnsRefundsToday} />
+        <StatCard label="Invoices sent today" stat={stats.invoicesToday} />
       </div>
 
       <AttentionPanel attention={attention} />
@@ -192,9 +212,19 @@ export default function OverviewPage() {
         <SectionCard
           icon="message"
           iconColor={brand.success}
-          title="Messages & Orders"
-          description="Every message sent, whether it was delivered or read, and order notification history."
+          title="Messages"
+          description="Every WhatsApp message sent, whether it was delivered or read."
           links={[{ href: "/app/whatsapp-events", label: "Message history" }]}
+        />
+        <SectionCard
+          icon="package"
+          iconColor={brand.accent}
+          title="Orders"
+          description="GST tax invoices and manual return/refund notifications."
+          links={[
+            { href: "/app/invoices", label: "GST Invoices" },
+            { href: "/app/returns-refunds", label: "Returns & Refunds" },
+          ]}
         />
         <SectionCard
           icon="gear"
@@ -209,6 +239,13 @@ export default function OverviewPage() {
           title="System health"
           description="Checks every connection this app depends on."
           links={[{ href: "/app/server-health", label: "View diagnostics" }]}
+        />
+        <SectionCard
+          icon="file-text"
+          iconColor={brand.muted}
+          title="Documentation"
+          description="Every page and Settings section explained, plus FAQ."
+          links={[{ href: "/app/documentation", label: "Open documentation" }]}
         />
       </div>
     </PageIn>
