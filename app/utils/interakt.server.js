@@ -44,6 +44,14 @@ const INTERAKT_CREATE_CAMPAIGN_URL = "https://api.interakt.ai/v1/public/create-c
 // doesn't pass its own headerImageUrl.
 const FALLBACK_HEADER_IMAGE_URL = "https://onlynaturalgemstones.com/cdn/shop/files/ONG_logo_home.png";
 
+// Used as the "View Order" button's destination whenever a caller
+// doesn't pass its own orderStatusUrl (return/refund WhatsApp
+// templates below) -- always a real https:// URL, since Interakt's
+// api.interakt.ai/cta?redirect={{n}} button wrapper rejects anything
+// else, confirmed live via a real HTTP 400 the first time this was
+// tested without a button value at all.
+const FALLBACK_ORDER_STATUS_URL = "https://onlynaturalgemstones.com/";
+
 // Same duplication reasoning as above — the storefront's real
 // customer-facing domain, used to build each stone's collection link
 // (see linkOrTagline() in buildGemRecommendationTemplatePayload) so the
@@ -477,19 +485,31 @@ export async function sendOrderProcessingWhatsApp(settings, { phone, firstName, 
  * Body:
  *   Hello {{1}},
  *
- *   We've received the item you returned for Order No. #{{2}}. Our
- *   team is inspecting it now, and your refund will be processed
- *   shortly.
+ *   We have received your return for order number #{{2}}. Your refund
+ *   is being processed and will be credited to your original payment
+ *   method within 10 business days.
  *
  *   Regards,
  *   Only Natural Gemstones
- *   from the House of ONG
+ *   from the House of Shubh Gems
+ *
+ * Also has ONE "View Order" URL button, configured in Interakt as a
+ * Dynamic Website URL with base "https://api.interakt.ai/cta?redirect="
+ * -- Interakt's own click-tracking wrapper, which requires the
+ * variable to be a real https:// URL (confirmed live via a real HTTP
+ * 400 "Missing variable values for template's button at index 0" the
+ * first time this was sent without one).
  *
  * ---- Variable mapping ----
+ * Body:
  *  {{1}} customer first name
  *  {{2}} order number (Shopify's own order.name, minus the leading "#")
+ * Button (index 0 -- WhatsApp numbers button variables separately from
+ * body variables, so this is its own {{1}} in Interakt's template
+ * editor, not a continuation of the body's):
+ *  the order's status page URL
  */
-export async function sendReturnReceivedWhatsApp(settings, { phone, firstName, orderNumber, headerImageUrl }) {
+export async function sendReturnReceivedWhatsApp(settings, { phone, firstName, orderNumber, orderStatusUrl, headerImageUrl }) {
   if (!settings.interaktApiKey) {
     return "skipped: Interakt API key not set (Settings page or INTERAKT_API_KEY env var)";
   }
@@ -509,6 +529,7 @@ export async function sendReturnReceivedWhatsApp(settings, { phone, firstName, o
       languageCode: "en",
       headerValues: [headerImageUrl || FALLBACK_HEADER_IMAGE_URL],
       bodyValues: [firstName || "there", String(orderNumber || "").replace(/^#/, "")],
+      buttonValues: { "0": [orderStatusUrl || FALLBACK_ORDER_STATUS_URL] },
     },
   };
 

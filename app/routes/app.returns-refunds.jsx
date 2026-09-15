@@ -40,6 +40,7 @@ const ORDER_FIELDS = `
   createdAt
   email
   phone
+  statusPageUrl
   cancelledAt
   displayFulfillmentStatus
   customer { firstName lastName email phone }
@@ -195,8 +196,8 @@ export const action = async ({ request }) => {
           : await sendReturnReceivedEmail(admin, settings, payload);
       } else {
         result = isRefund
-          ? await sendRefundProcessedWhatsApp(settings, { phone, firstName, orderNumber: o.name, refundAmount: amount })
-          : await sendReturnReceivedWhatsApp(settings, { phone, firstName, orderNumber: o.name });
+          ? await sendRefundProcessedWhatsApp(settings, { phone, firstName, orderNumber: o.name, refundAmount: amount, orderStatusUrl: o.statusPageUrl })
+          : await sendReturnReceivedWhatsApp(settings, { phone, firstName, orderNumber: o.name, orderStatusUrl: o.statusPageUrl });
       }
       const ok = result.startsWith("OK:");
 
