@@ -123,21 +123,30 @@ export async function checkInterakt(settings) {
   }
 }
 
+// Deliberately calls the same Places API (New) endpoint that
+// proxy.places-autocomplete.jsx actually uses for the storefront's Place
+// of Birth field — this used to call the legacy `maps/api/place/
+// autocomplete/json` endpoint instead, which reports REQUEST_DENIED on
+// any Google Cloud project that only has the new API enabled (the normal
+// case for a recently-created project), making this show "Failing" even
+// when the real feature was working fine. Confirmed live.
 export async function checkGooglePlaces(settings) {
   if (!settings.googlePlacesApiKey) {
     return { ok: null, detail: "Not configured — falling back to the free Photon/OpenStreetMap lookup." };
   }
   try {
-    const url =
-      "https://maps.googleapis.com/maps/api/place/autocomplete/json?input=Mumbai&types=(cities)&key=" +
-      encodeURIComponent(settings.googlePlacesApiKey);
-    const res = await withTimeout(fetch(url), 8000, "Google Places API");
+    const res = await withTimeout(
+      fetch("https://places.googleapis.com/v1/places:autocomplete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Goog-Api-Key": settings.googlePlacesApiKey },
+        body: JSON.stringify({ input: "Mumbai", includedPrimaryTypes: ["locality"] }),
+      }),
+      8000,
+      "Google Places API"
+    );
     const json = await res.json();
-    if (json.status === "REQUEST_DENIED") {
-      return { ok: false, detail: `Request denied: ${json.error_message || "check the key is correct and the Places API is enabled in Google Cloud Console."}` };
-    }
-    if (json.status !== "OK" && json.status !== "ZERO_RESULTS") {
-      return { ok: false, detail: `Google returned status ${json.status}${json.error_message ? ": " + json.error_message : ""}` };
+    if (!res.ok) {
+      return { ok: false, detail: `${json?.error?.message || res.statusText} — check the key is correct and "Places API (New)" is enabled in Google Cloud Console.` };
     }
     return { ok: true, detail: "Key valid — city autocomplete is live." };
   } catch (err) {
