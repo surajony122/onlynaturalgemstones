@@ -30,6 +30,8 @@ const FIELDS = [
   "returnReceivedEmailSubject",
   "refundProcessedEmailTemplate",
   "refundProcessedEmailSubject",
+  "gemRecommendationEmailTemplate",
+  "gemRecommendationEmailSubject",
   "whatsappIntervalValue",
   "whatsappIntervalUnit",
   "interaktWebhookSecret",

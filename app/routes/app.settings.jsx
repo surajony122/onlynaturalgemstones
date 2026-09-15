@@ -31,7 +31,12 @@ import {
   DEFAULT_WHATSAPP_INTERVAL_VALUE,
   DEFAULT_WHATSAPP_INTERVAL_UNIT,
 } from "../utils/appSettings.server";
-import { FALLBACK_LOGO_URL } from "../utils/astroAdvice.server";
+import {
+  FALLBACK_LOGO_URL,
+  getGemRecommendationEmailTemplate,
+  getGemRecommendationEmailSubject,
+  GEM_RECOMMENDATION_EMAIL_PLACEHOLDERS,
+} from "../utils/astroAdvice.server";
 import {
   sendGemRecommendationWhatsApp,
   getOrCreateInteraktCampaignId,
@@ -102,6 +107,11 @@ export const loader = async ({ request }) => {
     interaktApiKeySet: !!row?.interaktApiKey,
     interaktTemplateName: row?.interaktTemplateName || "",
     defaultInteraktTemplateName: DEFAULT_INTERAKT_TEMPLATE_NAME,
+    gemRecommendationEmailTemplate: row?.gemRecommendationEmailTemplate || "",
+    defaultGemRecommendationEmailTemplate: getGemRecommendationEmailTemplate({}),
+    gemRecommendationEmailSubject: row?.gemRecommendationEmailSubject || "",
+    defaultGemRecommendationEmailSubject: getGemRecommendationEmailSubject({}),
+    gemRecommendationEmailPlaceholders: GEM_RECOMMENDATION_EMAIL_PLACEHOLDERS,
     interaktOrderTemplateName: row?.interaktOrderTemplateName || "",
     defaultInteraktOrderTemplateName: DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME,
     orderProcessingTriggerTag: row?.orderProcessingTriggerTag || "",
@@ -374,6 +384,14 @@ export const action = async ({ request }) => {
 
   if (intent === "saveGemRecommendation") {
     await saveAppSettings(session.shop, { interaktTemplateName: val("interaktTemplateName") });
+    return { intent, ok: true };
+  }
+
+  if (intent === "saveGemRecommendationEmail") {
+    await saveAppSettings(session.shop, {
+      gemRecommendationEmailTemplate: val("gemRecommendationEmailTemplate"),
+      gemRecommendationEmailSubject: val("gemRecommendationEmailSubject"),
+    });
     return { intent, ok: true };
   }
 
@@ -751,6 +769,17 @@ const EMAIL_PREVIEW_SAMPLE_VALUES = {
   // harmless to include for every preview -- a template that doesn't
   // reference {{refund_amount}} just never substitutes it.
   refund_amount: "₹18,500.00",
+  // Only used by the Gem Recommendation template's preview.
+  results_url: "https://onlynaturalgemstones.com/pages/my-gem-recommendation",
+  // Lightweight stand-in for the 3 real stone cards astroAdvice.server.js
+  // builds server-side (each with its own image/accent color/tracked Buy
+  // Now link) -- just enough here to preview roughly where they sit in
+  // the layout, not a faithful reproduction of the real card markup.
+  stone_cards_html:
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-bottom:1px solid #eadfd2;"><tr>' +
+    '<td width="90" style="padding:18px 16px 18px 0;"><div style="width:90px;height:90px;border-radius:10px;background:#f3e6d0;"></div></td>' +
+    '<td style="padding:18px 0;"><span style="display:inline-block;background:#f3e6d0;color:#8c6a2f;font-size:10px;font-weight:bold;text-transform:uppercase;padding:3px 9px;border-radius:10px;">Life Stone</span><br>' +
+    '<span style="font-size:19px;font-weight:bold;color:#8c6a2f;">Yellow Sapphire</span></td></tr></table>',
   shop_name: "Only Natural Gemstones",
   shop_url: "https://onlynaturalgemstones.com",
   shop_email: "info@onlynaturalgemstones.com",
@@ -945,6 +974,13 @@ export default function SettingsPage() {
   const [wishlistInterval, setWishlistInterval] = useState(data.wishlistEmailIntervalHours);
   const [interaktApiKey, setInteraktApiKey] = useState("");
   const [interaktTemplateName, setInteraktTemplateName] = useState(data.interaktTemplateName);
+  const [gemRecommendationEmailTemplate, setGemRecommendationEmailTemplate] = useState(
+    data.gemRecommendationEmailTemplate || data.defaultGemRecommendationEmailTemplate
+  );
+  const [gemRecommendationEmailSubject, setGemRecommendationEmailSubject] = useState(
+    data.gemRecommendationEmailSubject || data.defaultGemRecommendationEmailSubject
+  );
+  const [showGemRecommendationEmailPreview, setShowGemRecommendationEmailPreview] = useState(false);
   const [interaktOrderTemplateName, setInteraktOrderTemplateName] = useState(data.interaktOrderTemplateName);
   const [orderProcessingTriggerTag, setOrderProcessingTriggerTag] = useState(data.orderProcessingTriggerTag);
   // Empty string ("using the built-in default") is shown as the actual
@@ -1020,6 +1056,7 @@ export default function SettingsPage() {
   const wishlistTiming = useSectionSave("saveWishlistTiming", toast);
   const interaktApiKeySave = useSectionSave("saveInteraktApiKey", toast, () => setInteraktApiKey(""));
   const gemRecommendation = useSectionSave("saveGemRecommendation", toast);
+  const gemRecommendationEmail = useSectionSave("saveGemRecommendationEmail", toast);
   const orderProcessingWhatsapp = useSectionSave("saveOrderProcessingWhatsapp", toast);
   const orderProcessingEmail = useSectionSave("saveOrderProcessingEmail", toast);
   const returnRefundWhatsapp = useSectionSave("saveReturnRefundWhatsapp", toast);
@@ -1120,6 +1157,16 @@ export default function SettingsPage() {
   const saveWishlistTiming = () => wishlistTiming.save({ wishlistEmailIntervalHours: wishlistInterval });
   const saveInteraktApiKey = () => interaktApiKeySave.save({ interaktApiKey });
   const saveGemRecommendation = () => gemRecommendation.save({ interaktTemplateName });
+  // Same "don't freeze today's default as a permanent customization"
+  // reasoning as saveOrderProcessingEmail.
+  const saveGemRecommendationEmail = () =>
+    gemRecommendationEmail.save({
+      gemRecommendationEmailTemplate:
+        gemRecommendationEmailTemplate.replace(/\r\n/g, "\n") === data.defaultGemRecommendationEmailTemplate.replace(/\r\n/g, "\n")
+          ? ""
+          : gemRecommendationEmailTemplate,
+      gemRecommendationEmailSubject: gemRecommendationEmailSubject === data.defaultGemRecommendationEmailSubject ? "" : gemRecommendationEmailSubject,
+    });
   const saveOrderProcessingWhatsapp = () => orderProcessingWhatsapp.save({ orderProcessingTriggerTag, interaktOrderTemplateName });
   const saveReturnRefundWhatsapp = () => returnRefundWhatsapp.save({ interaktReturnTemplateName, interaktRefundTemplateName });
   // Submitting "" (not the literal default HTML) whenever a template
@@ -1285,6 +1332,85 @@ export default function SettingsPage() {
             </div>
             <TestResult fetcherData={testFetcher.data} intent="sendTestWhatsapp" />
             <SaveButton isSaving={gemRecommendation.isSaving} onClick={saveGemRecommendation} />
+          </TemplateCard>
+
+          <TemplateCard icon={<Icon name="mail" size={15} color={brand.accent} />} title="Gem Recommendation — Email">
+            <p style={{ ...hintStyle, marginTop: 0 }}>
+              Sends alongside the WhatsApp message above, the moment someone submits the astrology form. Edit the
+              raw HTML below, or leave it as-is to keep using the built-in design.
+            </p>
+            <label style={labelStyle} htmlFor="gemRecommendationEmailSubject">Email subject</label>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "6px" }}>
+              <input
+                id="gemRecommendationEmailSubject"
+                style={{ ...fieldStyle, marginBottom: 0 }}
+                type="text"
+                value={gemRecommendationEmailSubject}
+                onChange={(e) => setGemRecommendationEmailSubject(e.target.value)}
+                placeholder={data.defaultGemRecommendationEmailSubject}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm("Reset the subject to the built-in default? This discards your current edit (not saved until you click Save below).")) {
+                    setGemRecommendationEmailSubject(data.defaultGemRecommendationEmailSubject);
+                  }
+                }}
+                style={{ ...secondaryBtn, padding: "9px 14px", fontSize: "12.5px", whiteSpace: "nowrap" }}
+              >
+                Reset
+              </button>
+            </div>
+            <p style={hintStyle}>
+              Supports the same placeholders as the HTML below, e.g.{" "}
+              <code style={{ background: brand.panel, padding: "1px 5px", borderRadius: "4px" }}>{"{{customer_first_name}}"}</code>.
+            </p>
+            <Explain summary="Available placeholders (substituted automatically when the email actually sends)">
+              <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "12px", color: brand.muted, lineHeight: 1.8 }}>
+                {data.gemRecommendationEmailPlaceholders.map((p) => (
+                  <li key={p.token}>
+                    <code style={{ background: brand.panel, padding: "1px 5px", borderRadius: "4px" }}>{`{{${p.token}}}`}</code> — {p.description}
+                  </li>
+                ))}
+              </ul>
+            </Explain>
+            <textarea
+              id="gemRecommendationEmailTemplate"
+              value={gemRecommendationEmailTemplate}
+              onChange={(e) => setGemRecommendationEmailTemplate(e.target.value)}
+              spellCheck={false}
+              style={{ ...fieldStyle, fontFamily: brand.mono, fontSize: "11.5px", lineHeight: 1.5, height: "260px", resize: "vertical", whiteSpace: "pre" }}
+            />
+            <div style={{ display: "flex", gap: "8px", marginTop: "6px", flexWrap: "wrap" }}>
+              <button type="button" onClick={() => setShowGemRecommendationEmailPreview((v) => !v)} style={{ ...primaryBtn, padding: "8px 16px", fontSize: "12.5px" }}>
+                {showGemRecommendationEmailPreview ? "Hide preview" : "Preview"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm("Reset to the built-in default template? This discards your current edits (not saved until you click Save below).")) {
+                    setGemRecommendationEmailTemplate(data.defaultGemRecommendationEmailTemplate);
+                  }
+                }}
+                style={{ ...secondaryBtn, padding: "8px 16px", fontSize: "12.5px" }}
+              >
+                Reset to default
+              </button>
+            </div>
+            {showGemRecommendationEmailPreview && (
+              <div style={{ marginTop: "10px", border: `1px solid ${brand.border}`, borderRadius: "10px", overflow: "hidden" }}>
+                <div style={{ padding: "6px 10px", background: brand.panel, borderBottom: `1px solid ${brand.divider}`, fontSize: "11px", color: brand.muted }}>
+                  Preview with sample data — the gemstone card shown here is a rough stand-in for the real,
+                  automatically-generated Life/Benefic/Lucky cards, which always include a real product image and
+                  tracked "Buy Now" link.
+                </div>
+                <div style={{ padding: "8px 10px", borderBottom: `1px solid ${brand.divider}`, fontSize: "12.5px" }}>
+                  <strong>Subject:</strong> {renderEmailPreview(gemRecommendationEmailSubject)}
+                </div>
+                <iframe title="Gem recommendation email preview" srcDoc={renderEmailPreview(gemRecommendationEmailTemplate)} style={{ width: "100%", height: "500px", border: "none", display: "block" }} />
+              </div>
+            )}
+            <SaveButton isSaving={gemRecommendationEmail.isSaving} onClick={saveGemRecommendationEmail} />
           </TemplateCard>
 
           <TemplateCard icon={<Icon name="package" size={15} color={brand.accent} />} title="Order Processing">

@@ -607,6 +607,419 @@ export async function sendWhatsAppForLead(admin, settings, lead) {
   return sendGemRecommendationWhatsApp(settings, data, lead.recommendation, lead.trackingId, submittedOn, FALLBACK_LOGO_URL, lead.shop);
 }
 
+// Documented once, here, so the Settings page's "available placeholders"
+// help text and the actual substitution logic below can never drift
+// apart from each other. stone_cards_html is raw HTML (the Life/
+// Benefic/Lucky recommendation cards, built by stoneCard() above,
+// complete with their own tracked "Buy Now" links and collection
+// images) -- substituted in BEFORE the escaped substitution pass below,
+// same "raw HTML block placeholder alongside escaped simple fields"
+// pattern orderInvoice.server.js's own {{line_items_rows}} placeholder
+// already uses, since a merchant editing the surrounding template has
+// no sensible way to hand-author 3 conditionally-shown, per-lead stone
+// cards themselves.
+export const GEM_RECOMMENDATION_EMAIL_PLACEHOLDERS = [
+  { token: "customer_first_name", description: "Customer's name (falls back to \"there\" if unknown)" },
+  { token: "stone_cards_html", description: "The Life / Benefic / Lucky gemstone recommendation cards — generated automatically, can be repositioned but not hand-authored" },
+  { token: "results_url", description: "Link to the customer's full personalised recommendation page" },
+  { token: "shop_name", description: "Store name" },
+  { token: "shop_url", description: "Store URL" },
+  { token: "shop_email", description: "Store support email address" },
+  { token: "shop_logo_url", description: "Store logo image URL" },
+];
+
+// Plain {{token}} substitution, same convention as
+// renderOrderProcessingEmailTemplate in orderProcessingEmail.server.js —
+// duplicated rather than imported: that file already imports
+// getShopFooterInfo/esc FROM this one, so importing back from it here
+// would be a circular import.
+function renderGemRecommendationEmailTemplate(templateHtml, vars) {
+  let html = templateHtml;
+  for (const [key, value] of Object.entries(vars)) {
+    const safe = value != null ? String(value) : "";
+    html = html.split(`{{${key}}}`).join(safe).split(`{{ ${key} }}`).join(safe);
+  }
+  return html;
+}
+
+// Same visual shell as the order-lifecycle emails (Order Processing,
+// Return Received, Refund Processed) — per explicit request that every
+// email from this store share one visual identity, replacing the
+// richer gold-stripe/dark-header design this used to have. The stone
+// cards themselves (with their own accent colors, images, tracked Buy
+// Now links) are untouched — only the surrounding shell + footer
+// changed.
+function getDefaultGemRecommendationEmailTemplate() {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Your Personalised Gemstone Recommendation</title>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <style type="text/css">
+
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      background-color: #f3f2ef;
+      font-family: Arial, Helvetica, sans-serif;
+      color: #4f5965;
+    }
+
+    table {
+      border-spacing: 0;
+      border-collapse: collapse;
+    }
+
+    img {
+      border: 0;
+      display: block;
+    }
+
+    a {
+      text-decoration: none;
+    }
+
+    .email-wrapper {
+      width: 100%;
+      background-color: #f3f2ef;
+    }
+
+    .page-padding {
+      padding: 32px 0;
+    }
+
+    .email-container {
+      width: 500px;
+      max-width: 500px;
+      background-color: #ffffff;
+      border-radius: 0 0 12px 12px;
+      overflow: hidden;
+    }
+
+    .logo-section {
+      padding: 28px 20px 25px;
+      text-align: center;
+      background-color: #fffcf3;
+      border-top: 5px solid #8c7a4e;
+    }
+
+    .logo-section img {
+      max-width: 100px;
+      width: auto;
+      height: auto;
+      margin: 0 auto;
+    }
+
+    .divider-cell {
+      padding-left: 0;
+      padding-right: 0;
+    }
+
+    .divider {
+      height: 1px;
+      background-color: #d5d0c8;
+      width: 100%;
+      font-size: 1px;
+      line-height: 1px;
+    }
+
+    .content-section {
+      padding: 30px 28px 8px;
+      font-size: 15px;
+      line-height: 1.6;
+      color: #4f5965;
+      background-color: #ffffff;
+    }
+
+    .content-inner {
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    .content-section p {
+      margin-top: 0;
+      margin-bottom: 18px;
+    }
+
+    .button-table {
+      width: 100%;
+      margin-top: 12px;
+      margin-bottom: 20px;
+    }
+
+    .email-button {
+      display: block;
+      width: 100%;
+      box-sizing: border-box;
+      text-align: center;
+      background-color: #8c7a4e;
+      color: #ffffff !important;
+      padding: 12px 5px;
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 16px;
+      border-radius: 3px;
+      white-space: nowrap;
+      text-decoration: none !important;
+    }
+
+    .footer-section {
+      padding: 14px 18px 16px;
+      text-align: center;
+      color: #4f5965;
+      background-color: #fffcf3;
+    }
+
+    .footer-title {
+      margin: 0 0 8px;
+      font-size: 14px;
+      line-height: 1.45;
+      color: #4f5965;
+    }
+
+    .address {
+      margin: 0 0 10px;
+      font-size: 13px;
+      line-height: 1.45;
+      color: #333333 !important;
+    }
+
+    .address a {
+      color: #333333 !important;
+      text-decoration: none !important;
+    }
+
+    .contact-table {
+      width: 100%;
+      margin: 0 auto;
+      table-layout: fixed;
+    }
+
+    .website-row {
+      padding-bottom: 8px;
+    }
+
+    .contact-item {
+      width: 50%;
+      padding: 3px 2px;
+      text-align: center;
+      vertical-align: middle;
+      font-size: 13px;
+      line-height: 18px;
+    }
+
+    .single-contact-item {
+      padding: 3px 2px;
+      text-align: center;
+      vertical-align: middle;
+      font-size: 13px;
+      line-height: 18px;
+    }
+
+    .contact-link {
+      color: #333333 !important;
+      text-decoration: none !important;
+      white-space: nowrap;
+    }
+
+    .contact-icon {
+      width: 18px;
+      height: 18px;
+      display: block;
+    }
+
+    @media only screen and (max-width: 600px) {
+
+      .page-padding {
+        padding: 0 !important;
+      }
+
+      .email-container {
+        width: 100% !important;
+        max-width: 100% !important;
+        border-radius: 0 !important;
+      }
+
+      .logo-section {
+        padding: 22px 15px !important;
+      }
+
+      .content-section {
+        padding: 24px 20px 8px !important;
+        font-size: 16px !important;
+      }
+
+      .footer-section {
+        padding: 12px 12px 14px !important;
+      }
+
+      .contact-item,
+      .single-contact-item {
+        padding: 3px 1px !important;
+        font-size: 13px !important;
+      }
+
+    }
+
+  </style>
+</head>
+
+<body>
+
+  <table class="email-wrapper" width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+      <td class="page-padding" align="center">
+        <table class="email-container" width="500" cellpadding="0" cellspacing="0" border="0">
+
+          <!-- HEADER -->
+          <tr>
+            <td class="logo-section">
+              <img src="{{shop_logo_url}}" alt="{{shop_name}}" width="100">
+            </td>
+          </tr>
+
+          <!-- DIVIDER -->
+          <tr>
+            <td class="divider-cell">
+              <div class="divider">&nbsp;</div>
+            </td>
+          </tr>
+
+          <!-- MAIN CONTENT -->
+          <tr>
+            <td class="content-section">
+              <div class="content-inner">
+
+                <p>Hello {{customer_first_name}},</p>
+
+                <p>
+                  Based on your birth chart, our Vedic astrology experts have put together your personalised
+                  gemstone recommendations below.
+                </p>
+
+{{stone_cards_html}}
+
+                <table class="button-table" width="100%" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td>
+                      <a href="{{results_url}}" class="email-button">View My Full Recommendation</a>
+                    </td>
+                  </tr>
+                </table>
+
+              </div>
+            </td>
+          </tr>
+
+          <!-- DIVIDER -->
+          <tr>
+            <td class="divider-cell">
+              <div class="divider">&nbsp;</div>
+            </td>
+          </tr>
+
+          <!-- FOOTER -->
+          <tr>
+            <td class="footer-section">
+
+              <p class="footer-title">
+                Thanks for choosing {{shop_name}} from the House of ONG.
+              </p>
+
+              <table class="contact-table" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td class="single-contact-item website-row" align="center">
+                    <table cellpadding="0" cellspacing="0" border="0" align="center">
+                      <tr>
+                        <td valign="middle" style="padding-right:6px;">
+                          <img src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/website.png?v=1788870868" alt="Website" width="18" height="18" class="contact-icon">
+                        </td>
+                        <td valign="middle">
+                          <a href="{{shop_url}}" class="contact-link">onlynaturalgemstones.com</a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <table class="contact-table" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td class="contact-item" align="center">
+                    <table cellpadding="0" cellspacing="0" border="0" align="center">
+                      <tr>
+                        <td valign="middle" style="padding-right:5px;">
+                          <a href="https://wa.me/919310400152">
+                            <img src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/whatsapp-svg-icon.svg?v=1787318358" alt="WhatsApp" width="18" height="18" class="contact-icon">
+                          </a>
+                        </td>
+                        <td valign="middle">
+                          <a href="https://wa.me/919310400152" class="contact-link">+91-9310-400-152</a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                  <td class="contact-item" align="center">
+                    <table cellpadding="0" cellspacing="0" border="0" align="center">
+                      <tr>
+                        <td valign="middle" style="padding-right:5px;">
+                          <img src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/phone.png?v=1788597346" alt="Phone" width="18" height="18" class="contact-icon">
+                        </td>
+                        <td valign="middle">
+                          <a href="tel:+918010555111" class="contact-link">+91-8010-555-111</a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <table class="contact-table" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td class="single-contact-item" align="center">
+                    <table cellpadding="0" cellspacing="0" border="0" align="center">
+                      <tr>
+                        <td valign="middle" style="padding-right:6px;">
+                          <img src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/Email.png?v=1788596216" alt="Email" width="18" height="18" class="contact-icon">
+                        </td>
+                        <td valign="middle">
+                          <a href="mailto:{{shop_email}}" class="contact-link">{{shop_email}}</a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>`;
+}
+
+/** Resolves which template HTML actually gets sent -- a saved
+ * AppSettings.gemRecommendationEmailTemplate wins, the built-in default
+ * above otherwise. The ONE place this decision is made, so the Settings
+ * page's preview and the real send path never see different answers. */
+export function getGemRecommendationEmailTemplate(settings) {
+  return (settings && settings.gemRecommendationEmailTemplate) || getDefaultGemRecommendationEmailTemplate();
+}
+
+export const DEFAULT_GEM_RECOMMENDATION_EMAIL_SUBJECT = "Your Personalised Gemstone Recommendation";
+
+export function getGemRecommendationEmailSubject(settings) {
+  return (settings && settings.gemRecommendationEmailSubject) || DEFAULT_GEM_RECOMMENDATION_EMAIL_SUBJECT;
+}
+
 async function sendGemRecommendationEmail(admin, settings, data, birthDetails, recommendation, trackingId) {
   if (!settings.gmailUser || !settings.gmailAppPassword) {
     return "skipped: Gmail user / app password not set (Settings page or GMAIL_USER / GMAIL_APP_PASSWORD env vars)";
@@ -618,25 +1031,43 @@ async function sendGemRecommendationEmail(admin, settings, data, birthDetails, r
   const pixelUrl = appUrl ? appUrl + "/track/open?id=" + encodeURIComponent(trackingId) : null;
 
   const firstName = (data.name || "").split(" ")[0] || "there";
-  const subject = "Your Personalised Gemstone Recommendation";
   const life = recommendation.life || {};
 
   const shopInfo = await getShopFooterInfo(admin);
   const collectionHandles = [recommendation.life, recommendation.benefic, recommendation.lucky].map((s) => s && s.collection);
   const collectionImages = await getCollectionImages(admin, collectionHandles);
 
-  const htmlBody = buildRecommendationEmailHtml({
-    firstName,
-    life,
-    benefic: recommendation.benefic || {},
-    lucky: recommendation.lucky || {},
-    resultsUrl: trackedResultsUrl,
-    pixelUrl,
-    shopInfo,
-    collectionImages,
-    appUrl,
-    trackingId,
-  });
+  const trackingCtx = { appUrl, trackingId };
+  const stoneCardsHtml =
+    stoneCard("Life", life, collectionImages, trackingCtx) +
+    stoneCard("Benefic", recommendation.benefic || {}, collectionImages, trackingCtx) +
+    stoneCard("Lucky", recommendation.lucky || {}, collectionImages, trackingCtx);
+
+  // The HTML body needs every value HTML-escaped (substituted straight
+  // into markup) EXCEPT stone_cards_html, which is already-built raw
+  // HTML — substituted in first, before the escaped pass, same reason
+  // orderProcessingEmail.server.js splits rawVars/htmlVars for its own
+  // subject vs. body. The subject line uses the raw (unescaped) values.
+  const rawVars = {
+    customer_first_name: firstName,
+    results_url: trackedResultsUrl,
+    shop_name: shopInfo.name,
+    shop_url: shopInfo.url,
+    shop_email: shopInfo.email,
+    shop_logo_url: shopInfo.logoUrl,
+  };
+  const htmlVars = Object.fromEntries(Object.entries(rawVars).map(([key, value]) => [key, esc(value)]));
+
+  const template = getGemRecommendationEmailTemplate(settings);
+  let htmlBody = template.split("{{stone_cards_html}}").join(stoneCardsHtml).split("{{ stone_cards_html }}").join(stoneCardsHtml);
+  htmlBody = renderGemRecommendationEmailTemplate(htmlBody, htmlVars);
+  // Open-tracking pixel — invisible, so just dropped right after <body>
+  // rather than needing its own placeholder in the editable template.
+  if (pixelUrl) {
+    const pixelHtml = '<img src="' + esc(pixelUrl) + '" width="1" height="1" style="display:none;border:0;" alt="">';
+    htmlBody = htmlBody.includes("<body>") ? htmlBody.replace("<body>", "<body>" + pixelHtml) : pixelHtml + htmlBody;
+  }
+  const subject = renderGemRecommendationEmailTemplate(getGemRecommendationEmailSubject(settings), rawVars);
 
   const plainBody =
     "Hi " + firstName + ",\n\n" +
@@ -998,43 +1429,3 @@ export function footerHtml(shopInfo, trackingCtx) {
   );
 }
 
-function buildRecommendationEmailHtml(opts) {
-  const shopInfo = opts.shopInfo;
-  const trackingCtx = { appUrl: opts.appUrl, trackingId: opts.trackingId };
-  const headerContent = shopInfo.logoUrl
-    ? `<img src="${esc(shopInfo.logoUrl)}" alt="${esc(shopInfo.name)}" style="max-height:44px;max-width:220px;">`
-    : `<span style="color:#3a2408;font-size:20px;font-weight:bold;letter-spacing:0.5px;">${esc(shopInfo.name)}</span>`;
-
-  return (
-    "<!DOCTYPE html><html><head><meta charset=\"UTF-8\">" +
-    '<meta name="viewport" content="width=device-width, initial-scale=1.0"></head>' +
-    '<body style="margin:0;padding:0;background:#f4f2ed;font-family:Arial,Helvetica,sans-serif;">' +
-    (opts.pixelUrl ? '<img src="' + esc(opts.pixelUrl) + '" width="1" height="1" style="display:none;border:0;" alt="">' : "") +
-    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f2ed;padding:24px 0;">' +
-    "<tr><td align=\"center\">" +
-    '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;max-width:600px;width:100%;border-radius:10px;overflow:hidden;box-shadow:0 1px 3px rgba(58,36,8,0.08);">' +
-    // Thin gold accent stripe instead of a full dark band — a touch of
-    // richness without going back to a heavy dark-brown header.
-    '<tr><td style="background:linear-gradient(90deg,#c8944a,#8c7a4e);height:5px;line-height:5px;font-size:0;">&nbsp;</td></tr>' +
-    '<tr><td style="background:#faf6f0;padding:22px 32px;text-align:center;border-bottom:1px solid #eadfd2;">' +
-    headerContent +
-    "</td></tr>" +
-    '<tr><td style="padding:32px 32px 8px;">' +
-    '<h1 style="margin:0 0 8px;font-size:22px;color:#3a2408;">Hi ' + esc(opts.firstName) + ",</h1>" +
-    '<p style="margin:0;font-size:15px;line-height:1.6;color:#5c4a3d;">Based on your birth chart, our Vedic astrology experts have put together your personalised gemstone recommendations below.</p>' +
-    "</td></tr>" +
-    '<tr><td style="padding:8px 32px 4px;">' +
-    '<p style="margin:0;text-align:center;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#c8944a;">&#10022;&nbsp;&nbsp;Your Gemstones&nbsp;&nbsp;&#10022;</p>' +
-    "</td></tr>" +
-    '<tr><td style="padding:8px 32px 8px;">' +
-    stoneCard("Life", opts.life, opts.collectionImages, trackingCtx) +
-    stoneCard("Benefic", opts.benefic, opts.collectionImages, trackingCtx) +
-    stoneCard("Lucky", opts.lucky, opts.collectionImages, trackingCtx) +
-    "</td></tr>" +
-    '<tr><td style="padding:16px 32px 32px;text-align:center;">' +
-    '<a href="' + esc(opts.resultsUrl) + '" style="display:inline-block;background:#3a2408;color:#ffffff;font-size:14px;font-weight:bold;text-decoration:none;padding:14px 32px;border-radius:4px;">View My Full Recommendation &rarr;</a>' +
-    "</td></tr>" +
-    footerHtml(shopInfo, trackingCtx) +
-    "</table></td></tr></table></body></html>"
-  );
-}

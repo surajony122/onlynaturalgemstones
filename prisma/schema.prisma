@@ -463,6 +463,16 @@ model AppSettings {
   returnReceivedEmailSubject     String?
   refundProcessedEmailTemplate   String?
   refundProcessedEmailSubject    String?
+  // Gem Recommendation email (the astrology lead's personalised
+  // recommendation, sent by astroAdvice.server.js's
+  // sendGemRecommendationEmail) -- same "blank means use the built-in
+  // default" convention. {{stone_cards_html}} inside the template is a
+  // raw, pre-built HTML block (the Life/Benefic/Lucky cards, each with
+  // its own tracked Buy Now link) substituted in before the rest of the
+  // {{token}} fields, not something a merchant hand-authors -- see
+  // getGemRecommendationEmailTemplate for the one place this resolves.
+  gemRecommendationEmailTemplate String?
+  gemRecommendationEmailSubject  String?
   // GST tax invoice settings — see app/utils/orderInvoice.server.js and
   // the order-page "Send Invoice" admin action extension
   // (extensions/order-invoice-action). GSTIN/legal name/address entered
