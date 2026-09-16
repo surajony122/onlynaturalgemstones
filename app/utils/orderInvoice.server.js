@@ -914,8 +914,15 @@ export function computeInvoiceGst(order, settings) {
     // at all -- see the Settings page's own comment for why GST-related
     // data generally lives here rather than relying on Shopify's own
     // fields.
+    // Unlike the GST rate above, a customisation line's HSN does NOT
+    // inherit its gemstone's collection override -- per explicit
+    // request, "Gemstone Customisation" always uses the flat
+    // invoiceHsnCustomisation code (it's a made/labour-charge line, a
+    // genuinely different HSN classification from whichever gemstone
+    // it happens to be linked to), regardless of which collection that
+    // gemstone belongs to.
     const hsn = isCustomisation
-      ? (linkedGemstoneId && hsnOverrideByVariantId[linkedGemstoneId]) || hsnCustomisation || line.variant?.inventoryItem?.harmonizedSystemCode || ""
+      ? hsnCustomisation || line.variant?.inventoryItem?.harmonizedSystemCode || ""
       : (ownVariantId && hsnOverrideByVariantId[ownVariantId]) || hsnLoose || line.variant?.inventoryItem?.harmonizedSystemCode || "";
     const sku = line.variant?.sku || "";
     // Per explicit request: a "Gemstone Customisation" row on its own
@@ -938,6 +945,11 @@ export function computeInvoiceGst(order, settings) {
             a.value &&
             !a.key.startsWith("_") &&
             a.key !== "Linked Gemstone" &&
+            // Visible property the customizer also writes now (Admin's
+            // order page can't show hidden properties) -- excluded here
+            // since "For gemstone SKU" above already shows the same
+            // thing, resolved independently server-side.
+            a.key !== "Linked Gemstone SKU" &&
             a.key !== "Lab Certification" &&
             a.key !== "GJI Certification" &&
             a.key !== "Custom Design Image",
