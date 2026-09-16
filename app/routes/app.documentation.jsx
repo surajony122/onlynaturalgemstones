@@ -299,9 +299,8 @@ export default function DocumentationPage() {
         <FaqItem q="How does the Refund WhatsApp message relate to Shopify's own &quot;Order refund&quot; email?">
           They're independent and both automatic. Shopify sends its own native refund email the instant staff click Refund on an order (unless you
           uncheck "Send a notification" at that moment) — this app no longer sends any Return/Refund emails of its own, since Shopify's native one
-          already covers that. Separately, this app listens for that same Refund action and sends one WhatsApp message — computed from the real
-          refund amount in Shopify's data, not typed in by staff. There's no page or button for this anymore; it just happens whenever a refund is
-          processed.
+          already covers that. Separately, this app listens for that same Refund action and sends one WhatsApp message automatically. There's no
+          page or button for this anymore; it just happens whenever a refund is processed.
         </FaqItem>
 
         <FaqItem q="Can I change the wording of any of these messages?">

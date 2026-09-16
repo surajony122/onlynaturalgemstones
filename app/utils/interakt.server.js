@@ -480,34 +480,43 @@ export async function sendOrderProcessingWhatsApp(settings, { phone, firstName, 
  * entry — confirmed directly against a real order. Not tied to
  * Shopify's separate native Returns feature at all (that automation
  * was tried and reverted — this app only automates the refund side).
- * The refund amount comes from the webhook payload's own transaction
- * data, not typed in by staff. The Return/Refund EMAILS this app used
- * to send have been removed — Shopify's own native refund email
- * already covers that.
+ * The Return/Refund EMAILS this app used to send have been removed —
+ * Shopify's own native refund email already covers that.
  *
  * ---- TEMPLATE (as configured in Interakt) ----
  * Name: must match AppSettings.interaktRefundTemplateName /
- *       INTERAKT_REFUND_TEMPLATE_NAME env var / DEFAULT_INTERAKT_REFUND_TEMPLATE_NAME.
- * Category: Utility. Language: English. Header: Image (store logo).
+ *       INTERAKT_REFUND_TEMPLATE_NAME env var / DEFAULT_INTERAKT_REFUND_TEMPLATE_NAME
+ * (confirmed live as "order_returned" on this store's actual approved
+ * template — the settings field is what actually controls this, this
+ * default is only a fallback).
+ * Category: Utility. Language: English.
  *
- * Body:
+ * Body (matched exactly to the real approved template, confirmed live
+ * via an HTTP 400 "Number of Body's variable values (3) does not match
+ * the expected number of params (2)" the first time this was tried
+ * with 3 body values — the approved template has only 2, no refund-
+ * amount placeholder at all):
  *   Hello {{1}},
  *
- *   Your refund of {{2}} for Order No. #{{3}} has been processed. It
- *   may take 5-7 business days to reflect in your account.
+ *   We have received your return for order number #{{2}}. Your refund
+ *   is being processed and will be credited to your original payment
+ *   method within 10 business days.
  *
  *   Regards,
  *   Only Natural Gemstones
- *   from the House of ONG
+ *   from the House of Shubh Gems
  *
  * ---- Variable mapping ----
  *  {{1}} customer first name
- *  {{2}} refund amount, formatted (e.g. "₹1,500.00") -- computed from
- *       the refunds/create webhook's own transaction total, not typed
- *       in by anyone
- *  {{3}} order number (Shopify's own order.name, minus the leading "#")
+ *  {{2}} order number (Shopify's own order.name, minus the leading "#" —
+ *        the template text already supplies "#" before {{2}})
+ *
+ * The refund amount is still computed from the webhook's own
+ * transaction data and stored on the OrderReturnEmailNotification row
+ * for tracking (see webhooks.refunds.create.jsx) — it's just not part
+ * of this particular WhatsApp template's body.
  */
-export async function sendRefundProcessedWhatsApp(settings, { phone, firstName, orderNumber, refundAmount, headerImageUrl }) {
+export async function sendRefundProcessedWhatsApp(settings, { phone, firstName, orderNumber, headerImageUrl }) {
   if (!settings.interaktApiKey) {
     return "skipped: Interakt API key not set (Settings page or INTERAKT_API_KEY env var)";
   }
@@ -526,7 +535,7 @@ export async function sendRefundProcessedWhatsApp(settings, { phone, firstName, 
       name: templateName,
       languageCode: "en",
       headerValues: [headerImageUrl || FALLBACK_HEADER_IMAGE_URL],
-      bodyValues: [firstName || "there", refundAmount || "—", String(orderNumber || "").replace(/^#/, "")],
+      bodyValues: [firstName || "there", String(orderNumber || "").replace(/^#/, "")],
     },
   };
 

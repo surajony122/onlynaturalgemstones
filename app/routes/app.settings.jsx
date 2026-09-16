@@ -311,7 +311,7 @@ export const action = async ({ request }) => {
     const settings = await getAppSettings(session.shop);
     let status;
     try {
-      status = await sendRefundProcessedWhatsApp(settings, { phone, firstName: "Test", orderNumber: "1001", refundAmount: "₹1,500.00" });
+      status = await sendRefundProcessedWhatsApp(settings, { phone, firstName: "Test", orderNumber: "1001" });
     } catch (err) {
       status = "threw: " + String((err && err.message) || err);
     }

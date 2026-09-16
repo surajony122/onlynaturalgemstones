@@ -151,7 +151,7 @@ export const action = async ({ request }) => {
     const phone = resolvePhone(order);
     const orderNumber = order.name;
 
-    const result = await sendRefundProcessedWhatsApp(settings, { phone, firstName, orderNumber, refundAmount });
+    const result = await sendRefundProcessedWhatsApp(settings, { phone, firstName, orderNumber });
 
     await prisma.orderReturnEmailNotification.update({
       where: { id: claim.id },
