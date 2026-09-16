@@ -2045,6 +2045,11 @@ export default function SettingsPage() {
                   <strong>ONG1028</strong> becomes <strong>{invoiceNumberPrefix || data.defaultInvoiceNumberPrefix}1028</strong>.
                   Assigned once per order and never changes on resend, even if you edit the prefix afterward.
                 </p>
+                <p style={{ ...hintStyle, marginTop: "-10px" }}>
+                  The prefix is plain text, typed exactly as you want it to appear — e.g. type <strong>INV-ONG</strong> to get{" "}
+                  invoice numbers like <strong>INV-ONG1028</strong>. It's not a template, so it never needs {"{{ }}"} placeholders
+                  around anything — the order's own digits are always appended automatically, right after whatever you type here.
+                </p>
 
                 <Explain summary="Available placeholders (substituted automatically when the invoice is generated)">
                   <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "12px", color: brand.muted, lineHeight: 1.8 }}>
