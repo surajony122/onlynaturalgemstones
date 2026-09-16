@@ -929,32 +929,49 @@ export function computeInvoiceGst(order, settings) {
     // email and cart drawer already use (hidden "_"-prefixed properties,
     // "Linked Gemstone", the two certification fields shown elsewhere,
     // and the uploaded design file, which is a raw CDN URL with nothing
-    // useful to print on a tax document).
+    // useful to print on a tax document). Also runs for a plain LOOSE
+    // line now -- per explicit request, a loose purchase where the
+    // customer filled in the product page's Pooja energisation form
+    // (Wearer Name/DOB/TOB/POB, written as this line's own properties --
+    // see shubh-gems-customizer.js) previously showed nothing on the
+    // invoice at all, since this block used to only ever run for the
+    // customisation charge line.
     let customisationDetailsHtml = "";
-    if (isCustomisation) {
-      const parentSku = linkedGemstoneId ? variantIdToSku[linkedGemstoneId] : "";
+    {
       const detailLines = [];
-      if (parentSku) {
-        const linkLabel = settings.invoiceCustomisationLinkLabel || DEFAULT_INVOICE_CUSTOMISATION_LINK_LABEL;
-        detailLines.push(`${esc(linkLabel)} ${esc(parentSku)}`);
+      if (isCustomisation) {
+        const parentSku = linkedGemstoneId ? variantIdToSku[linkedGemstoneId] : "";
+        if (parentSku) {
+          const linkLabel = settings.invoiceCustomisationLinkLabel || DEFAULT_INVOICE_CUSTOMISATION_LINK_LABEL;
+          detailLines.push(`${esc(linkLabel)} ${esc(parentSku)}`);
+        }
       }
-      const propParts = (line.customAttributes || [])
-        .filter(
-          (a) =>
-            a.value &&
-            !a.key.startsWith("_") &&
-            a.key !== "Linked Gemstone" &&
-            // Visible property the customizer also writes now (Admin's
-            // order page can't show hidden properties) -- excluded here
-            // since "For gemstone SKU" above already shows the same
-            // thing, resolved independently server-side.
-            a.key !== "Linked Gemstone SKU" &&
-            a.key !== "Lab Certification" &&
-            a.key !== "GJI Certification" &&
-            a.key !== "Custom Design Image",
-        )
-        .map((a) => esc(a.value));
-      if (propParts.length) detailLines.push(propParts.join(" &middot; "));
+      const relevantProps = (line.customAttributes || []).filter(
+        (a) =>
+          a.value &&
+          !a.key.startsWith("_") &&
+          a.key !== "Linked Gemstone" &&
+          // Visible property the customizer also writes now (Admin's
+          // order page can't show hidden properties) -- excluded here
+          // since "For gemstone SKU" above already shows the same
+          // thing, resolved independently server-side.
+          a.key !== "Linked Gemstone SKU" &&
+          a.key !== "Lab Certification" &&
+          a.key !== "GJI Certification" &&
+          a.key !== "Custom Design Image",
+      );
+      if (isCustomisation) {
+        // Customisation properties (Metal/Design/Size/...) read fine as
+        // bare values in context -- a labelled "Metal: Gold" would just
+        // be redundant here.
+        const propParts = relevantProps.map((a) => esc(a.value));
+        if (propParts.length) detailLines.push(propParts.join(" &middot; "));
+      } else if (relevantProps.length) {
+        // Loose-line properties are NOT self-explanatory as bare values
+        // the same way -- "12 May 1990" alone doesn't say it's a birth
+        // date -- so each one is shown as "Key: value" instead.
+        detailLines.push(relevantProps.map((a) => `${esc(a.key)}: ${esc(a.value)}`).join(" &middot; "));
+      }
       if (detailLines.length) {
         customisationDetailsHtml = `<br><span style="color:#888;font-size:9px;">${detailLines.join("<br>")}</span>`;
       }
