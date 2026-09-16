@@ -153,14 +153,14 @@ function getDefaultOrderInvoiceTemplate() {
       <td style="${boxSides}padding:0;">
         <table style="width:100%;border-collapse:collapse;">
           <tr>
-            <th style="width:24%;background-color:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">ITEM(s) DESCRIPTION</th>
-            <th style="width:8%;background-color:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">HSN</th>
-            <th style="width:6%;background-color:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">Qty</th>
-            <th style="width:13%;background-color:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">RATE (₹)</th>
-            <th style="width:12%;background-color:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">CGST</th>
-            <th style="width:12%;background-color:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">SGST</th>
-            <th style="width:12%;background-color:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">IGST</th>
-            <th style="width:13%;background-color:#f3efe6;border:1px solid #999;padding:6px 8px;font-size:9.5px;text-align:left;">AMOUNT (₹)</th>
+            <th style="width:24%;background-color:#f3efe6;border:0.5px solid #ccc;padding:6px 8px;font-size:9.5px;text-align:left;">ITEM(s) DESCRIPTION</th>
+            <th style="width:8%;background-color:#f3efe6;border:0.5px solid #ccc;padding:6px 8px;font-size:9.5px;text-align:left;">HSN</th>
+            <th style="width:6%;background-color:#f3efe6;border:0.5px solid #ccc;padding:6px 8px;font-size:9.5px;text-align:left;">Qty</th>
+            <th style="width:13%;background-color:#f3efe6;border:0.5px solid #ccc;padding:6px 8px;font-size:9.5px;text-align:left;">RATE (₹)</th>
+            <th style="width:12%;background-color:#f3efe6;border:0.5px solid #ccc;padding:6px 8px;font-size:9.5px;text-align:left;">CGST</th>
+            <th style="width:12%;background-color:#f3efe6;border:0.5px solid #ccc;padding:6px 8px;font-size:9.5px;text-align:left;">SGST</th>
+            <th style="width:12%;background-color:#f3efe6;border:0.5px solid #ccc;padding:6px 8px;font-size:9.5px;text-align:left;">IGST</th>
+            <th style="width:13%;background-color:#f3efe6;border:0.5px solid #ccc;padding:6px 8px;font-size:9.5px;text-align:left;">AMOUNT (₹)</th>
           </tr>
           {{line_items_rows}}
         </table>
@@ -178,16 +178,16 @@ function getDefaultOrderInvoiceTemplate() {
             <td style="border:none;width:45%;vertical-align:top;padding:10px;">
               <table style="width:100%;border-collapse:collapse;">
                 <tr>
-                  <td style="border:none;border-bottom:1px solid #ddd;font-size:10px;padding:4px 0;">Sub Total</td>
-                  <td style="border:none;border-bottom:1px solid #ddd;font-size:10px;padding:4px 0;text-align:right;">{{subtotal}}</td>
+                  <td style="border:none;border-bottom:1px solid #ddd;font-size:10px;padding:9px 0;">Sub Total</td>
+                  <td style="border:none;border-bottom:1px solid #ddd;font-size:10px;padding:9px 0;text-align:right;">{{subtotal}}</td>
                 </tr>
                 <tr>
-                  <td style="border:none;border-bottom:1px solid #ddd;font-size:10px;padding:4px 0;">Total GST</td>
-                  <td style="border:none;border-bottom:1px solid #ddd;font-size:10px;padding:4px 0;text-align:right;">{{total_gst}}</td>
+                  <td style="border:none;border-bottom:1px solid #ddd;font-size:10px;padding:9px 0;">Total GST</td>
+                  <td style="border:none;border-bottom:1px solid #ddd;font-size:10px;padding:9px 0;text-align:right;">{{total_gst}}</td>
                 </tr>
                 <tr>
-                  <td style="border:none;font-size:12px;font-weight:bold;padding:4px 0;">Total</td>
-                  <td style="border:none;font-size:12px;font-weight:bold;padding:4px 0;text-align:right;">{{grand_total}}</td>
+                  <td style="border:none;font-size:12px;font-weight:bold;padding:10px 0;">Total</td>
+                  <td style="border:none;font-size:12px;font-weight:bold;padding:10px 0;text-align:right;">{{grand_total}}</td>
                 </tr>
               </table>
             </td>
@@ -501,12 +501,29 @@ export function renderOrderInvoiceTemplate(templateHtml, vars) {
  * ever needed. */
 export async function getOrCreateInvoiceNumber(shop, orderId, orderName) {
   const existing = await prisma.orderInvoice.findUnique({ where: { orderId } });
-  if (existing) return { invoiceNumber: existing.invoiceNumber, isNew: false };
 
   const settingsRow = await prisma.appSettings.findUnique({ where: { shop } });
-  const prefix = settingsRow?.invoiceNumberPrefix || DEFAULT_INVOICE_NUMBER_PREFIX;
+  // The prefix is a plain string prepended to the order's own digits --
+  // it never takes a placeholder. Stripped defensively anyway: a
+  // merchant once saved a literal "{{ORDER-NUMBER}}" into this field
+  // (understandably guessing it needed one), which produced invoice
+  // numbers like "INV-{{ORDER-NUMBER}}1032" everywhere the number is
+  // shown (email subject/body and the PDF all read this same value).
+  const prefix = (settingsRow?.invoiceNumberPrefix || DEFAULT_INVOICE_NUMBER_PREFIX).replace(/\{\{[^}]*\}\}/g, "");
   const orderDigits = (orderName || "").replace(/\D/g, "") || "000000";
   const invoiceNumber = `${prefix}${orderDigits}`;
+
+  if (existing) {
+    // Self-heals an order whose number was already generated from that
+    // mistake before the prefix was fixed -- a real invoice number can
+    // never legitimately contain "{{", so this can't misfire on any
+    // genuine (however unusual) prefix a merchant sets.
+    if (existing.invoiceNumber.includes("{{")) {
+      await prisma.orderInvoice.update({ where: { orderId }, data: { invoiceNumber } });
+      return { invoiceNumber, isNew: false };
+    }
+    return { invoiceNumber: existing.invoiceNumber, isNew: false };
+  }
 
   await prisma.orderInvoice.create({
     data: { shop, orderId, orderName, invoiceNumber },
@@ -576,10 +593,10 @@ function formatAddress(address, opts) {
   return formatAddressLines(address, opts).join("<br>");
 }
 
-/** Builds the invoice PDF's 3-column info block (seller | customer |
- * delivery) as real per-line table ROWS -- one <tr> per line index,
- * zipped across all three columns, blank <td> once a column runs out
- * of lines -- rather than one <td> per column each containing a
+/** Builds the invoice PDF's 2-column info block (customer | seller) as
+ * real per-line table ROWS -- one <tr> per line index, zipped across
+ * both columns, blank <td> once a column runs out of lines -- rather
+ * than one <td> per column each containing a
  * multi-line stack. This is deliberate, not just a style choice:
  * pdfmake does not reliably respect `vertical-align: top` when cells
  * in the same row hold a different number of lines (confirmed live --
@@ -590,10 +607,10 @@ function formatAddress(address, opts) {
  * layout, which stays top-aligned per column regardless of how many
  * lines each one has. */
 function buildInfoBlockRows(col1Lines, col2Lines) {
-  // Two columns -- Seller (left) and Customer Details (right). Per
-  // explicit request: the third "Delivery Before / Sales Person /
-  // Delivery Mode" column is removed entirely, and Customer Details
-  // moves from the middle into that now-vacant right-hand side.
+  // Two columns -- Customer Details (left) and Seller (right), per
+  // explicit request (swapped from the original left-seller/right-
+  // customer order). The third "Delivery Before / Sales Person /
+  // Delivery Mode" column was removed entirely in an earlier request.
   const maxLen = Math.max(col1Lines.length, col2Lines.length);
   let rows = "";
   for (let i = 0; i < maxLen; i++) {
@@ -1087,7 +1104,9 @@ export async function sendOrderInvoiceEmail(admin, settings, shop, orderGid) {
     ...formatAddressLines(order.billingAddress, { includeName: false, includePhone: false }),
     `Tel : ${esc(order.billingAddress?.phone || order.shippingAddress?.phone || "—")}`,
   ];
-  const infoBlockRows = buildInfoBlockRows(sellerLines, customerLines);
+  // Per explicit request: Customer Details on the left, Seller on the
+  // right (swapped from the previous left-seller/right-customer order).
+  const infoBlockRows = buildInfoBlockRows(customerLines, sellerLines);
 
   const template = getOrderInvoiceTemplate(settings);
   const html = renderOrderInvoiceTemplate(template, {
