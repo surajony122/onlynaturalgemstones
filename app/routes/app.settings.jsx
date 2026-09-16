@@ -681,18 +681,20 @@ const INVOICE_PREVIEW_SAMPLE_VALUES = {
   brand_header_html: '<span style="font-size:22px;font-weight:bold;color:#d97b3f;">Only Natural Gemstones</span>',
   seal_html: "<br><br>",
   // Mirrors buildInfoBlockRows() in orderInvoice.server.js -- one real
-  // table row per line, zipped across the 3 columns (blank once a
+  // table row per line, zipped across the 2 columns (blank once a
   // column runs out), rather than one multi-line cell per column.
-  // Deliberately shows UNEQUAL line counts across the 3 sample columns
-  // (5 / 4 / 3) so the preview demonstrates the same top-alignment the
-  // real fix guarantees, not just a lucky case where all 3 happen to
-  // match.
+  // Seller (left) / Customer Details (right) -- the third "Delivery
+  // Before / Sales Person / Delivery Mode" column was removed per
+  // explicit request. Deliberately shows UNEQUAL line counts (5 / 4)
+  // across the two sample columns so the preview demonstrates the same
+  // top-alignment the real fix guarantees, not just a lucky case where
+  // both happen to match.
   info_block_rows:
-    '<tr><td style="border:none;width:38%;padding:1px 10px 1px 0;font-size:10px;line-height:1.5;"><b>Only Natural Gemstones</b></td><td style="border:none;width:38%;padding:1px 10px;font-size:10px;line-height:1.5;"><b>Customer Details</b></td><td style="border:none;width:24%;padding:1px 0 1px 10px;font-size:10px;line-height:1.5;">Delivery Before : 20/09/2026</td></tr>' +
-    '<tr><td style="border:none;width:38%;padding:1px 10px 1px 0;font-size:10px;line-height:1.5;">L-75-76, Lajpat Nagar 2</td><td style="border:none;width:38%;padding:1px 10px;font-size:10px;line-height:1.5;">Suraj Kumar</td><td style="border:none;width:24%;padding:1px 0 1px 10px;font-size:10px;line-height:1.5;">Sales Person : Only Natural Gemstones</td></tr>' +
-    '<tr><td style="border:none;width:38%;padding:1px 10px 1px 0;font-size:10px;line-height:1.5;">New Delhi, Delhi, 110024</td><td style="border:none;width:38%;padding:1px 10px;font-size:10px;line-height:1.5;">123 MG Road</td><td style="border:none;width:24%;padding:1px 0 1px 10px;font-size:10px;line-height:1.5;">Delivery Mode : By Courier</td></tr>' +
-    '<tr><td style="border:none;width:38%;padding:1px 10px 1px 0;font-size:10px;line-height:1.5;">Tel : +91-8010-555-111</td><td style="border:none;width:38%;padding:1px 10px;font-size:10px;line-height:1.5;">Delhi, Delhi, 110024</td><td style="border:none;width:24%;padding:1px 0 1px 10px;font-size:10px;line-height:1.5;"></td></tr>' +
-    '<tr><td style="border:none;width:38%;padding:1px 10px 1px 0;font-size:10px;line-height:1.5;">GSTIN : 07ABCDE1234F1Z5</td><td style="border:none;width:38%;padding:1px 10px;font-size:10px;line-height:1.5;">Tel : 09968034137</td><td style="border:none;width:24%;padding:1px 0 1px 10px;font-size:10px;line-height:1.5;"></td></tr>',
+    '<tr><td style="border:none;width:50%;padding:1px 14px 1px 0;font-size:10px;line-height:1.5;"><b>Only Natural Gemstones</b></td><td style="border:none;width:50%;padding:1px 0 1px 14px;font-size:10px;line-height:1.5;"><b>Customer Details</b></td></tr>' +
+    '<tr><td style="border:none;width:50%;padding:1px 14px 1px 0;font-size:10px;line-height:1.5;">L-75-76, Lajpat Nagar 2</td><td style="border:none;width:50%;padding:1px 0 1px 14px;font-size:10px;line-height:1.5;">Suraj Kumar</td></tr>' +
+    '<tr><td style="border:none;width:50%;padding:1px 14px 1px 0;font-size:10px;line-height:1.5;">New Delhi, Delhi, 110024</td><td style="border:none;width:50%;padding:1px 0 1px 14px;font-size:10px;line-height:1.5;">123 MG Road, Delhi, Delhi, 110024</td></tr>' +
+    '<tr><td style="border:none;width:50%;padding:1px 14px 1px 0;font-size:10px;line-height:1.5;">Tel : +91-8010-555-111</td><td style="border:none;width:50%;padding:1px 0 1px 14px;font-size:10px;line-height:1.5;">Tel : 09968034137</td></tr>' +
+    '<tr><td style="border:none;width:50%;padding:1px 14px 1px 0;font-size:10px;line-height:1.5;">GSTIN : 07ABCDE1234F1Z5</td><td style="border:none;width:50%;padding:1px 0 1px 14px;font-size:10px;line-height:1.5;"></td></tr>',
   invoice_number: "INV-000123",
   invoice_date: "10/09/2026",
   order_number: "#1000031314",
@@ -713,21 +715,26 @@ const INVOICE_PREVIEW_SAMPLE_VALUES = {
   delivery_mode: "By Courier",
   delivery_before: "20/09/2026",
   payment_mode: "Razorpay",
+  // GST is INCLUDED in the "Rate"/line total, not added on top of it, per
+  // explicit request -- Total always equals Rate x qty exactly, and
+  // CGST/SGST/IGST shown are the portion of that already-charged amount
+  // that's tax (back-calculated), matching computeInvoiceGst()'s own
+  // taxable = gross / (1 + rate/100) formula in orderInvoice.server.js.
   line_items_rows:
     '<tr><td>Blue Sapphire - 4.12 Carat</td><td>7103</td><td>1</td><td>&#8377;18,500.00</td>' +
-    '<td>&#8377;277.50<br><span style="color:#888;font-size:9px;">(1.5%)</span></td>' +
-    '<td>&#8377;277.50<br><span style="color:#888;font-size:9px;">(1.5%)</span></td>' +
+    '<td>&#8377;269.42<br><span style="color:#888;font-size:9px;">(1.5%)</span></td>' +
+    '<td>&#8377;269.41<br><span style="color:#888;font-size:9px;">(1.5%)</span></td>' +
     '<td>&#8377;0.00<br><span style="color:#888;font-size:9px;">(0%)</span></td>' +
-    '<td>&#8377;19,055.00</td></tr>' +
+    '<td>&#8377;18,500.00</td></tr>' +
     '<tr><td>Gemstone Customisation</td><td>7113</td><td>1</td><td>&#8377;2,150.00</td>' +
-    '<td>&#8377;32.25<br><span style="color:#888;font-size:9px;">(1.5%)</span></td>' +
-    '<td>&#8377;32.25<br><span style="color:#888;font-size:9px;">(1.5%)</span></td>' +
+    '<td>&#8377;31.31<br><span style="color:#888;font-size:9px;">(1.5%)</span></td>' +
+    '<td>&#8377;31.31<br><span style="color:#888;font-size:9px;">(1.5%)</span></td>' +
     '<td>&#8377;0.00<br><span style="color:#888;font-size:9px;">(0%)</span></td>' +
-    '<td>&#8377;2,214.50</td></tr>',
-  subtotal: "₹20,650.00",
-  total_gst: "₹619.50",
-  grand_total: "₹21,269.50",
-  total_in_words: "Indian Rupee Twenty One Thousand Two Hundred Sixty Nine Only",
+    '<td>&#8377;2,150.00</td></tr>',
+  subtotal: "₹20,048.55",
+  total_gst: "₹601.45",
+  grand_total: "₹20,650.00",
+  total_in_words: "Indian Rupee Twenty Thousand Six Hundred Fifty Only",
   tax_treatment_note: "",
   shop_name: "Only Natural Gemstones",
   shop_url: "https://onlynaturalgemstones.com",
@@ -1916,6 +1923,11 @@ export default function SettingsPage() {
                     />
                   </div>
                 </div>
+                <p style={{ ...hintStyle, marginTop: "-10px" }}>
+                  GST is calculated as already included in the order's own line price, not added on top of it —
+                  the invoice's Subtotal + GST always adds up to exactly what the customer was charged. The rate
+                  above is only used to split that price into its taxable value and GST portion.
+                </p>
                 <p style={{ ...hintStyle, marginTop: "-10px" }}>
                   International orders are still taxed (as IGST), at whichever rate applies to each line —
                   never zero-rated.

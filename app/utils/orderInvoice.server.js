@@ -58,7 +58,7 @@ export const ORDER_INVOICE_PLACEHOLDERS = [
   { token: "customer_phone", description: "Customer's phone number, if on the order" },
   { token: "billing_address", description: "Formatted billing address (multi-line HTML)" },
   { token: "shipping_address", description: "Formatted shipping address (multi-line HTML)" },
-  { token: "info_block_rows", description: "Pre-built 3-column seller/customer/delivery block, one real table row per line (keeps columns top-aligned regardless of length)" },
+  { token: "info_block_rows", description: "Pre-built 2-column seller/customer block (seller left, customer right), one real table row per line (keeps columns top-aligned regardless of length)" },
   { token: "seller_legal_name", description: "Your registered business name (Settings page)" },
   { token: "seller_address", description: "Your registered business address (Settings page)" },
   { token: "seller_phone", description: "Your business phone (Settings page)" },
@@ -515,14 +515,16 @@ export async function getOrCreateInvoiceNumber(shop, orderId, orderName) {
   return { invoiceNumber, isNew: true };
 }
 
-/** pdfmake never fetches a remote URL itself -- html-to-pdfmake just
- * passes an <img>'s `src` straight through as pdfmake's `image`
- * property, which only accepts a data URI (or a pre-registered vfs
- * key). So a logo/seal image has to be fetched and inlined as base64
- * server-side BEFORE the HTML reaches htmlToPdfmake, or pdfmake throws
- * trying to render it. Returns null (never throws) on any failure --
- * a slow/broken image URL should degrade to "no image" on the
- * invoice, not break the whole send. */
+/** Fetches a logo/seal image and inlines it as a base64 data URI before
+ * the HTML reaches generateInvoicePdfBuffer(). Carried over from this
+ * function's original pdfmake-based implementation (which required a
+ * data URI -- pdfmake never fetched remote URLs itself); Puppeteer would
+ * fetch a plain `<img src="https://...">` fine on its own, but inlining
+ * still avoids an extra network round trip during PDF rendering and
+ * keeps the image available even if the source URL is slow/unreachable
+ * at render time. Returns null (never throws) on any failure -- a
+ * slow/broken image URL should degrade to "no image" on the invoice,
+ * not break the whole send. */
 async function fetchImageAsDataUri(url) {
   if (!url) return null;
   try {
@@ -587,15 +589,18 @@ function formatAddress(address, opts) {
  * misalign in the first place. Matches the reference invoice's own
  * layout, which stays top-aligned per column regardless of how many
  * lines each one has. */
-function buildInfoBlockRows(col1Lines, col2Lines, col3Lines) {
-  const maxLen = Math.max(col1Lines.length, col2Lines.length, col3Lines.length);
+function buildInfoBlockRows(col1Lines, col2Lines) {
+  // Two columns -- Seller (left) and Customer Details (right). Per
+  // explicit request: the third "Delivery Before / Sales Person /
+  // Delivery Mode" column is removed entirely, and Customer Details
+  // moves from the middle into that now-vacant right-hand side.
+  const maxLen = Math.max(col1Lines.length, col2Lines.length);
   let rows = "";
   for (let i = 0; i < maxLen; i++) {
     rows +=
       `<tr>` +
-      `<td style="border:none;width:38%;padding:1px 10px 1px 0;font-size:10px;line-height:1.5;">${col1Lines[i] || ""}</td>` +
-      `<td style="border:none;width:38%;padding:1px 10px;font-size:10px;line-height:1.5;">${col2Lines[i] || ""}</td>` +
-      `<td style="border:none;width:24%;padding:1px 0 1px 10px;font-size:10px;line-height:1.5;">${col3Lines[i] || ""}</td>` +
+      `<td style="border:none;width:50%;padding:1px 14px 1px 0;font-size:10px;line-height:1.5;">${col1Lines[i] || ""}</td>` +
+      `<td style="border:none;width:50%;padding:1px 0 1px 14px;font-size:10px;line-height:1.5;">${col2Lines[i] || ""}</td>` +
       `</tr>`;
   }
   return rows;
@@ -809,9 +814,14 @@ export function computeInvoiceGst(order, settings) {
   const itemRows = [];
 
   for (const line of order.lineItems?.nodes || []) {
-    const taxableValue = parseFloat(line.discountedTotalSet?.shopMoney?.amount ?? line.originalTotalSet?.shopMoney?.amount ?? 0) || 0;
+    // This is the GROSS amount the customer actually paid for this line
+    // (Shopify's own line price) -- GST is included in it, not added on
+    // top, per explicit request. The taxable (pre-tax) value is
+    // back-calculated from inside it below, so subtotal + GST on this
+    // invoice always reconciles to exactly what Shopify charged, never
+    // more.
+    const grossValue = parseFloat(line.discountedTotalSet?.shopMoney?.amount ?? line.originalTotalSet?.shopMoney?.amount ?? 0) || 0;
     const unitRate = parseFloat(line.originalUnitPriceSet?.shopMoney?.amount ?? 0) || 0;
-    subtotal += taxableValue;
 
     // GST always applies -- domestic or international -- at this line's
     // own rate. The only thing international/different-state-domestic
@@ -833,7 +843,12 @@ export function computeInvoiceGst(order, settings) {
         ? gemstoneOverrideByVariantId[ownVariantId]
         : rateLoose;
     }
-    const gstAmount = (taxableValue * rate) / 100;
+    // taxable = gross / (1 + rate/100) -- e.g. a rate:3 line charged
+    // ₹10,300 has a ₹10,000 taxable value and ₹300 GST inside it, not
+    // ₹10,300 taxable with ₹309 GST added on top of that.
+    const taxableValue = rate > 0 ? grossValue / (1 + rate / 100) : grossValue;
+    const gstAmount = grossValue - taxableValue;
+    subtotal += taxableValue;
 
     // Same bucketing decision for every line on the order (it's driven by
     // one shipping address, not per-line) -- only the RATE varies line to
@@ -859,12 +874,13 @@ export function computeInvoiceGst(order, settings) {
     const lineTotal = taxableValue + gstAmount;
     const pct = (n) => (Number.isInteger(n) ? n : n.toFixed(2)).toString();
     // Inline styles matching the default template's header cells
-    // (widths included) -- pdfmake's HTML converter reads ONLY inline
-    // `style="..."` attributes, never a <style> block or CSS classes
-    // (confirmed by reading html-to-pdfmake's own source), so these
-    // rows must carry their own styling directly or they render
-    // unstyled/unwidthed in the real PDF even though a browser preview
-    // would look fine either way. See getDefaultOrderInvoiceTemplate's
+    // (widths included) -- carried over from this template's original
+    // pdfmake-based implementation (see getDefaultOrderInvoiceTemplate's
+    // own comment: generateInvoicePdfBuffer() now renders via Puppeteer,
+    // a real browser engine, so a <style> block/CSS classes would work
+    // fine too). Left inline for consistency with the rest of the
+    // template rather than for any remaining technical requirement. See
+    // getDefaultOrderInvoiceTemplate's
     // own comment for the full explanation.
     const td = (width) => `border:1px solid #999;padding:6px 8px;vertical-align:top;font-size:9.5px;width:${width}%;`;
     itemRows.push(
@@ -1055,7 +1071,7 @@ export async function sendOrderInvoiceEmail(admin, settings, shop, orderGid) {
     : "<br><br>";
 
   // Built as real per-line table rows (see buildInfoBlockRows's own
-  // comment) rather than one multi-line cell per column, so the three
+  // comment) rather than one multi-line cell per column, so the two
   // columns stay top-aligned in the real PDF even though they always
   // have different numbers of lines in practice.
   const sellerLines = [
@@ -1071,12 +1087,7 @@ export async function sendOrderInvoiceEmail(admin, settings, shop, orderGid) {
     ...formatAddressLines(order.billingAddress, { includeName: false, includePhone: false }),
     `Tel : ${esc(order.billingAddress?.phone || order.shippingAddress?.phone || "—")}`,
   ];
-  const deliveryLines = [
-    `Delivery Before : ${formatDateDMY(deliveryBeforeDate)}`,
-    `Sales Person : ${esc(settings.invoiceSellerLegalName || "Only Natural Gemstones")}`,
-    `Delivery Mode : ${esc(order.shippingLine?.title || "—")}`,
-  ];
-  const infoBlockRows = buildInfoBlockRows(sellerLines, customerLines, deliveryLines);
+  const infoBlockRows = buildInfoBlockRows(sellerLines, customerLines);
 
   const template = getOrderInvoiceTemplate(settings);
   const html = renderOrderInvoiceTemplate(template, {
