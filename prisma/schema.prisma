@@ -522,11 +522,9 @@ model AppSettings {
   // page (with a live preview), same pattern as orderProcessingEmailTemplate
   // above. Null means "use the built-in default template" —
   // getOrderInvoiceTemplate() is the one place that resolution happens.
-  // Rendered through html-to-pdfmake (no headless browser -- see that
-  // file's own comment for why), so it should stay to the same
-  // table-based layout style the rest of this store's transactional
-  // emails already use rather than relying on flexbox/grid/absolute
-  // positioning, which won't render.
+  // Rendered through Puppeteer (a real headless Chromium, see
+  // generateInvoicePdfBuffer() in orderInvoice.server.js) -- ordinary
+  // HTML/CSS works, no special layout-subset restrictions.
   invoicePdfTemplate             String?
   // The invoice EMAIL's full HTML source (the message the customer
   // actually receives, PDF attached) — separate from invoicePdfTemplate
@@ -566,6 +564,25 @@ model AppSettings {
   // too (not invoiceGstRateCustomisation) -- see
   // computeInvoiceGst()'s own comment for the exact precedence.
   invoiceCollectionGstRates       Json?
+  // HSN (Harmonized System of Nomenclature) codes shown on the invoice
+  // PDF's own HSN column -- per explicit request, settable here rather
+  // than relying only on Shopify's native per-variant "Harmonized
+  // System (HS) code" field (variant.inventoryItem.harmonizedSystemCode),
+  // which most variants in this catalog don't have set. Same
+  // loose/customisation split as the GST rates above: a plain gemstone
+  // line uses invoiceHsnLoose, a "Gemstone Customisation" charge line
+  // uses invoiceHsnCustomisation -- unless the linked gemstone has its
+  // own collection override below, in which case the customisation line
+  // inherits THAT code too, same precedence rule computeInvoiceGst()
+  // already uses for GST rates. Either falls back to the native Shopify
+  // field, then blank, if nothing here is configured.
+  invoiceHsnLoose                String?
+  invoiceHsnCustomisation        String?
+  // Per-collection HSN overrides -- {"gid://shopify/Collection/123":
+  // "7103", ...} -- same shape/precedence as invoiceCollectionGstRates
+  // above, saved via its own setter (saveInvoiceCollectionHsnCodes) for
+  // the same reason (JSON, not a plain FIELDS string).
+  invoiceCollectionHsnCodes      Json?
   updatedAt                      DateTime @updatedAt
 }
 

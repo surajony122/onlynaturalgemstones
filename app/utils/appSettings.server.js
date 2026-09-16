@@ -54,6 +54,8 @@ const FIELDS = [
   "invoiceSellerState",
   "invoiceGstRateLoose",
   "invoiceGstRateCustomisation",
+  "invoiceHsnLoose",
+  "invoiceHsnCustomisation",
   "invoiceNumberPrefix",
   "invoiceDeliveryDays",
   "invoicePdfTemplate",
@@ -164,6 +166,10 @@ export async function getAppSettings(shop) {
   // See computeInvoiceGst() in orderInvoice.server.js for how this is
   // used, and saveInvoiceCollectionGstRates() below for how it's saved.
   resolved.invoiceCollectionGstRates = (row && row.invoiceCollectionGstRates) || {};
+  // JSON, same shape/reasoning as invoiceCollectionGstRates above --
+  // {collectionGid: hsnCodeString}. See computeInvoiceGst() in
+  // orderInvoice.server.js and saveInvoiceCollectionHsnCodes() below.
+  resolved.invoiceCollectionHsnCodes = (row && row.invoiceCollectionHsnCodes) || {};
   // The visual template builder's own block arrays (see
   // app/components/template-builder.jsx) -- JSON, purely so the builder
   // can restore the same blocks next time it's opened. The actual send
@@ -192,6 +198,25 @@ export async function saveInvoiceCollectionGstRates(shop, rates) {
     where: { shop },
     create: { shop, invoiceCollectionGstRates: clean },
     update: { invoiceCollectionGstRates: clean },
+  });
+}
+
+/** Persists the per-collection HSN code overrides (see
+ * AppSettings.invoiceCollectionHsnCodes's own comment) -- same shape/
+ * reasoning as saveInvoiceCollectionGstRates above (JSON, not a string,
+ * so kept out of the generic FIELDS/saveAppSettings loop). `codes` is
+ * {collectionGid: hsnCodeString}; a blank code for a collection is
+ * dropped entirely rather than stored as "". */
+export async function saveInvoiceCollectionHsnCodes(shop, codes) {
+  const clean = {};
+  for (const [gid, code] of Object.entries(codes || {})) {
+    const trimmed = String(code ?? "").trim();
+    if (trimmed) clean[gid] = trimmed;
+  }
+  await prisma.appSettings.upsert({
+    where: { shop },
+    create: { shop, invoiceCollectionHsnCodes: clean },
+    update: { invoiceCollectionHsnCodes: clean },
   });
 }
 

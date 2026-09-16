@@ -21,6 +21,7 @@ import {
   getAppSettings,
   setInvoiceStartingNumber,
   saveInvoiceCollectionGstRates,
+  saveInvoiceCollectionHsnCodes,
   DEFAULT_WISHLIST_EMAIL_INTERVAL_HOURS,
   DEFAULT_INTERAKT_TEMPLATE_NAME,
   DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME,
@@ -162,6 +163,9 @@ export const loader = async ({ request }) => {
     invoiceSellerState: row?.invoiceSellerState || "",
     invoiceGstRateLoose: row?.invoiceGstRateLoose || "",
     invoiceGstRateCustomisation: row?.invoiceGstRateCustomisation || "",
+    invoiceHsnLoose: row?.invoiceHsnLoose || "",
+    invoiceHsnCustomisation: row?.invoiceHsnCustomisation || "",
+    invoiceCollectionHsnCodes: row?.invoiceCollectionHsnCodes || {},
     invoiceNumberPrefix: row?.invoiceNumberPrefix || "",
     defaultInvoiceNumberPrefix: DEFAULT_INVOICE_NUMBER_PREFIX,
     invoiceNextNumber: row?.invoiceNextNumber ?? null,
@@ -447,6 +451,8 @@ export const action = async ({ request }) => {
       invoiceSellerState: val("invoiceSellerState"),
       invoiceGstRateLoose: val("invoiceGstRateLoose"),
       invoiceGstRateCustomisation: val("invoiceGstRateCustomisation"),
+      invoiceHsnLoose: val("invoiceHsnLoose"),
+      invoiceHsnCustomisation: val("invoiceHsnCustomisation"),
       invoiceNumberPrefix: val("invoiceNumberPrefix"),
       invoiceDeliveryDays: val("invoiceDeliveryDays"),
       invoicePdfTemplate: val("invoicePdfTemplate"),
@@ -461,6 +467,14 @@ export const action = async ({ request }) => {
         await saveInvoiceCollectionGstRates(session.shop, JSON.parse(collectionRatesRaw));
       } catch (err) {
         console.error("[app.settings] failed to save invoiceCollectionGstRates:", err);
+      }
+    }
+    const collectionHsnCodesRaw = formData.get("invoiceCollectionHsnCodes");
+    if (collectionHsnCodesRaw) {
+      try {
+        await saveInvoiceCollectionHsnCodes(session.shop, JSON.parse(collectionHsnCodesRaw));
+      } catch (err) {
+        console.error("[app.settings] failed to save invoiceCollectionHsnCodes:", err);
       }
     }
     return { intent, ok: true };
@@ -1049,6 +1063,12 @@ export default function SettingsPage() {
   const [invoiceSellerState, setInvoiceSellerState] = useState(data.invoiceSellerState);
   const [invoiceGstRateLoose, setInvoiceGstRateLoose] = useState(data.invoiceGstRateLoose);
   const [invoiceGstRateCustomisation, setInvoiceGstRateCustomisation] = useState(data.invoiceGstRateCustomisation);
+  const [invoiceHsnLoose, setInvoiceHsnLoose] = useState(data.invoiceHsnLoose);
+  const [invoiceHsnCustomisation, setInvoiceHsnCustomisation] = useState(data.invoiceHsnCustomisation);
+  const [collectionHsnCodes, setCollectionHsnCodes] = useState(data.invoiceCollectionHsnCodes || {});
+  const setCollectionHsn = (gid, value) => {
+    setCollectionHsnCodes((prev) => ({ ...prev, [gid]: value }));
+  };
   const [invoiceNumberPrefix, setInvoiceNumberPrefix] = useState(data.invoiceNumberPrefix);
   const [invoiceDeliveryDays, setInvoiceDeliveryDays] = useState(data.invoiceDeliveryDays);
   const [invoicePdfTemplate, setInvoicePdfTemplate] = useState(data.invoicePdfTemplate || data.defaultInvoicePdfTemplate);
@@ -1233,6 +1253,8 @@ export default function SettingsPage() {
       invoiceSellerState,
       invoiceGstRateLoose,
       invoiceGstRateCustomisation,
+      invoiceHsnLoose,
+      invoiceHsnCustomisation,
       invoiceNumberPrefix,
       invoiceDeliveryDays,
       // Same "don't freeze today's default as a permanent customization"
@@ -1242,6 +1264,7 @@ export default function SettingsPage() {
       invoiceEmailTemplate:
         invoiceEmailTemplate.replace(/\r\n/g, "\n") === data.defaultInvoiceEmailTemplate.replace(/\r\n/g, "\n") ? "" : invoiceEmailTemplate,
       invoiceCollectionGstRates: JSON.stringify(collectionGstRates),
+      invoiceCollectionHsnCodes: JSON.stringify(collectionHsnCodes),
     });
   const saveWishlistReminder = () => wishlistReminder.save({ interaktWishlistTemplateName });
   const saveWhatsappAdvanced = () => whatsappAdvanced.save({ whatsappIntervalValue, whatsappIntervalUnit, interaktWebhookSecret });
@@ -1972,6 +1995,72 @@ export default function SettingsPage() {
                           value={collectionGstRates[c.id] || ""}
                           onChange={(e) => setCollectionRate(c.id, e.target.value)}
                           placeholder="e.g. 0.25"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: "12px" }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle} htmlFor="invoiceHsnLoose">HSN code — loose gemstones</label>
+                    <input
+                      id="invoiceHsnLoose"
+                      style={fieldStyle}
+                      type="text"
+                      value={invoiceHsnLoose}
+                      onChange={(e) => setInvoiceHsnLoose(e.target.value)}
+                      placeholder="e.g. 7103"
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle} htmlFor="invoiceHsnCustomisation">HSN code — customisation</label>
+                    <input
+                      id="invoiceHsnCustomisation"
+                      style={fieldStyle}
+                      type="text"
+                      value={invoiceHsnCustomisation}
+                      onChange={(e) => setInvoiceHsnCustomisation(e.target.value)}
+                      placeholder="e.g. 7113"
+                    />
+                  </div>
+                </div>
+                <p style={{ ...hintStyle, marginTop: "-10px" }}>
+                  Shown in the invoice's own HSN column. Leave either blank to fall back to that variant's own
+                  "Harmonized System (HS) code" field in Shopify (Admin → the variant's own page) — most gemstone
+                  variants don't have one set, which is why this column often shows blank without these.
+                </p>
+
+                <label style={labelStyle}>HSN code by collection (optional overrides)</label>
+                <p style={{ ...hintStyle, marginTop: "5px" }}>
+                  Leave blank to use the loose-gemstone HSN above. Same rule as the GST-rate overrides: if a
+                  gemstone belongs to a collection listed here, its own line AND its linked "Gemstone Customisation"
+                  charge line (if customised) both use this HSN code instead of the two defaults above.
+                </p>
+                {data.collections.length === 0 ? (
+                  <p style={hintStyle}>No collections found on this store.</p>
+                ) : (
+                  <div style={{ border: `1px solid ${brand.border}`, borderRadius: "10px", overflow: "hidden", marginBottom: "16px" }}>
+                    {data.collections.map((c, i) => (
+                      <div
+                        key={c.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: "10px",
+                          padding: "8px 12px",
+                          borderTop: i === 0 ? "none" : `1px solid ${brand.divider}`,
+                          background: i % 2 === 0 ? "#fff" : brand.panel,
+                        }}
+                      >
+                        <span style={{ fontSize: "12.5px", color: brand.body }}>{c.title}</span>
+                        <input
+                          type="text"
+                          style={{ width: "80px", padding: "6px 8px", borderRadius: "6px", border: `1px solid ${brand.border}`, fontSize: "12.5px", textAlign: "right" }}
+                          value={collectionHsnCodes[c.id] || ""}
+                          onChange={(e) => setCollectionHsn(c.id, e.target.value)}
+                          placeholder="e.g. 7103"
                         />
                       </div>
                     ))}

@@ -808,6 +808,11 @@ export function computeInvoiceGst(order, settings) {
   // types can carry different real HSN rates, not just one flat "loose"
   // number. {collectionGid: rateString} -- see the Settings page.
   const collectionRates = settings.invoiceCollectionGstRates || {};
+  // Same idea, for the HSN column instead of the GST rate -- {collectionGid:
+  // hsnCodeString}. See the Settings page's "HSN code by collection" section.
+  const collectionHsnCodes = settings.invoiceCollectionHsnCodes || {};
+  const hsnLoose = (settings.invoiceHsnLoose || "").trim();
+  const hsnCustomisation = (settings.invoiceHsnCustomisation || "").trim();
 
   // First pass: for every gemstone (non-customisation) line, resolve its
   // own collection override (if any of its product's collections has one
@@ -816,15 +821,29 @@ export function computeInvoiceGst(order, settings) {
   // below can look it up by the customisation line's "_Linked Gemstone"
   // property. Per explicit request, when a gemstone HAS an override, its
   // OWN linked customisation charge line inherits that same override
-  // rate too, instead of the flat invoiceGstRateCustomisation.
+  // rate/HSN too, instead of the flat invoiceGstRateCustomisation/
+  // invoiceHsnCustomisation. variantIdToSku is built in the same pass so
+  // a customisation line can identify (and later display) which gemstone
+  // it belongs to -- per explicit request, since a plain "Gemstone
+  // Customisation" row gives no way to tell which of several gemstones
+  // on the same order it's for.
   const gemstoneOverrideByVariantId = {};
+  const hsnOverrideByVariantId = {};
+  const variantIdToSku = {};
   for (const line of order.lineItems?.nodes || []) {
     if (line.variant?.product?.title === CUSTOMISATION_PRODUCT_TITLE) continue;
     const collectionIds = (line.variant?.product?.collections?.nodes || []).map((c) => c.id);
     const matchedGid = collectionIds.find((gid) => collectionRates[gid] !== undefined);
-    if (matchedGid && line.variant?.id) {
-      const numericId = line.variant.id.split("/").pop();
+    const matchedHsnGid = collectionIds.find((gid) => collectionHsnCodes[gid] !== undefined);
+    const numericId = line.variant?.id ? line.variant.id.split("/").pop() : null;
+    if (matchedGid && numericId) {
       gemstoneOverrideByVariantId[numericId] = parseFloat(collectionRates[matchedGid]) || 0;
+    }
+    if (matchedHsnGid && numericId) {
+      hsnOverrideByVariantId[numericId] = String(collectionHsnCodes[matchedHsnGid] || "").trim();
+    }
+    if (numericId) {
+      variantIdToSku[numericId] = line.variant?.sku || "";
     }
   }
 
@@ -889,8 +908,46 @@ export function computeInvoiceGst(order, settings) {
     totalSgst += lineSgst;
     totalIgst += lineIgst;
 
-    const hsn = line.variant?.inventoryItem?.harmonizedSystemCode || "";
+    // App-configured HSN wins (collection override, then the flat
+    // loose/customisation default); the native Shopify per-variant field
+    // is only a last-resort fallback for anyone not using these Settings
+    // at all -- see the Settings page's own comment for why GST-related
+    // data generally lives here rather than relying on Shopify's own
+    // fields.
+    const hsn = isCustomisation
+      ? (linkedGemstoneId && hsnOverrideByVariantId[linkedGemstoneId]) || hsnCustomisation || line.variant?.inventoryItem?.harmonizedSystemCode || ""
+      : (ownVariantId && hsnOverrideByVariantId[ownVariantId]) || hsnLoose || line.variant?.inventoryItem?.harmonizedSystemCode || "";
     const sku = line.variant?.sku || "";
+    // Per explicit request: a "Gemstone Customisation" row on its own
+    // gives no way to tell which of several gemstones on the same order
+    // it belongs to, or what was actually chosen (Type/Metal/Design/
+    // Size/etc.) -- both now shown as a second line under the
+    // description, matching the exclusion rules the order-confirmation
+    // email and cart drawer already use (hidden "_"-prefixed properties,
+    // "Linked Gemstone", the two certification fields shown elsewhere,
+    // and the uploaded design file, which is a raw CDN URL with nothing
+    // useful to print on a tax document).
+    let customisationDetailsHtml = "";
+    if (isCustomisation) {
+      const parentSku = linkedGemstoneId ? variantIdToSku[linkedGemstoneId] : "";
+      const detailLines = [];
+      if (parentSku) detailLines.push(`For gemstone SKU: ${esc(parentSku)}`);
+      const propParts = (line.customAttributes || [])
+        .filter(
+          (a) =>
+            a.value &&
+            !a.key.startsWith("_") &&
+            a.key !== "Linked Gemstone" &&
+            a.key !== "Lab Certification" &&
+            a.key !== "GJI Certification" &&
+            a.key !== "Custom Design Image",
+        )
+        .map((a) => esc(a.value));
+      if (propParts.length) detailLines.push(propParts.join(" &middot; "));
+      if (detailLines.length) {
+        customisationDetailsHtml = `<br><span style="color:#888;font-size:9px;">${detailLines.join("<br>")}</span>`;
+      }
+    }
     const lineTotal = taxableValue + gstAmount;
     const pct = (n) => (Number.isInteger(n) ? n : n.toFixed(2)).toString();
     // Inline styles matching the default template's header cells
@@ -905,7 +962,7 @@ export function computeInvoiceGst(order, settings) {
     const td = (width) => `border:1px solid rgba(0,0,0,0.15);padding:6px 8px;vertical-align:top;font-size:9.5px;width:${width}%;`;
     itemRows.push(
       `<tr>` +
-        `<td style="${td(24)}">${esc(line.title)}${sku ? `<br><span style="color:#888;font-size:9px;">SKU: ${esc(sku)}</span>` : ""}</td>` +
+        `<td style="${td(24)}">${esc(line.title)}${sku ? `<br><span style="color:#888;font-size:9px;">SKU: ${esc(sku)}</span>` : ""}${customisationDetailsHtml}</td>` +
         `<td style="${td(8)}">${esc(hsn)}</td>` +
         `<td style="${td(6)}">${line.quantity}</td>` +
         // RATE is the taxable value (Amount minus GST), not the gross
