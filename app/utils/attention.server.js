@@ -102,10 +102,10 @@ export async function getAttentionSummary() {
   if (returnRefundIssues.length) {
     items.push({
       id: "returns-refunds-issues",
-      title: `${returnRefundIssues.length} return/refund notification${returnRefundIssues.length === 1 ? "" : "s"} failed recently`,
+      title: `${returnRefundIssues.length} return WhatsApp message${returnRefundIssues.length === 1 ? "" : "s"} failed recently`,
       detail: returnRefundIssues[0] ? `Most recent: order ${returnRefundIssues[0].orderName || returnRefundIssues[0].id} — send failed.` : "",
-      href: "/app/returns-refunds",
-      action: "Open Returns & Refunds",
+      href: "/app/whatsapp-events",
+      action: "Open Messages & Orders",
       severity: "danger",
     });
   }

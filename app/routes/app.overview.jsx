@@ -182,7 +182,7 @@ export default function OverviewPage() {
         <StatCard label="Wishlist syncs today" stat={stats.wishlistToday} />
         <StatCard label="WhatsApp sent today" stat={stats.whatsappSentToday} />
         <StatCard label="Orders notified today" stat={stats.ordersNotifiedToday} />
-        <StatCard label="Returns/refunds sent today" stat={stats.returnsRefundsToday} />
+        <StatCard label="Return WhatsApp sent today" stat={stats.returnsRefundsToday} />
         <StatCard label="Invoices sent today" stat={stats.invoicesToday} />
       </div>
 
@@ -220,11 +220,8 @@ export default function OverviewPage() {
           icon="package"
           iconColor={brand.accent}
           title="Orders"
-          description="GST tax invoices and manual return/refund notifications."
-          links={[
-            { href: "/app/invoices", label: "GST Invoices" },
-            { href: "/app/returns-refunds", label: "Returns & Refunds" },
-          ]}
+          description="GST tax invoices."
+          links={[{ href: "/app/invoices", label: "GST Invoices" }]}
         />
         <SectionCard
           icon="gear"

@@ -22,14 +22,9 @@ const FIELDS = [
   "interaktOrderTemplateName",
   "interaktWishlistTemplateName",
   "interaktReturnTemplateName",
-  "interaktRefundTemplateName",
   "orderProcessingTriggerTag",
   "orderProcessingEmailTemplate",
   "orderProcessingEmailSubject",
-  "returnReceivedEmailTemplate",
-  "returnReceivedEmailSubject",
-  "refundProcessedEmailTemplate",
-  "refundProcessedEmailSubject",
   "gemRecommendationEmailTemplate",
   "gemRecommendationEmailSubject",
   "whatsappIntervalValue",
@@ -79,7 +74,6 @@ const ENV_FALLBACK = {
   interaktOrderTemplateName: "INTERAKT_ORDER_TEMPLATE_NAME",
   interaktWishlistTemplateName: "INTERAKT_WISHLIST_TEMPLATE_NAME",
   interaktReturnTemplateName: "INTERAKT_RETURN_TEMPLATE_NAME",
-  interaktRefundTemplateName: "INTERAKT_REFUND_TEMPLATE_NAME",
   orderProcessingTriggerTag: "ORDER_PROCESSING_TRIGGER_TAG",
   whatsappIntervalValue: "WHATSAPP_INTERVAL_VALUE",
   whatsappIntervalUnit: "WHATSAPP_INTERVAL_UNIT",
@@ -129,12 +123,14 @@ export const DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME = "order_inprocess";
 // the Settings page field is left blank.
 export const DEFAULT_INTERAKT_WISHLIST_TEMPLATE_NAME = "wishlist_reminder";
 
-// Fourth and fifth, separate WhatsApp templates — Return Received /
-// Refund Processed, sent manually from the Returns & Refunds page
-// (app.returns-refunds.jsx). No automatic trigger for either — used
-// when the matching Settings page field is left blank.
+// Fourth WhatsApp template — Return Received, sent automatically when a
+// return is processed on an order in Shopify Admin (Shopify's native
+// Returns feature — see webhooks.returns.process.jsx) — used when the
+// matching Settings page field is left blank. Not tied to a refund; the
+// Return/Refund emails this app used to send have been removed per
+// explicit request — Shopify's own native order notifications cover
+// that now.
 export const DEFAULT_INTERAKT_RETURN_TEMPLATE_NAME = "return_received";
-export const DEFAULT_INTERAKT_REFUND_TEMPLATE_NAME = "refund_processed";
 
 // Tag that triggers the order-processing WhatsApp send when present on
 // an order (see webhooks.orders.updated.jsx) — used when the Settings

@@ -30,7 +30,6 @@ import {
   DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME,
   DEFAULT_INTERAKT_WISHLIST_TEMPLATE_NAME,
   DEFAULT_INTERAKT_RETURN_TEMPLATE_NAME,
-  DEFAULT_INTERAKT_REFUND_TEMPLATE_NAME,
   setInteraktCampaign,
 } from "./appSettings.server";
 
@@ -473,41 +472,36 @@ export async function sendOrderProcessingWhatsApp(settings, { phone, firstName, 
 }
 
 /**
- * Sends the "Return Received" WhatsApp message — sent manually, one
- * order at a time, from the Returns & Refunds page
- * (app.returns-refunds.jsx). No automatic trigger.
+ * Sends the "Return Received" WhatsApp message — automatically,
+ * triggered by Shopify's own returns/process webhook (see
+ * webhooks.returns.process.jsx) whenever a return is processed on an
+ * order in Shopify Admin (Shopify's native Returns feature: Request →
+ * Approve → Receive/Process). Not tied to a refund at all — a refund
+ * and a return are independent Shopify actions, and per explicit
+ * request this app only automates the return side. The Return/Refund
+ * EMAILS this app used to send have been removed — Shopify's own
+ * native order notifications cover that now.
  *
  * ---- TEMPLATE (as configured in Interakt) ----
  * Name: must match AppSettings.interaktReturnTemplateName /
  *       INTERAKT_RETURN_TEMPLATE_NAME env var / DEFAULT_INTERAKT_RETURN_TEMPLATE_NAME.
  * Category: Utility. Language: English. Header: Image (store logo).
+ * Button: one URL button (order status page).
  *
  * Body:
  *   Hello {{1}},
  *
- *   We have received your return for order number #{{2}}. Your refund
- *   is being processed and will be credited to your original payment
- *   method within 10 business days.
+ *   We've received your returned item(s) for Order No. #{{2}}. Our team
+ *   is now inspecting them and will keep you updated.
  *
  *   Regards,
  *   Only Natural Gemstones
- *   from the House of Shubh Gems
- *
- * Also has ONE "View Order" URL button, configured in Interakt as a
- * Dynamic Website URL with base "https://api.interakt.ai/cta?redirect="
- * -- Interakt's own click-tracking wrapper, which requires the
- * variable to be a real https:// URL (confirmed live via a real HTTP
- * 400 "Missing variable values for template's button at index 0" the
- * first time this was sent without one).
+ *   from the House of ONG
  *
  * ---- Variable mapping ----
- * Body:
  *  {{1}} customer first name
  *  {{2}} order number (Shopify's own order.name, minus the leading "#")
- * Button (index 0 -- WhatsApp numbers button variables separately from
- * body variables, so this is its own {{1}} in Interakt's template
- * editor, not a continuation of the body's):
- *  the order's status page URL
+ *  Button {{1}} order status page URL
  */
 export async function sendReturnReceivedWhatsApp(settings, { phone, firstName, orderNumber, orderStatusUrl, headerImageUrl }) {
   if (!settings.interaktApiKey) {
@@ -530,59 +524,6 @@ export async function sendReturnReceivedWhatsApp(settings, { phone, firstName, o
       headerValues: [headerImageUrl || FALLBACK_HEADER_IMAGE_URL],
       bodyValues: [firstName || "there", String(orderNumber || "").replace(/^#/, "")],
       buttonValues: { "0": [orderStatusUrl || FALLBACK_ORDER_STATUS_URL] },
-    },
-  };
-
-  const result = await sendInteraktTemplateMessage(settings.interaktApiKey, payload);
-  return result.status + (result.rawResponse ? " | raw: " + result.rawResponse : "");
-}
-
-/**
- * Sends the "Refund Processed" WhatsApp message — same manual-only
- * pattern as sendReturnReceivedWhatsApp above, with an extra refund
- * amount variable (whatever staff typed in on the Returns & Refunds
- * page — not read from Shopify's own refund records).
- *
- * ---- TEMPLATE (as configured in Interakt) ----
- * Name: must match AppSettings.interaktRefundTemplateName /
- *       INTERAKT_REFUND_TEMPLATE_NAME env var / DEFAULT_INTERAKT_REFUND_TEMPLATE_NAME.
- * Category: Utility. Language: English. Header: Image (store logo).
- *
- * Body:
- *   Hello {{1}},
- *
- *   Your refund of {{2}} for Order No. #{{3}} has been processed. It
- *   may take 5-7 business days to reflect in your account.
- *
- *   Regards,
- *   Only Natural Gemstones
- *   from the House of ONG
- *
- * ---- Variable mapping ----
- *  {{1}} customer first name
- *  {{2}} refund amount, as entered by staff (e.g. "₹1,500.00")
- *  {{3}} order number (Shopify's own order.name, minus the leading "#")
- */
-export async function sendRefundProcessedWhatsApp(settings, { phone, firstName, orderNumber, refundAmount, headerImageUrl }) {
-  if (!settings.interaktApiKey) {
-    return "skipped: Interakt API key not set (Settings page or INTERAKT_API_KEY env var)";
-  }
-  const split = splitPhoneForInterakt(phone);
-  if (!split) {
-    return "skipped: no usable phone number on this order";
-  }
-
-  const templateName = settings.interaktRefundTemplateName || DEFAULT_INTERAKT_REFUND_TEMPLATE_NAME;
-  const payload = {
-    countryCode: split.countryCode,
-    phoneNumber: split.phoneNumber,
-    type: "Template",
-    callbackData: "refund-" + orderNumber,
-    template: {
-      name: templateName,
-      languageCode: "en",
-      headerValues: [headerImageUrl || FALLBACK_HEADER_IMAGE_URL],
-      bodyValues: [firstName || "there", refundAmount || "—", String(orderNumber || "").replace(/^#/, "")],
     },
   };
 

@@ -27,7 +27,6 @@ import {
   DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME,
   DEFAULT_INTERAKT_WISHLIST_TEMPLATE_NAME,
   DEFAULT_INTERAKT_RETURN_TEMPLATE_NAME,
-  DEFAULT_INTERAKT_REFUND_TEMPLATE_NAME,
   DEFAULT_ORDER_PROCESSING_TRIGGER_TAG,
   DEFAULT_WHATSAPP_INTERVAL_VALUE,
   DEFAULT_WHATSAPP_INTERVAL_UNIT,
@@ -44,17 +43,9 @@ import {
   sendOrderProcessingWhatsApp,
   sendWishlistWhatsApp,
   sendReturnReceivedWhatsApp,
-  sendRefundProcessedWhatsApp,
 } from "../utils/interakt.server";
 import { checkGmail, checkGoogleSheets, checkInterakt, checkGooglePlaces } from "../utils/serviceHealth.server";
 import { getOrderProcessingEmailTemplate, ORDER_PROCESSING_EMAIL_PLACEHOLDERS, getOrderProcessingEmailSubject } from "../utils/orderProcessingEmail.server";
-import {
-  getReturnReceivedEmailTemplate,
-  getReturnReceivedEmailSubject,
-  getRefundProcessedEmailTemplate,
-  getRefundProcessedEmailSubject,
-  ORDER_RETURN_EMAIL_PLACEHOLDERS,
-} from "../utils/orderReturnEmail.server";
 import { getOrderInvoiceTemplate, ORDER_INVOICE_PLACEHOLDERS, DEFAULT_INVOICE_NUMBER_PREFIX, DEFAULT_INVOICE_CUSTOMISATION_LINK_LABEL, getInvoiceEmailTemplate, ORDER_INVOICE_EMAIL_PLACEHOLDERS, fetchShopSellerInfo } from "../utils/orderInvoice.server";
 import { brand, Icon, Card, PageHeader, PageIn } from "../components/table-kit";
 import { useToast } from "../components/toast";
@@ -121,8 +112,6 @@ export const loader = async ({ request }) => {
     defaultInteraktWishlistTemplateName: DEFAULT_INTERAKT_WISHLIST_TEMPLATE_NAME,
     interaktReturnTemplateName: row?.interaktReturnTemplateName || "",
     defaultInteraktReturnTemplateName: DEFAULT_INTERAKT_RETURN_TEMPLATE_NAME,
-    interaktRefundTemplateName: row?.interaktRefundTemplateName || "",
-    defaultInteraktRefundTemplateName: DEFAULT_INTERAKT_REFUND_TEMPLATE_NAME,
     whatsappIntervalValue: row?.whatsappIntervalValue || DEFAULT_WHATSAPP_INTERVAL_VALUE,
     whatsappIntervalUnit: row?.whatsappIntervalUnit || DEFAULT_WHATSAPP_INTERVAL_UNIT,
     interaktWebhookSecretSet: !!row?.interaktWebhookSecret,
@@ -139,20 +128,6 @@ export const loader = async ({ request }) => {
     // itself -- see getOrderProcessingEmailSubject's own comment.
     orderProcessingEmailSubject: row?.orderProcessingEmailSubject || "",
     defaultOrderProcessingEmailSubject: getOrderProcessingEmailSubject({}),
-    // Same "blank means use the built-in default" convention as
-    // orderProcessingEmailTemplate/Subject above -- these two are the
-    // manual Return Received / Refund Processed emails sent from the
-    // Returns & Refunds page (app.returns-refunds.jsx), never
-    // automatically.
-    returnReceivedEmailTemplate: row?.returnReceivedEmailTemplate || "",
-    defaultReturnReceivedEmailTemplate: getReturnReceivedEmailTemplate({}),
-    returnReceivedEmailSubject: row?.returnReceivedEmailSubject || "",
-    defaultReturnReceivedEmailSubject: getReturnReceivedEmailSubject({}),
-    refundProcessedEmailTemplate: row?.refundProcessedEmailTemplate || "",
-    defaultRefundProcessedEmailTemplate: getRefundProcessedEmailTemplate({}),
-    refundProcessedEmailSubject: row?.refundProcessedEmailSubject || "",
-    defaultRefundProcessedEmailSubject: getRefundProcessedEmailSubject({}),
-    orderReturnEmailPlaceholders: ORDER_RETURN_EMAIL_PLACEHOLDERS,
     invoiceGstin: row?.invoiceGstin || "",
     invoiceSellerLegalName: row?.invoiceSellerLegalName || "",
     invoiceSellerAddress: row?.invoiceSellerAddress || "",
@@ -343,20 +318,6 @@ export const action = async ({ request }) => {
     return { intent, ok: status.startsWith("OK"), status };
   }
 
-  if (intent === "sendTestRefundWhatsapp") {
-    const phone = formData.get("testRefundPhone")?.trim();
-    if (!phone) return { intent, ok: false, error: "Enter a phone number first" };
-
-    const settings = await getAppSettings(session.shop);
-    let status;
-    try {
-      status = await sendRefundProcessedWhatsApp(settings, { phone, firstName: "Test", orderNumber: "1001", refundAmount: "₹1,500.00" });
-    } catch (err) {
-      status = "threw: " + String((err && err.message) || err);
-    }
-    return { intent, ok: status.startsWith("OK"), status };
-  }
-
   // Per-explicit-request: one independent save action per section on the
   // page instead of a single form covering every field at once — the
   // single-form version meant saving ANY one section always resubmitted
@@ -409,10 +370,9 @@ export const action = async ({ request }) => {
     return { intent, ok: true };
   }
 
-  if (intent === "saveReturnRefundWhatsapp") {
+  if (intent === "saveReturnWhatsapp") {
     await saveAppSettings(session.shop, {
       interaktReturnTemplateName: val("interaktReturnTemplateName"),
-      interaktRefundTemplateName: val("interaktRefundTemplateName"),
     });
     return { intent, ok: true };
   }
@@ -421,22 +381,6 @@ export const action = async ({ request }) => {
     await saveAppSettings(session.shop, {
       orderProcessingEmailTemplate: val("orderProcessingEmailTemplate"),
       orderProcessingEmailSubject: val("orderProcessingEmailSubject"),
-    });
-    return { intent, ok: true };
-  }
-
-  if (intent === "saveReturnReceivedEmail") {
-    await saveAppSettings(session.shop, {
-      returnReceivedEmailTemplate: val("returnReceivedEmailTemplate"),
-      returnReceivedEmailSubject: val("returnReceivedEmailSubject"),
-    });
-    return { intent, ok: true };
-  }
-
-  if (intent === "saveRefundProcessedEmail") {
-    await saveAppSettings(session.shop, {
-      refundProcessedEmailTemplate: val("refundProcessedEmailTemplate"),
-      refundProcessedEmailSubject: val("refundProcessedEmailSubject"),
     });
     return { intent, ok: true };
   }
@@ -797,10 +741,6 @@ const EMAIL_PREVIEW_SAMPLE_VALUES = {
   customer_first_name: "Suraj Kumar",
   order_number: "#1000031314",
   order_status_url: "https://onlynaturalgemstones.com/",
-  // Only actually used by the Refund Processed template's preview, but
-  // harmless to include for every preview -- a template that doesn't
-  // reference {{refund_amount}} just never substitutes it.
-  refund_amount: "₹18,500.00",
   // Only used by the Gem Recommendation template's preview.
   results_url: "https://onlynaturalgemstones.com/pages/my-gem-recommendation",
   // Lightweight stand-in for the 3 real stone cards astroAdvice.server.js
@@ -988,13 +928,11 @@ export default function SettingsPage() {
   const testOrderFetcher = useFetcher();
   const testWishlistFetcher = useFetcher();
   const testReturnFetcher = useFetcher();
-  const testRefundFetcher = useFetcher();
   const toast = useToast();
   const isSendingTest = testFetcher.state !== "idle";
   const isSendingOrderTest = testOrderFetcher.state !== "idle";
   const isSendingWishlistTest = testWishlistFetcher.state !== "idle";
   const isSendingReturnTest = testReturnFetcher.state !== "idle";
-  const isSendingRefundTest = testRefundFetcher.state !== "idle";
 
   const [gmailUser, setGmailUser] = useState(data.gmailUser);
   const [gmailAppPassword, setGmailAppPassword] = useState("");
@@ -1028,30 +966,12 @@ export default function SettingsPage() {
     data.orderProcessingEmailSubject || data.defaultOrderProcessingEmailSubject
   );
   const [showEmailPreview, setShowEmailPreview] = useState(false);
-  // Same "show the real default, not a blank box" reasoning as
-  // orderProcessingEmailTemplate/Subject above.
-  const [returnReceivedEmailTemplate, setReturnReceivedEmailTemplate] = useState(
-    data.returnReceivedEmailTemplate || data.defaultReturnReceivedEmailTemplate
-  );
-  const [returnReceivedEmailSubject, setReturnReceivedEmailSubject] = useState(
-    data.returnReceivedEmailSubject || data.defaultReturnReceivedEmailSubject
-  );
-  const [showReturnEmailPreview, setShowReturnEmailPreview] = useState(false);
-  const [refundProcessedEmailTemplate, setRefundProcessedEmailTemplate] = useState(
-    data.refundProcessedEmailTemplate || data.defaultRefundProcessedEmailTemplate
-  );
-  const [refundProcessedEmailSubject, setRefundProcessedEmailSubject] = useState(
-    data.refundProcessedEmailSubject || data.defaultRefundProcessedEmailSubject
-  );
-  const [showRefundEmailPreview, setShowRefundEmailPreview] = useState(false);
   const [interaktWishlistTemplateName, setInteraktWishlistTemplateName] = useState(data.interaktWishlistTemplateName);
   const [interaktReturnTemplateName, setInteraktReturnTemplateName] = useState(data.interaktReturnTemplateName);
-  const [interaktRefundTemplateName, setInteraktRefundTemplateName] = useState(data.interaktRefundTemplateName);
   const [testPhone, setTestPhone] = useState("");
   const [testOrderPhone, setTestOrderPhone] = useState("");
   const [testWishlistPhone, setTestWishlistPhone] = useState("");
   const [testReturnPhone, setTestReturnPhone] = useState("");
-  const [testRefundPhone, setTestRefundPhone] = useState("");
   const [whatsappIntervalValue, setWhatsappIntervalValue] = useState(data.whatsappIntervalValue);
   const [whatsappIntervalUnit, setWhatsappIntervalUnit] = useState(data.whatsappIntervalUnit);
   const [interaktWebhookSecret, setInteraktWebhookSecret] = useState("");
@@ -1098,9 +1018,7 @@ export default function SettingsPage() {
   const gemRecommendationEmail = useSectionSave("saveGemRecommendationEmail", toast);
   const orderProcessingWhatsapp = useSectionSave("saveOrderProcessingWhatsapp", toast);
   const orderProcessingEmail = useSectionSave("saveOrderProcessingEmail", toast);
-  const returnRefundWhatsapp = useSectionSave("saveReturnRefundWhatsapp", toast);
-  const returnReceivedEmail = useSectionSave("saveReturnReceivedEmail", toast);
-  const refundProcessedEmail = useSectionSave("saveRefundProcessedEmail", toast);
+  const returnWhatsapp = useSectionSave("saveReturnWhatsapp", toast);
   const gstInvoice = useSectionSave("saveGstInvoice", toast);
   const wishlistReminder = useSectionSave("saveWishlistReminder", toast);
   const whatsappAdvanced = useSectionSave("saveWhatsappAdvanced", toast, () => setInteraktWebhookSecret(""));
@@ -1166,13 +1084,6 @@ export default function SettingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [testReturnFetcher.data]);
 
-  useEffect(() => {
-    if (testRefundFetcher.data?.intent === "sendTestRefundWhatsapp") {
-      toast.show(testRefundFetcher.data.status || testRefundFetcher.data.error || (testRefundFetcher.data.ok ? "Sent" : "Failed"), { isError: !testRefundFetcher.data.ok });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [testRefundFetcher.data]);
-
   const sendTestOrderWhatsapp = () => {
     testOrderFetcher.submit({ intent: "sendTestOrderWhatsapp", testOrderPhone }, { method: "POST" });
   };
@@ -1183,10 +1094,6 @@ export default function SettingsPage() {
 
   const sendTestReturnWhatsapp = () => {
     testReturnFetcher.submit({ intent: "sendTestReturnWhatsapp", testReturnPhone }, { method: "POST" });
-  };
-
-  const sendTestRefundWhatsapp = () => {
-    testRefundFetcher.submit({ intent: "sendTestRefundWhatsapp", testRefundPhone }, { method: "POST" });
   };
 
   const sendTestWhatsapp = () => {
@@ -1207,7 +1114,7 @@ export default function SettingsPage() {
       gemRecommendationEmailSubject: gemRecommendationEmailSubject === data.defaultGemRecommendationEmailSubject ? "" : gemRecommendationEmailSubject,
     });
   const saveOrderProcessingWhatsapp = () => orderProcessingWhatsapp.save({ orderProcessingTriggerTag, interaktOrderTemplateName });
-  const saveReturnRefundWhatsapp = () => returnRefundWhatsapp.save({ interaktReturnTemplateName, interaktRefundTemplateName });
+  const saveReturnWhatsapp = () => returnWhatsapp.save({ interaktReturnTemplateName });
   // Submitting "" (not the literal default HTML) whenever a template
   // textarea still matches the built-in default -- otherwise saving this
   // section for ANY reason would silently freeze today's default into
@@ -1226,24 +1133,6 @@ export default function SettingsPage() {
           ? ""
           : orderProcessingEmailTemplate,
       orderProcessingEmailSubject: orderProcessingEmailSubject === data.defaultOrderProcessingEmailSubject ? "" : orderProcessingEmailSubject,
-    });
-  // Same "don't freeze today's default as a permanent customization"
-  // reasoning as saveOrderProcessingEmail above.
-  const saveReturnReceivedEmail = () =>
-    returnReceivedEmail.save({
-      returnReceivedEmailTemplate:
-        returnReceivedEmailTemplate.replace(/\r\n/g, "\n") === data.defaultReturnReceivedEmailTemplate.replace(/\r\n/g, "\n")
-          ? ""
-          : returnReceivedEmailTemplate,
-      returnReceivedEmailSubject: returnReceivedEmailSubject === data.defaultReturnReceivedEmailSubject ? "" : returnReceivedEmailSubject,
-    });
-  const saveRefundProcessedEmail = () =>
-    refundProcessedEmail.save({
-      refundProcessedEmailTemplate:
-        refundProcessedEmailTemplate.replace(/\r\n/g, "\n") === data.defaultRefundProcessedEmailTemplate.replace(/\r\n/g, "\n")
-          ? ""
-          : refundProcessedEmailTemplate,
-      refundProcessedEmailSubject: refundProcessedEmailSubject === data.defaultRefundProcessedEmailSubject ? "" : refundProcessedEmailSubject,
     });
   const saveGstInvoice = () =>
     gstInvoice.save({
@@ -1566,13 +1455,14 @@ export default function SettingsPage() {
             <SaveButton isSaving={orderProcessingEmail.isSaving} onClick={saveOrderProcessingEmail} />
           </TemplateCard>
 
-          <TemplateCard icon={<Icon name="message" size={15} color={brand.accent} />} title="Return & Refund WhatsApp">
+          <TemplateCard icon={<Icon name="message" size={15} color={brand.accent} />} title="Return WhatsApp">
             <p style={{ ...hintStyle, marginTop: 0 }}>
-              Sent manually, one order at a time, from the{" "}
-              <a href="/app/returns-refunds" style={{ color: brand.accent }}>Returns &amp; Refunds</a> page —
-              never automatically. Two separate approved WhatsApp templates, one per notification.
+              Sent automatically whenever a return is processed on an order in Shopify Admin (Shopify's own native
+              Returns feature — Request → Approve → Receive/Process) — not manual, and not tied to a refund. Return
+              Received / Refund Processed EMAILS are no longer sent from this app — Shopify's own native order
+              notifications cover that now.
             </p>
-            <label style={labelStyle} htmlFor="interaktReturnTemplateName">Return Received — template name</label>
+            <label style={labelStyle} htmlFor="interaktReturnTemplateName">Template name</label>
             <input
               id="interaktReturnTemplateName"
               style={fieldStyle}
@@ -1582,189 +1472,14 @@ export default function SettingsPage() {
               placeholder={`${data.defaultInteraktReturnTemplateName} (default if left blank)`}
             />
             <label style={labelStyle} htmlFor="testReturnPhone">Send test message</label>
-            <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "5px", marginBottom: "16px" }}>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "5px" }}>
               <input id="testReturnPhone" style={{ ...fieldStyle, marginBottom: 0, maxWidth: "220px" }} type="tel" value={testReturnPhone} onChange={(e) => setTestReturnPhone(e.target.value)} placeholder="9876543210 or +919876543210" />
               <button type="button" onClick={sendTestReturnWhatsapp} disabled={isSendingReturnTest} style={{ ...secondaryBtn, padding: "9px 16px", fontSize: "12.5px" }}>
                 {isSendingReturnTest ? "Sending…" : "Send Test"}
               </button>
             </div>
             <TestResult fetcherData={testReturnFetcher.data} intent="sendTestReturnWhatsapp" />
-
-            <label style={labelStyle} htmlFor="interaktRefundTemplateName">Refund Processed — template name</label>
-            <input
-              id="interaktRefundTemplateName"
-              style={fieldStyle}
-              type="text"
-              value={interaktRefundTemplateName}
-              onChange={(e) => setInteraktRefundTemplateName(e.target.value)}
-              placeholder={`${data.defaultInteraktRefundTemplateName} (default if left blank)`}
-            />
-            <label style={labelStyle} htmlFor="testRefundPhone">Send test message</label>
-            <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "5px" }}>
-              <input id="testRefundPhone" style={{ ...fieldStyle, marginBottom: 0, maxWidth: "220px" }} type="tel" value={testRefundPhone} onChange={(e) => setTestRefundPhone(e.target.value)} placeholder="9876543210 or +919876543210" />
-              <button type="button" onClick={sendTestRefundWhatsapp} disabled={isSendingRefundTest} style={{ ...secondaryBtn, padding: "9px 16px", fontSize: "12.5px" }}>
-                {isSendingRefundTest ? "Sending…" : "Send Test"}
-              </button>
-            </div>
-            <TestResult fetcherData={testRefundFetcher.data} intent="sendTestRefundWhatsapp" />
-            <SaveButton isSaving={returnRefundWhatsapp.isSaving} onClick={saveReturnRefundWhatsapp} />
-          </TemplateCard>
-
-          <TemplateCard icon={<Icon name="return" size={15} color={brand.accent} />} title="Return Received Email">
-            <p style={{ ...hintStyle, marginTop: 0 }}>
-              Sent manually, one order at a time, from the{" "}
-              <a href="/app/returns-refunds" style={{ color: brand.accent }}>Returns &amp; Refunds</a> page — never
-              automatically. Edit the raw HTML below, or leave it as-is to keep using the built-in design.
-            </p>
-            <label style={labelStyle} htmlFor="returnReceivedEmailSubject">Email subject</label>
-            <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "6px" }}>
-              <input
-                id="returnReceivedEmailSubject"
-                style={{ ...fieldStyle, marginBottom: 0 }}
-                type="text"
-                value={returnReceivedEmailSubject}
-                onChange={(e) => setReturnReceivedEmailSubject(e.target.value)}
-                placeholder={data.defaultReturnReceivedEmailSubject}
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  if (window.confirm("Reset the subject to the built-in default? This discards your current edit (not saved until you click Save below).")) {
-                    setReturnReceivedEmailSubject(data.defaultReturnReceivedEmailSubject);
-                  }
-                }}
-                style={{ ...secondaryBtn, padding: "9px 14px", fontSize: "12.5px", whiteSpace: "nowrap" }}
-              >
-                Reset
-              </button>
-            </div>
-            <p style={hintStyle}>
-              Supports the same placeholders as the HTML below, e.g.{" "}
-              <code style={{ background: brand.panel, padding: "1px 5px", borderRadius: "4px" }}>{"{{order_number}}"}</code>.
-            </p>
-            <Explain summary="Available placeholders (substituted automatically when the email actually sends)">
-              <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "12px", color: brand.muted, lineHeight: 1.8 }}>
-                {data.orderReturnEmailPlaceholders.map((p) => (
-                  <li key={p.token}>
-                    <code style={{ background: brand.panel, padding: "1px 5px", borderRadius: "4px" }}>{`{{${p.token}}}`}</code> — {p.description}
-                  </li>
-                ))}
-              </ul>
-            </Explain>
-            <textarea
-              id="returnReceivedEmailTemplate"
-              value={returnReceivedEmailTemplate}
-              onChange={(e) => setReturnReceivedEmailTemplate(e.target.value)}
-              spellCheck={false}
-              style={{ ...fieldStyle, fontFamily: brand.mono, fontSize: "11.5px", lineHeight: 1.5, height: "260px", resize: "vertical", whiteSpace: "pre" }}
-            />
-            <div style={{ display: "flex", gap: "8px", marginTop: "6px", flexWrap: "wrap" }}>
-              <button type="button" onClick={() => setShowReturnEmailPreview((v) => !v)} style={{ ...primaryBtn, padding: "8px 16px", fontSize: "12.5px" }}>
-                {showReturnEmailPreview ? "Hide preview" : "Preview"}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (window.confirm("Reset to the built-in default template? This discards your current edits (not saved until you click Save below).")) {
-                    setReturnReceivedEmailTemplate(data.defaultReturnReceivedEmailTemplate);
-                  }
-                }}
-                style={{ ...secondaryBtn, padding: "8px 16px", fontSize: "12.5px" }}
-              >
-                Reset to default
-              </button>
-            </div>
-            {showReturnEmailPreview && (
-              <div style={{ marginTop: "10px", border: `1px solid ${brand.border}`, borderRadius: "10px", overflow: "hidden" }}>
-                <div style={{ padding: "6px 10px", background: brand.panel, borderBottom: `1px solid ${brand.divider}`, fontSize: "11px", color: brand.muted }}>
-                  Preview with sample data — this reflects what's in the boxes above right now, even if unsaved.
-                </div>
-                <div style={{ padding: "8px 10px", borderBottom: `1px solid ${brand.divider}`, fontSize: "12.5px" }}>
-                  <strong>Subject:</strong> {renderEmailPreview(returnReceivedEmailSubject)}
-                </div>
-                <iframe title="Return received email preview" srcDoc={renderEmailPreview(returnReceivedEmailTemplate)} style={{ width: "100%", height: "500px", border: "none", display: "block" }} />
-              </div>
-            )}
-            <SaveButton isSaving={returnReceivedEmail.isSaving} onClick={saveReturnReceivedEmail} />
-          </TemplateCard>
-
-          <TemplateCard icon={<Icon name="banknote" size={15} color={brand.accent} />} title="Refund Processed Email">
-            <p style={{ ...hintStyle, marginTop: 0 }}>
-              Also sent manually from the{" "}
-              <a href="/app/returns-refunds" style={{ color: brand.accent }}>Returns &amp; Refunds</a> page, alongside a
-              refund amount staff type in there — this is separate from Shopify's own native "Order refund" email, sent
-              automatically when a refund is processed from Admin unless that notification is turned off there.
-            </p>
-            <label style={labelStyle} htmlFor="refundProcessedEmailSubject">Email subject</label>
-            <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "6px" }}>
-              <input
-                id="refundProcessedEmailSubject"
-                style={{ ...fieldStyle, marginBottom: 0 }}
-                type="text"
-                value={refundProcessedEmailSubject}
-                onChange={(e) => setRefundProcessedEmailSubject(e.target.value)}
-                placeholder={data.defaultRefundProcessedEmailSubject}
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  if (window.confirm("Reset the subject to the built-in default? This discards your current edit (not saved until you click Save below).")) {
-                    setRefundProcessedEmailSubject(data.defaultRefundProcessedEmailSubject);
-                  }
-                }}
-                style={{ ...secondaryBtn, padding: "9px 14px", fontSize: "12.5px", whiteSpace: "nowrap" }}
-              >
-                Reset
-              </button>
-            </div>
-            <p style={hintStyle}>
-              Supports the same placeholders as the HTML below, e.g.{" "}
-              <code style={{ background: brand.panel, padding: "1px 5px", borderRadius: "4px" }}>{"{{refund_amount}}"}</code>.
-            </p>
-            <Explain summary="Available placeholders (substituted automatically when the email actually sends)">
-              <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "12px", color: brand.muted, lineHeight: 1.8 }}>
-                {data.orderReturnEmailPlaceholders.map((p) => (
-                  <li key={p.token}>
-                    <code style={{ background: brand.panel, padding: "1px 5px", borderRadius: "4px" }}>{`{{${p.token}}}`}</code> — {p.description}
-                  </li>
-                ))}
-              </ul>
-            </Explain>
-            <textarea
-              id="refundProcessedEmailTemplate"
-              value={refundProcessedEmailTemplate}
-              onChange={(e) => setRefundProcessedEmailTemplate(e.target.value)}
-              spellCheck={false}
-              style={{ ...fieldStyle, fontFamily: brand.mono, fontSize: "11.5px", lineHeight: 1.5, height: "260px", resize: "vertical", whiteSpace: "pre" }}
-            />
-            <div style={{ display: "flex", gap: "8px", marginTop: "6px", flexWrap: "wrap" }}>
-              <button type="button" onClick={() => setShowRefundEmailPreview((v) => !v)} style={{ ...primaryBtn, padding: "8px 16px", fontSize: "12.5px" }}>
-                {showRefundEmailPreview ? "Hide preview" : "Preview"}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (window.confirm("Reset to the built-in default template? This discards your current edits (not saved until you click Save below).")) {
-                    setRefundProcessedEmailTemplate(data.defaultRefundProcessedEmailTemplate);
-                  }
-                }}
-                style={{ ...secondaryBtn, padding: "8px 16px", fontSize: "12.5px" }}
-              >
-                Reset to default
-              </button>
-            </div>
-            {showRefundEmailPreview && (
-              <div style={{ marginTop: "10px", border: `1px solid ${brand.border}`, borderRadius: "10px", overflow: "hidden" }}>
-                <div style={{ padding: "6px 10px", background: brand.panel, borderBottom: `1px solid ${brand.divider}`, fontSize: "11px", color: brand.muted }}>
-                  Preview with sample data — this reflects what's in the boxes above right now, even if unsaved.
-                </div>
-                <div style={{ padding: "8px 10px", borderBottom: `1px solid ${brand.divider}`, fontSize: "12.5px" }}>
-                  <strong>Subject:</strong> {renderEmailPreview(refundProcessedEmailSubject)}
-                </div>
-                <iframe title="Refund processed email preview" srcDoc={renderEmailPreview(refundProcessedEmailTemplate)} style={{ width: "100%", height: "500px", border: "none", display: "block" }} />
-              </div>
-            )}
-            <SaveButton isSaving={refundProcessedEmail.isSaving} onClick={saveRefundProcessedEmail} />
+            <SaveButton isSaving={returnWhatsapp.isSaving} onClick={saveReturnWhatsapp} />
           </TemplateCard>
 
           <TemplateCard icon={<Icon name="tag" size={15} color={brand.accent} />} title="GST Tax Invoice">

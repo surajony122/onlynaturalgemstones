@@ -103,9 +103,7 @@ const SETTINGS_ROWS = [
   ["Gem Recommendation — Email", "Subject + full HTML template for the same recommendation, by email", "Email"],
   ["Order Processing", "Trigger tag + WhatsApp template for “your order is being prepared”", "WhatsApp"],
   ["Order Processing — Email", "Subject + template for the same message, by email", "Email"],
-  ["Return & Refund WhatsApp", "Two template names (Return Received, Refund Processed) + a test send for each", "WhatsApp"],
-  ["Return Received Email", "Subject + template for the manual “we've received your return” email", "Email"],
-  ["Refund Processed Email", "Subject + template for the manual “your refund has been processed” email", "Email"],
+  ["Return WhatsApp", "Template name + a test send for the automatic “we've received your return” message", "WhatsApp"],
   ["Wishlist Reminder", "WhatsApp template for the debounced wishlist follow-up", "WhatsApp"],
   ["WhatsApp — advanced", "Send-pacing interval (how far apart WhatsApp sends are spaced)", "WhatsApp"],
   ["GST Tax Invoice", "GSTIN, seller details, per-collection GST rates, invoice number prefix, PDF layout, and covering email — all in one section", "PDF + Email"],
@@ -204,18 +202,6 @@ export default function DocumentationPage() {
           ]}
           tags={["Manual only", "PDF + Email"]}
         />
-        <PageEntry
-          title="Returns & Refunds"
-          route="/app/returns-refunds"
-          purpose="Send a Return Received or Refund Processed notification for any order, by hand, whenever you're ready."
-          points={[
-            "Every button here is manual — there's no tag, webhook, or timer that fires either notification on its own.",
-            "Each order gets four independent buttons: Return Email, Return WhatsApp, Refund Email, and Refund WhatsApp. Sending one never touches another.",
-            "The refund amount is a field you type in right there — it's not pulled from Shopify's own refund records, so double-check it before sending.",
-            "Deliberately separate from Shopify's own automatic “Order refund” notification (Settings → Notifications, in Shopify Admin itself) — this app's messages are its own, sent independently.",
-          ]}
-          tags={["Manual only", "Email + WhatsApp", "Amount typed by staff"]}
-        />
       </GroupCard>
 
       <GroupCard icon="server" title="System" navPath="Sidebar → System">
@@ -230,7 +216,7 @@ export default function DocumentationPage() {
           route="/app/settings"
           purpose="Where every credential, trigger, and message template in this app is configured — organized into independent sections, each with its own Save button."
           points={[
-            "Saving one section — say, Refund Processed Email — only ever touches that section's own fields. It cannot blank out an unrelated setting like a GST rate, even if that field happened to be empty on your screen at the time.",
+            "Saving one section — say, Return WhatsApp — only ever touches that section's own fields. It cannot blank out an unrelated setting like a GST rate, even if that field happened to be empty on your screen at the time.",
             "A field left blank always means “use the built-in default,” not “leave unchanged” — this is deliberate and consistent across the whole page (see the FAQ below). The one exception is genuine secrets (passwords, API keys), which show “•••• already set” and are never cleared by leaving them blank.",
             "Every editable email has a Preview button showing real sample data in the exact layout that will send, plus a one-click Reset to default.",
           ]}
@@ -288,7 +274,7 @@ export default function DocumentationPage() {
         </FaqItem>
 
         <FaqItem q="I saved one setting and an unrelated one disappeared — will that happen again?">
-          No. Every section on the Settings page saves independently — clicking Save under, say, "Refund Processed Email" only ever submits that
+          No. Every section on the Settings page saves independently — clicking Save under, say, "Return WhatsApp" only ever submits that
           section's own fields. It's structurally impossible for it to touch a GST rate or any other section's value, even if that field happened
           to be blank on your screen.
         </FaqItem>
@@ -310,10 +296,11 @@ export default function DocumentationPage() {
           session gets one reminder later, not one per item.
         </FaqItem>
 
-        <FaqItem q="How is Returns & Refunds different from Shopify's own &quot;Order refund&quot; email?">
-          Shopify already sends its own native refund email automatically whenever a refund is processed from Admin (unless you uncheck "Send a
-          notification" at that moment). This app's Return Received and Refund Processed messages are separate and entirely manual — they exist so
-          you can send your own branded version, on your own timing, independent of whatever Shopify does natively for the same order.
+        <FaqItem q="How does the Return WhatsApp message relate to Shopify's own return/refund emails?">
+          They're independent. Shopify sends its own native emails for returns and refunds from Admin — this app no longer sends any Return/Refund
+          emails of its own, since Shopify's native ones already cover that. Separately, this app listens for Shopify's native Returns feature
+          (Request → Approve → Receive/Process) and sends one WhatsApp message the moment a return is processed — nothing to do with refunds at
+          all. There's no page or button for this anymore; it just happens automatically whenever a return is processed on an order.
         </FaqItem>
 
         <FaqItem q="Can I change the wording of any of these messages?">
