@@ -506,17 +506,23 @@ export async function sendOrderProcessingWhatsApp(settings, { phone, firstName, 
  *   Only Natural Gemstones
  *   from the House of Shubh Gems
  *
+ * Also has one URL button (index 0) needing its own dynamic value --
+ * confirmed live via a second HTTP 400, "Missing variable values for
+ * template's button at index 0, expected number of values are 1", the
+ * first time this was tried with no buttonValues at all.
+ *
  * ---- Variable mapping ----
  *  {{1}} customer first name
  *  {{2}} order number (Shopify's own order.name, minus the leading "#" —
  *        the template text already supplies "#" before {{2}})
+ *  Button {{1}} order status page URL
  *
  * The refund amount is still computed from the webhook's own
  * transaction data and stored on the OrderReturnEmailNotification row
  * for tracking (see webhooks.refunds.create.jsx) — it's just not part
  * of this particular WhatsApp template's body.
  */
-export async function sendRefundProcessedWhatsApp(settings, { phone, firstName, orderNumber, headerImageUrl }) {
+export async function sendRefundProcessedWhatsApp(settings, { phone, firstName, orderNumber, orderStatusUrl, headerImageUrl }) {
   if (!settings.interaktApiKey) {
     return "skipped: Interakt API key not set (Settings page or INTERAKT_API_KEY env var)";
   }
@@ -536,6 +542,7 @@ export async function sendRefundProcessedWhatsApp(settings, { phone, firstName, 
       languageCode: "en",
       headerValues: [headerImageUrl || FALLBACK_HEADER_IMAGE_URL],
       bodyValues: [firstName || "there", String(orderNumber || "").replace(/^#/, "")],
+      buttonValues: { "0": [orderStatusUrl || FALLBACK_ORDER_STATUS_URL] },
     },
   };
 
