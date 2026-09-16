@@ -32,6 +32,7 @@ import { esc, getShopFooterInfo } from "./astroAdvice.server";
 import puppeteer from "puppeteer";
 
 export const DEFAULT_INVOICE_NUMBER_PREFIX = "INV-";
+export const DEFAULT_INVOICE_CUSTOMISATION_LINK_LABEL = "For gemstone SKU:";
 
 // The exact product title the locked Gemstone Customisation pricing
 // system (see CLAUDE.md) always uses for its shared charge-line product
@@ -938,7 +939,10 @@ export function computeInvoiceGst(order, settings) {
     if (isCustomisation) {
       const parentSku = linkedGemstoneId ? variantIdToSku[linkedGemstoneId] : "";
       const detailLines = [];
-      if (parentSku) detailLines.push(`For gemstone SKU: ${esc(parentSku)}`);
+      if (parentSku) {
+        const linkLabel = settings.invoiceCustomisationLinkLabel || DEFAULT_INVOICE_CUSTOMISATION_LINK_LABEL;
+        detailLines.push(`${esc(linkLabel)} ${esc(parentSku)}`);
+      }
       const propParts = (line.customAttributes || [])
         .filter(
           (a) =>

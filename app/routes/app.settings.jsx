@@ -55,7 +55,7 @@ import {
   getRefundProcessedEmailSubject,
   ORDER_RETURN_EMAIL_PLACEHOLDERS,
 } from "../utils/orderReturnEmail.server";
-import { getOrderInvoiceTemplate, ORDER_INVOICE_PLACEHOLDERS, DEFAULT_INVOICE_NUMBER_PREFIX, getInvoiceEmailTemplate, ORDER_INVOICE_EMAIL_PLACEHOLDERS, fetchShopSellerInfo } from "../utils/orderInvoice.server";
+import { getOrderInvoiceTemplate, ORDER_INVOICE_PLACEHOLDERS, DEFAULT_INVOICE_NUMBER_PREFIX, DEFAULT_INVOICE_CUSTOMISATION_LINK_LABEL, getInvoiceEmailTemplate, ORDER_INVOICE_EMAIL_PLACEHOLDERS, fetchShopSellerInfo } from "../utils/orderInvoice.server";
 import { brand, Icon, Card, PageHeader, PageIn } from "../components/table-kit";
 import { useToast } from "../components/toast";
 
@@ -165,6 +165,8 @@ export const loader = async ({ request }) => {
     invoiceGstRateCustomisation: row?.invoiceGstRateCustomisation || "",
     invoiceHsnLoose: row?.invoiceHsnLoose || "",
     invoiceHsnCustomisation: row?.invoiceHsnCustomisation || "",
+    invoiceCustomisationLinkLabel: row?.invoiceCustomisationLinkLabel || "",
+    defaultInvoiceCustomisationLinkLabel: DEFAULT_INVOICE_CUSTOMISATION_LINK_LABEL,
     invoiceCollectionHsnCodes: row?.invoiceCollectionHsnCodes || {},
     invoiceNumberPrefix: row?.invoiceNumberPrefix || "",
     defaultInvoiceNumberPrefix: DEFAULT_INVOICE_NUMBER_PREFIX,
@@ -453,6 +455,7 @@ export const action = async ({ request }) => {
       invoiceGstRateCustomisation: val("invoiceGstRateCustomisation"),
       invoiceHsnLoose: val("invoiceHsnLoose"),
       invoiceHsnCustomisation: val("invoiceHsnCustomisation"),
+      invoiceCustomisationLinkLabel: val("invoiceCustomisationLinkLabel"),
       invoiceNumberPrefix: val("invoiceNumberPrefix"),
       invoiceDeliveryDays: val("invoiceDeliveryDays"),
       invoicePdfTemplate: val("invoicePdfTemplate"),
@@ -1065,6 +1068,7 @@ export default function SettingsPage() {
   const [invoiceGstRateCustomisation, setInvoiceGstRateCustomisation] = useState(data.invoiceGstRateCustomisation);
   const [invoiceHsnLoose, setInvoiceHsnLoose] = useState(data.invoiceHsnLoose);
   const [invoiceHsnCustomisation, setInvoiceHsnCustomisation] = useState(data.invoiceHsnCustomisation);
+  const [invoiceCustomisationLinkLabel, setInvoiceCustomisationLinkLabel] = useState(data.invoiceCustomisationLinkLabel);
   const [collectionHsnCodes, setCollectionHsnCodes] = useState(data.invoiceCollectionHsnCodes || {});
   const setCollectionHsn = (gid, value) => {
     setCollectionHsnCodes((prev) => ({ ...prev, [gid]: value }));
@@ -1255,6 +1259,7 @@ export default function SettingsPage() {
       invoiceGstRateCustomisation,
       invoiceHsnLoose,
       invoiceHsnCustomisation,
+      invoiceCustomisationLinkLabel,
       invoiceNumberPrefix,
       invoiceDeliveryDays,
       // Same "don't freeze today's default as a permanent customization"
@@ -2028,14 +2033,17 @@ export default function SettingsPage() {
                 <p style={{ ...hintStyle, marginTop: "-10px" }}>
                   Shown in the invoice's own HSN column. Leave either blank to fall back to that variant's own
                   "Harmonized System (HS) code" field in Shopify (Admin → the variant's own page) — most gemstone
-                  variants don't have one set, which is why this column often shows blank without these.
+                  variants don't have one set, which is why this column often shows blank without these. Unlike
+                  the GST rate below, "Gemstone Customisation" always uses its own HSN code above — it never
+                  inherits a gemstone's collection override, since the two are different products with different
+                  HSN classifications.
                 </p>
 
                 <label style={labelStyle}>HSN code by collection (optional overrides)</label>
                 <p style={{ ...hintStyle, marginTop: "5px" }}>
-                  Leave blank to use the loose-gemstone HSN above. Same rule as the GST-rate overrides: if a
-                  gemstone belongs to a collection listed here, its own line AND its linked "Gemstone Customisation"
-                  charge line (if customised) both use this HSN code instead of the two defaults above.
+                  Leave blank to use the loose-gemstone HSN above. Affects only the gemstone's own line — a linked
+                  "Gemstone Customisation" charge line always uses the flat HSN — customisation code above,
+                  regardless of which collection that gemstone belongs to.
                 </p>
                 {data.collections.length === 0 ? (
                   <p style={hintStyle}>No collections found on this store.</p>
@@ -2066,6 +2074,20 @@ export default function SettingsPage() {
                     ))}
                   </div>
                 )}
+
+                <label style={labelStyle} htmlFor="invoiceCustomisationLinkLabel">Customisation → gemstone link label</label>
+                <input
+                  id="invoiceCustomisationLinkLabel"
+                  style={fieldStyle}
+                  type="text"
+                  value={invoiceCustomisationLinkLabel}
+                  onChange={(e) => setInvoiceCustomisationLinkLabel(e.target.value)}
+                  placeholder={`${data.defaultInvoiceCustomisationLinkLabel} (default if left blank)`}
+                />
+                <p style={{ ...hintStyle, marginTop: "-10px" }}>
+                  Shown on the invoice's "Gemstone Customisation" row, right before the SKU of the gemstone it's
+                  linked to — e.g. <strong>{invoiceCustomisationLinkLabel || data.defaultInvoiceCustomisationLinkLabel} AM000150</strong>.
+                </p>
 
                 <div style={{ display: "flex", gap: "12px" }}>
                   <div style={{ flex: 1 }}>

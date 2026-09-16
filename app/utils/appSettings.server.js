@@ -56,6 +56,7 @@ const FIELDS = [
   "invoiceGstRateCustomisation",
   "invoiceHsnLoose",
   "invoiceHsnCustomisation",
+  "invoiceCustomisationLinkLabel",
   "invoiceNumberPrefix",
   "invoiceDeliveryDays",
   "invoicePdfTemplate",

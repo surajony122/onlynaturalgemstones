@@ -568,21 +568,29 @@ model AppSettings {
   // PDF's own HSN column -- per explicit request, settable here rather
   // than relying only on Shopify's native per-variant "Harmonized
   // System (HS) code" field (variant.inventoryItem.harmonizedSystemCode),
-  // which most variants in this catalog don't have set. Same
-  // loose/customisation split as the GST rates above: a plain gemstone
-  // line uses invoiceHsnLoose, a "Gemstone Customisation" charge line
-  // uses invoiceHsnCustomisation -- unless the linked gemstone has its
-  // own collection override below, in which case the customisation line
-  // inherits THAT code too, same precedence rule computeInvoiceGst()
-  // already uses for GST rates. Either falls back to the native Shopify
-  // field, then blank, if nothing here is configured.
+  // which most variants in this catalog don't have set. A plain
+  // gemstone line uses invoiceHsnLoose (or its own collection override
+  // below); a "Gemstone Customisation" charge line ALWAYS uses
+  // invoiceHsnCustomisation -- unlike the GST rate above, it never
+  // inherits the linked gemstone's collection override, since the two
+  // are different products with genuinely different HSN
+  // classifications (per explicit request). Either falls back to the
+  // native Shopify field, then blank, if nothing here is configured.
   invoiceHsnLoose                String?
   invoiceHsnCustomisation        String?
   // Per-collection HSN overrides -- {"gid://shopify/Collection/123":
-  // "7103", ...} -- same shape/precedence as invoiceCollectionGstRates
-  // above, saved via its own setter (saveInvoiceCollectionHsnCodes) for
-  // the same reason (JSON, not a plain FIELDS string).
+  // "7103", ...} -- affects only the gemstone's own line (see
+  // invoiceHsnCustomisation's own comment above for why the
+  // customisation line is excluded), saved via its own setter
+  // (saveInvoiceCollectionHsnCodes) for the same JSON-not-a-plain-
+  // FIELDS-string reason as invoiceCollectionGstRates.
   invoiceCollectionHsnCodes      Json?
+  // Label shown on the invoice PDF's "Gemstone Customisation" row,
+  // immediately before the linked gemstone's own SKU -- e.g. "For
+  // gemstone SKU:" (the default) produces "For gemstone SKU: AM000150".
+  // Editable per explicit request, since a merchant may want different
+  // wording. Blank means use the built-in default.
+  invoiceCustomisationLinkLabel  String?
   updatedAt                      DateTime @updatedAt
 }
 
