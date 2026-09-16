@@ -960,7 +960,12 @@ export function computeInvoiceGst(order, settings) {
       }
     }
     const lineTotal = taxableValue + gstAmount;
-    const pct = (n) => (Number.isInteger(n) ? n : n.toFixed(2)).toString();
+    // toFixed(2) used to round a split rate like 0.125% (half of a 0.25%
+    // GST rate) up to "0.13" -- confirmed live. toFixed(4) keeps enough
+    // precision for a CGST/SGST half-split, then parseFloat strips
+    // trailing zeros so a plain rate like 3% still shows as "3", not
+    // "3.0000".
+    const pct = (n) => (Number.isInteger(n) ? n : parseFloat(n.toFixed(4))).toString();
     // Inline styles matching the default template's header cells
     // (widths included) -- carried over from this template's original
     // pdfmake-based implementation (see getDefaultOrderInvoiceTemplate's
