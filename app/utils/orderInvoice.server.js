@@ -125,7 +125,7 @@ function getDefaultOrderInvoiceTemplate() {
 </head>
 <body style="font-family: Helvetica, Arial, sans-serif; font-size: 10px; color: #222;">
 
-  <div style="text-align:center;margin-bottom:10px;">{{brand_header_html}}</div>
+  <div style="text-align:center;margin-bottom:10px;padding:12px 0;background-color:#f3efe6;">{{brand_header_html}}</div>
 
   <table style="width:100%;border-collapse:collapse;">
     <tr>
