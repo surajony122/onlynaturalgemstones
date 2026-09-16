@@ -842,7 +842,6 @@ export function computeInvoiceGst(order, settings) {
     // invoice always reconciles to exactly what Shopify charged, never
     // more.
     const grossValue = parseFloat(line.discountedTotalSet?.shopMoney?.amount ?? line.originalTotalSet?.shopMoney?.amount ?? 0) || 0;
-    const unitRate = parseFloat(line.originalUnitPriceSet?.shopMoney?.amount ?? 0) || 0;
 
     // GST always applies -- domestic or international -- at this line's
     // own rate. The only thing international/different-state-domestic
@@ -909,7 +908,15 @@ export function computeInvoiceGst(order, settings) {
         `<td style="${td(24)}">${esc(line.title)}${sku ? `<br><span style="color:#888;font-size:9px;">SKU: ${esc(sku)}</span>` : ""}</td>` +
         `<td style="${td(8)}">${esc(hsn)}</td>` +
         `<td style="${td(6)}">${line.quantity}</td>` +
-        `<td style="${td(13)}">${formatMoney(unitRate, currency)}</td>` +
+        // RATE is the taxable value (Amount minus GST), not the gross
+        // charged price -- per explicit request, so CGST/SGST/IGST
+        // shown alongside are exactly rate% of this cell, and RATE +
+        // GST reconciles exactly to AMOUNT. Previously showed the raw
+        // Shopify unit price here (the same gross figure as AMOUNT),
+        // which made the GST math alongside look wrong even though it
+        // was correctly computed from the gross price -- it was just
+        // never shown against the right base number.
+        `<td style="${td(13)}">${formatMoney(taxableValue, currency)}</td>` +
         `<td style="${td(12)}">${formatMoney(lineCgst, currency)}<br><span style="color:#888;font-size:9px;">(${pct(cgstPct)}%)</span></td>` +
         `<td style="${td(12)}">${formatMoney(lineSgst, currency)}<br><span style="color:#888;font-size:9px;">(${pct(sgstPct)}%)</span></td>` +
         `<td style="${td(12)}">${formatMoney(lineIgst, currency)}<br><span style="color:#888;font-size:9px;">(${pct(igstPct)}%)</span></td>` +

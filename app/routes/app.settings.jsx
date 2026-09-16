@@ -715,18 +715,26 @@ const INVOICE_PREVIEW_SAMPLE_VALUES = {
   delivery_mode: "By Courier",
   delivery_before: "20/09/2026",
   payment_mode: "Razorpay",
-  // GST is INCLUDED in the "Rate"/line total, not added on top of it, per
-  // explicit request -- Total always equals Rate x qty exactly, and
-  // CGST/SGST/IGST shown are the portion of that already-charged amount
-  // that's tax (back-calculated), matching computeInvoiceGst()'s own
-  // taxable = gross / (1 + rate/100) formula in orderInvoice.server.js.
+  // GST is INCLUDED in the "Amount"/line total, not added on top of it,
+  // per explicit request -- Amount always equals what was actually
+  // charged, and CGST/SGST/IGST shown are the portion of THAT already-
+  // charged amount that's tax (back-calculated), matching
+  // computeInvoiceGst()'s own taxable = gross / (1 + rate/100) formula
+  // in orderInvoice.server.js. RATE is the resulting taxable value
+  // (Amount minus GST), NOT the gross charged price -- shows a
+  // different figure than Amount on purpose, so CGST/SGST/IGST are
+  // exactly rate% of the RATE cell, and RATE + GST reconciles to
+  // AMOUNT exactly. (Previously showed the gross price in both
+  // columns, which made the GST math alongside look wrong even though
+  // it was computed correctly -- just never shown against the right
+  // base number.)
   line_items_rows:
-    '<tr><td>Blue Sapphire - 4.12 Carat</td><td>7103</td><td>1</td><td>&#8377;18,500.00</td>' +
+    '<tr><td>Blue Sapphire - 4.12 Carat</td><td>7103</td><td>1</td><td>&#8377;17,961.17</td>' +
     '<td>&#8377;269.42<br><span style="color:#888;font-size:9px;">(1.5%)</span></td>' +
     '<td>&#8377;269.41<br><span style="color:#888;font-size:9px;">(1.5%)</span></td>' +
     '<td>&#8377;0.00<br><span style="color:#888;font-size:9px;">(0%)</span></td>' +
     '<td>&#8377;18,500.00</td></tr>' +
-    '<tr><td>Gemstone Customisation</td><td>7113</td><td>1</td><td>&#8377;2,150.00</td>' +
+    '<tr><td>Gemstone Customisation</td><td>7113</td><td>1</td><td>&#8377;2,087.38</td>' +
     '<td>&#8377;31.31<br><span style="color:#888;font-size:9px;">(1.5%)</span></td>' +
     '<td>&#8377;31.31<br><span style="color:#888;font-size:9px;">(1.5%)</span></td>' +
     '<td>&#8377;0.00<br><span style="color:#888;font-size:9px;">(0%)</span></td>' +
