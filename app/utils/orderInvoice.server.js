@@ -153,14 +153,14 @@ function getDefaultOrderInvoiceTemplate() {
       <td style="${boxSides}padding:0;">
         <table style="width:100%;border-collapse:collapse;">
           <tr>
-            <th style="width:24%;background-color:#f3efe6;border:0.5px solid #ccc;padding:6px 8px;font-size:9.5px;text-align:left;">ITEM(s) DESCRIPTION</th>
-            <th style="width:8%;background-color:#f3efe6;border:0.5px solid #ccc;padding:6px 8px;font-size:9.5px;text-align:left;">HSN</th>
-            <th style="width:6%;background-color:#f3efe6;border:0.5px solid #ccc;padding:6px 8px;font-size:9.5px;text-align:left;">Qty</th>
-            <th style="width:13%;background-color:#f3efe6;border:0.5px solid #ccc;padding:6px 8px;font-size:9.5px;text-align:left;">RATE (₹)</th>
-            <th style="width:12%;background-color:#f3efe6;border:0.5px solid #ccc;padding:6px 8px;font-size:9.5px;text-align:left;">CGST</th>
-            <th style="width:12%;background-color:#f3efe6;border:0.5px solid #ccc;padding:6px 8px;font-size:9.5px;text-align:left;">SGST</th>
-            <th style="width:12%;background-color:#f3efe6;border:0.5px solid #ccc;padding:6px 8px;font-size:9.5px;text-align:left;">IGST</th>
-            <th style="width:13%;background-color:#f3efe6;border:0.5px solid #ccc;padding:6px 8px;font-size:9.5px;text-align:left;">AMOUNT (₹)</th>
+            <th style="width:24%;background-color:#f3efe6;border:1px solid rgba(0,0,0,0.15);padding:6px 8px;font-size:9.5px;text-align:left;">ITEM(s) DESCRIPTION</th>
+            <th style="width:8%;background-color:#f3efe6;border:1px solid rgba(0,0,0,0.15);padding:6px 8px;font-size:9.5px;text-align:left;">HSN</th>
+            <th style="width:6%;background-color:#f3efe6;border:1px solid rgba(0,0,0,0.15);padding:6px 8px;font-size:9.5px;text-align:left;">Qty</th>
+            <th style="width:13%;background-color:#f3efe6;border:1px solid rgba(0,0,0,0.15);padding:6px 8px;font-size:9.5px;text-align:left;">RATE (₹)</th>
+            <th style="width:12%;background-color:#f3efe6;border:1px solid rgba(0,0,0,0.15);padding:6px 8px;font-size:9.5px;text-align:left;">CGST</th>
+            <th style="width:12%;background-color:#f3efe6;border:1px solid rgba(0,0,0,0.15);padding:6px 8px;font-size:9.5px;text-align:left;">SGST</th>
+            <th style="width:12%;background-color:#f3efe6;border:1px solid rgba(0,0,0,0.15);padding:6px 8px;font-size:9.5px;text-align:left;">IGST</th>
+            <th style="width:13%;background-color:#f3efe6;border:1px solid rgba(0,0,0,0.15);padding:6px 8px;font-size:9.5px;text-align:left;">AMOUNT (₹)</th>
           </tr>
           {{line_items_rows}}
         </table>
@@ -611,13 +611,17 @@ function buildInfoBlockRows(col1Lines, col2Lines) {
   // explicit request (swapped from the original left-seller/right-
   // customer order). The third "Delivery Before / Sales Person /
   // Delivery Mode" column was removed entirely in an earlier request.
+  // The seller column is right-aligned (its own explicit request) so
+  // the block reads as centered on the page's right edge rather than
+  // ragged text starting mid-page; the customer column stays left-
+  // aligned as before.
   const maxLen = Math.max(col1Lines.length, col2Lines.length);
   let rows = "";
   for (let i = 0; i < maxLen; i++) {
     rows +=
       `<tr>` +
       `<td style="border:none;width:50%;padding:1px 14px 1px 0;font-size:10px;line-height:1.5;">${col1Lines[i] || ""}</td>` +
-      `<td style="border:none;width:50%;padding:1px 0 1px 14px;font-size:10px;line-height:1.5;">${col2Lines[i] || ""}</td>` +
+      `<td style="border:none;width:50%;padding:1px 0 1px 14px;font-size:10px;line-height:1.5;text-align:right;">${col2Lines[i] || ""}</td>` +
       `</tr>`;
   }
   return rows;
@@ -899,7 +903,7 @@ export function computeInvoiceGst(order, settings) {
     // template rather than for any remaining technical requirement. See
     // getDefaultOrderInvoiceTemplate's
     // own comment for the full explanation.
-    const td = (width) => `border:1px solid #999;padding:6px 8px;vertical-align:top;font-size:9.5px;width:${width}%;`;
+    const td = (width) => `border:1px solid rgba(0,0,0,0.15);padding:6px 8px;vertical-align:top;font-size:9.5px;width:${width}%;`;
     itemRows.push(
       `<tr>` +
         `<td style="${td(24)}">${esc(line.title)}${sku ? `<br><span style="color:#888;font-size:9px;">SKU: ${esc(sku)}</span>` : ""}</td>` +
