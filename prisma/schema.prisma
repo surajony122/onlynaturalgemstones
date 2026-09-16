@@ -222,31 +222,36 @@ model OrderProcessingEmailNotification {
   @@unique([orderId, triggerKey])
 }
 
-// Send-history log for the Return WhatsApp message -- originally built
+// Send-history log for the Refund WhatsApp message -- originally built
 // for a manual four-button Returns & Refunds page (Return Email /
 // Return WhatsApp / Refund Email / Refund WhatsApp, all sent by hand);
 // that page and the Return/Refund emails have since been removed per
-// explicit request (Shopify's own native order notifications cover
-// that now), so this table is kept only for its one remaining row
-// type, "return_whatsapp", written automatically by
-// webhooks.returns.process.jsx whenever Shopify processes a return on
-// an order (Shopify's native Returns feature). returnId (Shopify's own
-// Return id) gives that automatic path a real idempotency key -- a
-// redelivered webhook for the same return hits the unique constraint
-// and skips instead of sending twice. Old rows from the removed manual
-// buttons ("return_email", "refund_email", "refund_whatsapp") have no
-// returnId and are left as historical data.
+// explicit request (Shopify's own native refund email covers that
+// now), so this table is kept only for its one remaining row type,
+// "refund_whatsapp", written automatically by
+// webhooks.refunds.create.jsx whenever staff click Refund on an order
+// in Shopify Admin. refundId (Shopify's own refund id) gives that
+// automatic path a real idempotency key -- a redelivered webhook for
+// the same refund hits the unique constraint and skips instead of
+// sending twice. Old rows from the removed manual buttons
+// ("return_email", "refund_email", "return_whatsapp") have no
+// refundId and are left as historical data.
 model OrderReturnEmailNotification {
   id         String   @id @default(cuid())
   shop       String?
   orderId    String
-  type       String // now always "return_whatsapp" going forward; legacy rows may carry "return_email" / "refund_email" / "refund_whatsapp"
+  type       String // now always "refund_whatsapp" going forward; legacy rows may carry "return_email" / "refund_email" / "return_whatsapp"
   orderName  String?
   email      String?
-  amount     String? // legacy only -- refund amount as typed by staff on old manual "refund_email"/"refund_whatsapp" rows; unused by the current return_whatsapp flow
+  amount     String? // refund amount -- computed from Shopify's own transaction data on current automatic rows; typed by staff on legacy manual rows
   status     String? // same "OK: .../skipped: .../threw: ..." shape as elsewhere
   notifiedAt DateTime @default(now())
-  returnId   String? @unique // Shopify's Return id -- set only on automatic "return_whatsapp" rows, used to dedup retried webhook deliveries
+  // Briefly used for an automatic "return_whatsapp" flow (returns/process
+  // webhook) that was tried and reverted -- no longer read or written by
+  // any code; left in place (not dropped) per this project's additive-
+  // only migration convention.
+  returnId   String?  @unique
+  refundId   String?  @unique // Shopify's refund id -- set only on automatic "refund_whatsapp" rows, used to dedup retried webhook deliveries
 
   @@index([orderId, type])
 }
@@ -342,16 +347,16 @@ model AppSettings {
   // argument" error (confirmed live) regardless of what was actually
   // being changed.
   interaktWishlistTemplateName  String?
-  // Fourth WhatsApp template -- Return Received, sent automatically
-  // when a return is processed on an order in Shopify Admin (Shopify's
-  // native Returns feature -- see webhooks.returns.process.jsx).
-  // Defaults to "return_received" if left blank -- see
-  // DEFAULT_INTERAKT_RETURN_TEMPLATE_NAME.
+  // Legacy -- briefly the trigger for an automatic "Return Received"
+  // WhatsApp flow (returns/process webhook) that was tried and
+  // reverted. No longer read or written by any code; left in place
+  // (not dropped) per this project's additive-only migration
+  // convention.
   interaktReturnTemplateName    String?
-  // Legacy -- was the fifth WhatsApp template (Refund Processed), sent
-  // manually from the now-removed Returns & Refunds page. No longer
-  // read or written by any code; left in place (not dropped) per this
-  // project's additive-only migration convention.
+  // Fourth WhatsApp template -- Refund Processed, sent automatically
+  // when staff click Refund on an order in Shopify Admin (see
+  // webhooks.refunds.create.jsx). Defaults to "refund_processed" if
+  // left blank -- see DEFAULT_INTERAKT_REFUND_TEMPLATE_NAME.
   interaktRefundTemplateName    String?
   // Tag name that, when present on an order, triggers the order-
   // processing WhatsApp send (see webhooks.orders.updated.jsx) — added

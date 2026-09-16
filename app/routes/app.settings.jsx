@@ -26,7 +26,7 @@ import {
   DEFAULT_INTERAKT_TEMPLATE_NAME,
   DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME,
   DEFAULT_INTERAKT_WISHLIST_TEMPLATE_NAME,
-  DEFAULT_INTERAKT_RETURN_TEMPLATE_NAME,
+  DEFAULT_INTERAKT_REFUND_TEMPLATE_NAME,
   DEFAULT_ORDER_PROCESSING_TRIGGER_TAG,
   DEFAULT_WHATSAPP_INTERVAL_VALUE,
   DEFAULT_WHATSAPP_INTERVAL_UNIT,
@@ -42,7 +42,7 @@ import {
   getOrCreateInteraktCampaignId,
   sendOrderProcessingWhatsApp,
   sendWishlistWhatsApp,
-  sendReturnReceivedWhatsApp,
+  sendRefundProcessedWhatsApp,
 } from "../utils/interakt.server";
 import { checkGmail, checkGoogleSheets, checkInterakt, checkGooglePlaces } from "../utils/serviceHealth.server";
 import { getOrderProcessingEmailTemplate, ORDER_PROCESSING_EMAIL_PLACEHOLDERS, getOrderProcessingEmailSubject } from "../utils/orderProcessingEmail.server";
@@ -110,8 +110,8 @@ export const loader = async ({ request }) => {
     defaultOrderProcessingTriggerTag: DEFAULT_ORDER_PROCESSING_TRIGGER_TAG,
     interaktWishlistTemplateName: row?.interaktWishlistTemplateName || "",
     defaultInteraktWishlistTemplateName: DEFAULT_INTERAKT_WISHLIST_TEMPLATE_NAME,
-    interaktReturnTemplateName: row?.interaktReturnTemplateName || "",
-    defaultInteraktReturnTemplateName: DEFAULT_INTERAKT_RETURN_TEMPLATE_NAME,
+    interaktRefundTemplateName: row?.interaktRefundTemplateName || "",
+    defaultInteraktRefundTemplateName: DEFAULT_INTERAKT_REFUND_TEMPLATE_NAME,
     whatsappIntervalValue: row?.whatsappIntervalValue || DEFAULT_WHATSAPP_INTERVAL_VALUE,
     whatsappIntervalUnit: row?.whatsappIntervalUnit || DEFAULT_WHATSAPP_INTERVAL_UNIT,
     interaktWebhookSecretSet: !!row?.interaktWebhookSecret,
@@ -304,14 +304,14 @@ export const action = async ({ request }) => {
     return { intent, ok: status.startsWith("OK"), status };
   }
 
-  if (intent === "sendTestReturnWhatsapp") {
-    const phone = formData.get("testReturnPhone")?.trim();
+  if (intent === "sendTestRefundWhatsapp") {
+    const phone = formData.get("testRefundPhone")?.trim();
     if (!phone) return { intent, ok: false, error: "Enter a phone number first" };
 
     const settings = await getAppSettings(session.shop);
     let status;
     try {
-      status = await sendReturnReceivedWhatsApp(settings, { phone, firstName: "Test", orderNumber: "1001" });
+      status = await sendRefundProcessedWhatsApp(settings, { phone, firstName: "Test", orderNumber: "1001", refundAmount: "₹1,500.00" });
     } catch (err) {
       status = "threw: " + String((err && err.message) || err);
     }
@@ -370,9 +370,9 @@ export const action = async ({ request }) => {
     return { intent, ok: true };
   }
 
-  if (intent === "saveReturnWhatsapp") {
+  if (intent === "saveRefundWhatsapp") {
     await saveAppSettings(session.shop, {
-      interaktReturnTemplateName: val("interaktReturnTemplateName"),
+      interaktRefundTemplateName: val("interaktRefundTemplateName"),
     });
     return { intent, ok: true };
   }
@@ -927,12 +927,12 @@ export default function SettingsPage() {
   const testFetcher = useFetcher();
   const testOrderFetcher = useFetcher();
   const testWishlistFetcher = useFetcher();
-  const testReturnFetcher = useFetcher();
+  const testRefundFetcher = useFetcher();
   const toast = useToast();
   const isSendingTest = testFetcher.state !== "idle";
   const isSendingOrderTest = testOrderFetcher.state !== "idle";
   const isSendingWishlistTest = testWishlistFetcher.state !== "idle";
-  const isSendingReturnTest = testReturnFetcher.state !== "idle";
+  const isSendingRefundTest = testRefundFetcher.state !== "idle";
 
   const [gmailUser, setGmailUser] = useState(data.gmailUser);
   const [gmailAppPassword, setGmailAppPassword] = useState("");
@@ -967,11 +967,11 @@ export default function SettingsPage() {
   );
   const [showEmailPreview, setShowEmailPreview] = useState(false);
   const [interaktWishlistTemplateName, setInteraktWishlistTemplateName] = useState(data.interaktWishlistTemplateName);
-  const [interaktReturnTemplateName, setInteraktReturnTemplateName] = useState(data.interaktReturnTemplateName);
+  const [interaktRefundTemplateName, setInteraktRefundTemplateName] = useState(data.interaktRefundTemplateName);
   const [testPhone, setTestPhone] = useState("");
   const [testOrderPhone, setTestOrderPhone] = useState("");
   const [testWishlistPhone, setTestWishlistPhone] = useState("");
-  const [testReturnPhone, setTestReturnPhone] = useState("");
+  const [testRefundPhone, setTestRefundPhone] = useState("");
   const [whatsappIntervalValue, setWhatsappIntervalValue] = useState(data.whatsappIntervalValue);
   const [whatsappIntervalUnit, setWhatsappIntervalUnit] = useState(data.whatsappIntervalUnit);
   const [interaktWebhookSecret, setInteraktWebhookSecret] = useState("");
@@ -1018,7 +1018,7 @@ export default function SettingsPage() {
   const gemRecommendationEmail = useSectionSave("saveGemRecommendationEmail", toast);
   const orderProcessingWhatsapp = useSectionSave("saveOrderProcessingWhatsapp", toast);
   const orderProcessingEmail = useSectionSave("saveOrderProcessingEmail", toast);
-  const returnWhatsapp = useSectionSave("saveReturnWhatsapp", toast);
+  const refundWhatsapp = useSectionSave("saveRefundWhatsapp", toast);
   const gstInvoice = useSectionSave("saveGstInvoice", toast);
   const wishlistReminder = useSectionSave("saveWishlistReminder", toast);
   const whatsappAdvanced = useSectionSave("saveWhatsappAdvanced", toast, () => setInteraktWebhookSecret(""));
@@ -1078,11 +1078,11 @@ export default function SettingsPage() {
   }, [testWishlistFetcher.data]);
 
   useEffect(() => {
-    if (testReturnFetcher.data?.intent === "sendTestReturnWhatsapp") {
-      toast.show(testReturnFetcher.data.status || testReturnFetcher.data.error || (testReturnFetcher.data.ok ? "Sent" : "Failed"), { isError: !testReturnFetcher.data.ok });
+    if (testRefundFetcher.data?.intent === "sendTestRefundWhatsapp") {
+      toast.show(testRefundFetcher.data.status || testRefundFetcher.data.error || (testRefundFetcher.data.ok ? "Sent" : "Failed"), { isError: !testRefundFetcher.data.ok });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [testReturnFetcher.data]);
+  }, [testRefundFetcher.data]);
 
   const sendTestOrderWhatsapp = () => {
     testOrderFetcher.submit({ intent: "sendTestOrderWhatsapp", testOrderPhone }, { method: "POST" });
@@ -1092,8 +1092,8 @@ export default function SettingsPage() {
     testWishlistFetcher.submit({ intent: "sendTestWishlistWhatsapp", testWishlistPhone }, { method: "POST" });
   };
 
-  const sendTestReturnWhatsapp = () => {
-    testReturnFetcher.submit({ intent: "sendTestReturnWhatsapp", testReturnPhone }, { method: "POST" });
+  const sendTestRefundWhatsapp = () => {
+    testRefundFetcher.submit({ intent: "sendTestRefundWhatsapp", testRefundPhone }, { method: "POST" });
   };
 
   const sendTestWhatsapp = () => {
@@ -1114,7 +1114,7 @@ export default function SettingsPage() {
       gemRecommendationEmailSubject: gemRecommendationEmailSubject === data.defaultGemRecommendationEmailSubject ? "" : gemRecommendationEmailSubject,
     });
   const saveOrderProcessingWhatsapp = () => orderProcessingWhatsapp.save({ orderProcessingTriggerTag, interaktOrderTemplateName });
-  const saveReturnWhatsapp = () => returnWhatsapp.save({ interaktReturnTemplateName });
+  const saveRefundWhatsapp = () => refundWhatsapp.save({ interaktRefundTemplateName });
   // Submitting "" (not the literal default HTML) whenever a template
   // textarea still matches the built-in default -- otherwise saving this
   // section for ANY reason would silently freeze today's default into
@@ -1455,31 +1455,31 @@ export default function SettingsPage() {
             <SaveButton isSaving={orderProcessingEmail.isSaving} onClick={saveOrderProcessingEmail} />
           </TemplateCard>
 
-          <TemplateCard icon={<Icon name="message" size={15} color={brand.accent} />} title="Return WhatsApp">
+          <TemplateCard icon={<Icon name="message" size={15} color={brand.accent} />} title="Refund WhatsApp">
             <p style={{ ...hintStyle, marginTop: 0 }}>
-              Sent automatically whenever a return is processed on an order in Shopify Admin (Shopify's own native
-              Returns feature — Request → Approve → Receive/Process) — not manual, and not tied to a refund. Return
-              Received / Refund Processed EMAILS are no longer sent from this app — Shopify's own native order
-              notifications cover that now.
+              Sent automatically the instant staff click Refund on an order in Shopify Admin — the same action that
+              produces Shopify's own "sent a refund notification email" Timeline entry — not manual, and not tied to
+              Shopify's separate native Returns feature. Return Received / Refund Processed EMAILS are no longer sent
+              from this app — Shopify's own native refund email covers that now.
             </p>
-            <label style={labelStyle} htmlFor="interaktReturnTemplateName">Template name</label>
+            <label style={labelStyle} htmlFor="interaktRefundTemplateName">Template name</label>
             <input
-              id="interaktReturnTemplateName"
+              id="interaktRefundTemplateName"
               style={fieldStyle}
               type="text"
-              value={interaktReturnTemplateName}
-              onChange={(e) => setInteraktReturnTemplateName(e.target.value)}
-              placeholder={`${data.defaultInteraktReturnTemplateName} (default if left blank)`}
+              value={interaktRefundTemplateName}
+              onChange={(e) => setInteraktRefundTemplateName(e.target.value)}
+              placeholder={`${data.defaultInteraktRefundTemplateName} (default if left blank)`}
             />
-            <label style={labelStyle} htmlFor="testReturnPhone">Send test message</label>
+            <label style={labelStyle} htmlFor="testRefundPhone">Send test message</label>
             <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "5px" }}>
-              <input id="testReturnPhone" style={{ ...fieldStyle, marginBottom: 0, maxWidth: "220px" }} type="tel" value={testReturnPhone} onChange={(e) => setTestReturnPhone(e.target.value)} placeholder="9876543210 or +919876543210" />
-              <button type="button" onClick={sendTestReturnWhatsapp} disabled={isSendingReturnTest} style={{ ...secondaryBtn, padding: "9px 16px", fontSize: "12.5px" }}>
-                {isSendingReturnTest ? "Sending…" : "Send Test"}
+              <input id="testRefundPhone" style={{ ...fieldStyle, marginBottom: 0, maxWidth: "220px" }} type="tel" value={testRefundPhone} onChange={(e) => setTestRefundPhone(e.target.value)} placeholder="9876543210 or +919876543210" />
+              <button type="button" onClick={sendTestRefundWhatsapp} disabled={isSendingRefundTest} style={{ ...secondaryBtn, padding: "9px 16px", fontSize: "12.5px" }}>
+                {isSendingRefundTest ? "Sending…" : "Send Test"}
               </button>
             </div>
-            <TestResult fetcherData={testReturnFetcher.data} intent="sendTestReturnWhatsapp" />
-            <SaveButton isSaving={returnWhatsapp.isSaving} onClick={saveReturnWhatsapp} />
+            <TestResult fetcherData={testRefundFetcher.data} intent="sendTestRefundWhatsapp" />
+            <SaveButton isSaving={refundWhatsapp.isSaving} onClick={saveRefundWhatsapp} />
           </TemplateCard>
 
           <TemplateCard icon={<Icon name="tag" size={15} color={brand.accent} />} title="GST Tax Invoice">

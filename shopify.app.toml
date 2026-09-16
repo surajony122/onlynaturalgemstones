@@ -53,11 +53,7 @@ embedded = true
 #   capped at the first 250 -- confirmed live to silently drop Bracelet
 #   entirely and part of Pendant once the catalog grew past that cap.
 #   Requires the merchant to re-approve once, same as read_locations above.
-# read_returns: required to receive the returns/process webhook (see
-#   app/routes/webhooks.returns.process.jsx), which drives the automatic
-#   "Return Received" WhatsApp message. Requires the merchant to
-#   re-approve once, same as the other scopes above.
-scopes = "write_products,read_products,read_themes,write_themes,write_inventory,read_orders,write_metaobjects,write_metaobject_definitions,write_publications,write_customers,read_customers,read_merchant_managed_fulfillment_orders,read_locations,read_returns"
+scopes = "write_products,read_products,read_themes,write_themes,write_inventory,read_orders,write_metaobjects,write_metaobject_definitions,write_publications,write_customers,read_customers,read_merchant_managed_fulfillment_orders,read_locations"
 
 # Lets the theme call https://<store-domain>/apps/customize , which Shopify
 # signs and proxies to this app's /proxy route — see app/routes/proxy.jsx.
@@ -114,14 +110,15 @@ api_version = "2026-10"
   uri = "/webhooks/orders/updated"
   topics = [ "orders/updated" ]
 
-  # Drives the automatic "Return Received" WhatsApp message (see
-  # app/routes/webhooks.returns.process.jsx) — fires when a return is
-  # processed on an order in Shopify Admin (Shopify's native Returns
-  # feature). Requires the read_returns scope (added alongside this
-  # subscription — see render.yaml's SCOPES).
+  # Drives the automatic "Refund Processed" WhatsApp message (see
+  # app/routes/webhooks.refunds.create.jsx) — fires the instant staff
+  # click Refund on an order in Shopify Admin (the same action that
+  # produces Shopify's own "sent a refund notification email" Timeline
+  # entry). Covered by the existing read_orders scope — no new scope
+  # needed.
   [[webhooks.subscriptions]]
-  uri = "/webhooks/returns/process"
-  topics = [ "returns/process" ]
+  uri = "/webhooks/refunds/create"
+  topics = [ "refunds/create" ]
 
 [auth]
 redirect_urls = [ "https://shubh-gems-customizer-app.onrender.com/api/auth" ]

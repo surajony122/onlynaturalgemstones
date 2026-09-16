@@ -182,7 +182,7 @@ export default function OverviewPage() {
         <StatCard label="Wishlist syncs today" stat={stats.wishlistToday} />
         <StatCard label="WhatsApp sent today" stat={stats.whatsappSentToday} />
         <StatCard label="Orders notified today" stat={stats.ordersNotifiedToday} />
-        <StatCard label="Return WhatsApp sent today" stat={stats.returnsRefundsToday} />
+        <StatCard label="Refund WhatsApp sent today" stat={stats.returnsRefundsToday} />
         <StatCard label="Invoices sent today" stat={stats.invoicesToday} />
       </div>
 

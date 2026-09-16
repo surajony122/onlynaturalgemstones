@@ -29,7 +29,7 @@ import {
   DEFAULT_INTERAKT_TEMPLATE_NAME,
   DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME,
   DEFAULT_INTERAKT_WISHLIST_TEMPLATE_NAME,
-  DEFAULT_INTERAKT_RETURN_TEMPLATE_NAME,
+  DEFAULT_INTERAKT_REFUND_TEMPLATE_NAME,
   setInteraktCampaign,
 } from "./appSettings.server";
 
@@ -472,27 +472,29 @@ export async function sendOrderProcessingWhatsApp(settings, { phone, firstName, 
 }
 
 /**
- * Sends the "Return Received" WhatsApp message — automatically,
- * triggered by Shopify's own returns/process webhook (see
- * webhooks.returns.process.jsx) whenever a return is processed on an
- * order in Shopify Admin (Shopify's native Returns feature: Request →
- * Approve → Receive/Process). Not tied to a refund at all — a refund
- * and a return are independent Shopify actions, and per explicit
- * request this app only automates the return side. The Return/Refund
- * EMAILS this app used to send have been removed — Shopify's own
- * native order notifications cover that now.
+ * Sends the "Refund Processed" WhatsApp message — automatically,
+ * triggered by Shopify's own refunds/create webhook (see
+ * webhooks.refunds.create.jsx) whenever staff click Refund on an
+ * order in Shopify Admin. This is the exact same action that produces
+ * Shopify's own "You sent a refund notification email to..." Timeline
+ * entry — confirmed directly against a real order. Not tied to
+ * Shopify's separate native Returns feature at all (that automation
+ * was tried and reverted — this app only automates the refund side).
+ * The refund amount comes from the webhook payload's own transaction
+ * data, not typed in by staff. The Return/Refund EMAILS this app used
+ * to send have been removed — Shopify's own native refund email
+ * already covers that.
  *
  * ---- TEMPLATE (as configured in Interakt) ----
- * Name: must match AppSettings.interaktReturnTemplateName /
- *       INTERAKT_RETURN_TEMPLATE_NAME env var / DEFAULT_INTERAKT_RETURN_TEMPLATE_NAME.
+ * Name: must match AppSettings.interaktRefundTemplateName /
+ *       INTERAKT_REFUND_TEMPLATE_NAME env var / DEFAULT_INTERAKT_REFUND_TEMPLATE_NAME.
  * Category: Utility. Language: English. Header: Image (store logo).
- * Button: one URL button (order status page).
  *
  * Body:
  *   Hello {{1}},
  *
- *   We've received your returned item(s) for Order No. #{{2}}. Our team
- *   is now inspecting them and will keep you updated.
+ *   Your refund of {{2}} for Order No. #{{3}} has been processed. It
+ *   may take 5-7 business days to reflect in your account.
  *
  *   Regards,
  *   Only Natural Gemstones
@@ -500,10 +502,12 @@ export async function sendOrderProcessingWhatsApp(settings, { phone, firstName, 
  *
  * ---- Variable mapping ----
  *  {{1}} customer first name
- *  {{2}} order number (Shopify's own order.name, minus the leading "#")
- *  Button {{1}} order status page URL
+ *  {{2}} refund amount, formatted (e.g. "₹1,500.00") -- computed from
+ *       the refunds/create webhook's own transaction total, not typed
+ *       in by anyone
+ *  {{3}} order number (Shopify's own order.name, minus the leading "#")
  */
-export async function sendReturnReceivedWhatsApp(settings, { phone, firstName, orderNumber, orderStatusUrl, headerImageUrl }) {
+export async function sendRefundProcessedWhatsApp(settings, { phone, firstName, orderNumber, refundAmount, headerImageUrl }) {
   if (!settings.interaktApiKey) {
     return "skipped: Interakt API key not set (Settings page or INTERAKT_API_KEY env var)";
   }
@@ -512,18 +516,17 @@ export async function sendReturnReceivedWhatsApp(settings, { phone, firstName, o
     return "skipped: no usable phone number on this order";
   }
 
-  const templateName = settings.interaktReturnTemplateName || DEFAULT_INTERAKT_RETURN_TEMPLATE_NAME;
+  const templateName = settings.interaktRefundTemplateName || DEFAULT_INTERAKT_REFUND_TEMPLATE_NAME;
   const payload = {
     countryCode: split.countryCode,
     phoneNumber: split.phoneNumber,
     type: "Template",
-    callbackData: "return-" + orderNumber,
+    callbackData: "refund-" + orderNumber,
     template: {
       name: templateName,
       languageCode: "en",
       headerValues: [headerImageUrl || FALLBACK_HEADER_IMAGE_URL],
-      bodyValues: [firstName || "there", String(orderNumber || "").replace(/^#/, "")],
-      buttonValues: { "0": [orderStatusUrl || FALLBACK_ORDER_STATUS_URL] },
+      bodyValues: [firstName || "there", refundAmount || "—", String(orderNumber || "").replace(/^#/, "")],
     },
   };
 
