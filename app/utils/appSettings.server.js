@@ -131,7 +131,15 @@ export const DEFAULT_INTERAKT_WISHLIST_TEMPLATE_NAME = "wishlist_reminder";
 // native Returns feature (that automation was tried and reverted). The
 // Return/Refund emails this app used to send have been removed per
 // explicit request — Shopify's own native refund email covers that now.
-export const DEFAULT_INTERAKT_REFUND_TEMPLATE_NAME = "refund_processed";
+// Was "refund_processed" -- a stale placeholder that was never actually an
+// approved Interakt template. interakt.server.js's own doc comment already
+// documented "order_returned" as the real confirmed-live template name, but
+// this fallback default was never updated to match, so any shop with the
+// Settings page field left blank (the whole point of a fallback) silently
+// sent every refund WhatsApp against a template that didn't exist -- caught
+// via a real "No approved template found with name 'refund_processed'"
+// HTTP 400 from Interakt on order ONG1040.
+export const DEFAULT_INTERAKT_REFUND_TEMPLATE_NAME = "order_returned";
 
 // Tag that triggers the order-processing WhatsApp send when present on
 // an order (see webhooks.orders.updated.jsx) — used when the Settings
