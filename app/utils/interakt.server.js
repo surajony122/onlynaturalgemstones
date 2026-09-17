@@ -582,7 +582,7 @@ export async function sendRefundProcessedWhatsApp(settings, { phone, firstName, 
  *
  *   Regards,
  *   Only Natural Gemstones
- *   from the House of ONG
+ *   from the House of Shubh Gems
  *
  * No footer, no buttons. {{3}} and {{5}} MUST be pure URLs with nothing
  * else in the variable — learned live from the gem-recommendation
