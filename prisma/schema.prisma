@@ -650,16 +650,13 @@ model WishlistLead {
   // without needing to re-fetch from Shopify (and stays accurate even if
   // a product's title/price/image changes or it's deleted later).
   products        Json?
-  // Stage 1 of the 3-stage wishlist reminder EMAIL sequence (5 min / 1
-  // hour / 24 hours after the customer's latest wishlist activity, per
-  // explicit request) -- field kept under its original pre-3-stage name
-  // since it already held real historical data for existing leads (a
-  // single reminder, sent once) before this sequence existed; that
-  // history stays valid as "stage 1" without needing a migration to
-  // rename it. See emailStage2Status/emailStage3Status for the other
-  // two stages, and processDueWishlistEmails in wishlist.server.js for
-  // the actual scheduling logic.
+  // Single wishlist reminder email status (once per customer, sent once
+  // they've gone quiet for the Settings page's wait-time interval).
   emailSendStatus String?
+  // Legacy -- these four backed a brief 3-stage (5min/1hr/24hr) reminder
+  // sequence that was tried and reverted back to the single email above.
+  // No longer read or written by any code; left in place (not dropped)
+  // per this project's additive-only migration convention.
   emailStage1SentAt DateTime?
   emailStage2Status String?
   emailStage2SentAt DateTime?
@@ -667,11 +664,9 @@ model WishlistLead {
   emailStage3SentAt DateTime?
   // Result of the WhatsApp send via Interakt (see
   // sendWishlistWhatsApp in interakt.server.js) — same "OK: ..." /
-  // "skipped: ..." / "FAILED: ..." shape as emailSendStatus. Still a
-  // SINGLE reminder (not part of the 3-stage email sequence above),
-  // gated by the Settings page's own wait-time setting, per explicit
-  // request to keep WhatsApp's timing independent of the new email
-  // schedule.
+  // "skipped: ..." / "FAILED: ..." shape as emailSendStatus, sent
+  // alongside the email (same debounced/interval timing, not per-sync),
+  // shown as its own status pill on the Wishlist Leads dashboard.
   whatsappSendStatus String?
   // Free-text internal note, editable by staff on the Wishlist Leads
   // dashboard — same purpose as AstroLead.notes.

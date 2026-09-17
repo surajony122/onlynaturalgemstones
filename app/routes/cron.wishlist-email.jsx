@@ -1,19 +1,16 @@
 /**
- * Runs as a real Render Cron Job now (see render.yaml's
- * wishlist-email-cron, same pattern as order-processing-catchup-cron),
- * not an external free scheduler like this file's docblock used to say
- * -- that was fine when the only thing gated on this was a multi-hour
- * WhatsApp wait time, but the wishlist reminder EMAIL now runs a
- * 3-stage sequence starting just 5 minutes after a customer's last
- * wishlist change (see WISHLIST_EMAIL_STAGES in wishlist.server.js), so
- * this needs to run every few minutes to keep that first stage
- * reasonably prompt -- an external daily/hourly ping could no longer
- * do that.
+ * Free-tier alternative to a paid Render Cron Job (same pattern as
+ * cron.cleanup.jsx): hit this URL periodically from a free external
+ * scheduler (cron-job.org, GitHub Actions, etc.) to send any wishlist
+ * emails that are now due — see processDueWishlistEmails in
+ * wishlist.server.js for the actual debounce/send logic.
  *
  *   GET /cron/wishlist-email?secret=<CRON_SECRET>
  *
- * Still callable manually with the same URL (e.g. for local testing) --
- * nothing about the route itself changed, only what triggers it.
+ * How often to ping this doesn't need to match the interval setting
+ * exactly — pinging every 15-30 minutes is plenty even for a 2-hour
+ * interval, since a customer only actually gets emailed once their
+ * specific due time has passed, whichever run happens to notice first.
  */
 import shopify from "../shopify.server";
 import db from "../db.server";

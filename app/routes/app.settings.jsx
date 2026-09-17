@@ -1202,13 +1202,11 @@ export default function SettingsPage() {
         <GroupBanner tone="info" icon="clock">Message behavior — safe to change any time</GroupBanner>
 
         <Card style={{ marginBottom: "16px" }}>
-          <h2 style={{ fontSize: "14px", fontWeight: 700, margin: "0 0 10px", color: brand.ink }}>Wishlist WhatsApp timing</h2>
+          <h2 style={{ fontSize: "14px", fontWeight: 700, margin: "0 0 10px", color: brand.ink }}>Wishlist email timing</h2>
           <Explain summary="How this timing works">
-            Hours to wait after a customer's <strong>last</strong> wishlist change before sending the Wishlist
-            WhatsApp message — each new change pushes this out again, so someone actively adding items all day gets
-            one message once they've gone quiet, not one per add. This setting is WhatsApp-only: the wishlist
-            reminder EMAIL now runs on its own fixed 3-stage schedule instead (5 minutes, 1 hour, and 24 hours after
-            their last change), not adjustable here. See the <a href="/app/wishlist-leads" style={{ color: brand.accent }}>Wishlist Leads</a> page's
+            Hours to wait after a customer's <strong>last</strong> wishlist change before emailing them — each new
+            change pushes this out again, so someone actively adding items all day gets one email once they've gone
+            quiet, not one per add. See the <a href="/app/wishlist-leads" style={{ color: brand.accent }}>Wishlist Leads</a> page's
             "Send Due Emails Now" button to run a check immediately instead of waiting.
           </Explain>
           <label style={labelStyle} htmlFor="wishlistInterval">Wait time (hours)</label>

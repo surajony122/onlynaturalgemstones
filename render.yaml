@@ -76,18 +76,16 @@ services:
         sync: false
       # Shared secret for every GET /cron/* route (cleanup, health-check,
       # wishlist-email, order-processing-catchup). cron.cleanup /
-      # cron.health-check are still meant to be hit from a free external
-      # scheduler (cron-job.org etc.) daily -- cheap enough that paying
-      # for a dedicated Render Cron Job isn't worth it for those.
-      # order-processing-catchup and wishlist-email are different: both
-      # need to run every 5 minutes (wishlist-email since its EMAIL
-      # sequence's first stage fires just 5 minutes after a customer's
-      # last wishlist change -- an external daily ping can no longer
-      # keep up with that), so both run as real Render Cron Jobs below
-      # instead (per explicit request, now that Render Cron Jobs bill
-      # per-minute with only a ~$1/mo minimum rather than a larger fixed
-      # plan fee) -- each job's own CRON_SECRET env var (set manually in
-      # the Dashboard) must be the SAME value as this one.
+      # cron.health-check / cron.wishlist-email are still meant to be
+      # hit from a free external scheduler (cron-job.org etc.) daily --
+      # cheap enough that paying for a dedicated Render Cron Job isn't
+      # worth it for those. order-processing-catchup is different: it
+      # needs to run every 5 minutes, and now runs as a real Render Cron
+      # Job below instead (per explicit request, now that Render Cron
+      # Jobs bill per-minute with only a ~$1/mo minimum rather than a
+      # larger fixed plan fee) -- that job's own CRON_SECRET env var
+      # (set manually in the Dashboard) must be the SAME value as this
+      # one.
       - key: CRON_SECRET
         generateValue: true
       # --- Astro Advice / gem-recommendation lead pipeline (merged in
@@ -139,36 +137,6 @@ services:
     # broken secret look identical to a working one at a glance.
     startCommand: >-
       node -e "fetch('https://shubh-gems-customizer-app.onrender.com/cron/order-processing-catchup?secret=' + encodeURIComponent(process.env.CRON_SECRET)).then(async r => { const t = await r.text(); console.log('HTTP', r.status, t); process.exitCode = r.ok ? 0 : 1; }).catch(e => { console.error(e); process.exitCode = 1; })"
-    envVars:
-      - key: NODE_VERSION
-        value: 20.19.0
-      # MUST be set to the exact same value as the web service's own
-      # CRON_SECRET above (copy it from the web service's Environment
-      # tab in the Dashboard) -- this job authenticates to that same
-      # endpoint with it.
-      - key: CRON_SECRET
-        sync: false
-
-  # Runs the wishlist reminder EMAIL sequence's due-check every 5
-  # minutes (see cron.wishlist-email.jsx / processDueWishlistEmails in
-  # wishlist.server.js) -- this used to be a daily external-scheduler
-  # ping, which worked fine when the only thing gated on it was a
-  # multi-hour WhatsApp wait time, but the email side now runs a
-  # 3-stage sequence whose first stage fires just 5 minutes after a
-  # customer's last wishlist change, per explicit request. Same
-  # reasoning/pattern as order-processing-catchup-cron above (a real
-  # Render Cron Job instead of relying on an external free service,
-  # now that these bill per-minute with only a ~$1/mo minimum).
-  - type: cron
-    name: wishlist-email-cron
-    runtime: node
-    schedule: "*/5 * * * *"
-    buildCommand: echo "no dependencies needed -- see startCommand"
-    # Same encodeURIComponent(...)-around-the-secret and r.ok-checking
-    # requirements as order-processing-catchup-cron above -- see that
-    # job's own comments for why both are load-bearing, not stylistic.
-    startCommand: >-
-      node -e "fetch('https://shubh-gems-customizer-app.onrender.com/cron/wishlist-email?secret=' + encodeURIComponent(process.env.CRON_SECRET)).then(async r => { const t = await r.text(); console.log('HTTP', r.status, t); process.exitCode = r.ok ? 0 : 1; }).catch(e => { console.error(e); process.exitCode = 1; })"
     envVars:
       - key: NODE_VERSION
         value: 20.19.0
