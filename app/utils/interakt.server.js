@@ -568,17 +568,21 @@ export async function sendRefundProcessedWhatsApp(settings, { phone, firstName, 
  *   (falls back to the store logo if that item has no image, or there
  *   are no items at all).
  *
- * Body:
+ * Body (confirmed live against the real approved template, which grew
+ * from 5 to 7 variables at some point after this comment was first
+ * written -- a 3rd item slot was added -- confirmed via the exact HTTP
+ * 400 "Missing variable values for template's body, expected number of
+ * values are 7" the first time this was sent with only 5):
  *   Hello {{1}},
  *
  *   You still have items waiting in your wishlist at Only Natural
  *   Gemstones!
  *
- *   {{2}}
- *   {{3}}
+ *   {{2}} - {{3}}
  *
- *   {{4}}
- *   {{5}}
+ *   {{4}} - {{5}}
+ *
+ *   {{6}} - {{7}}
  *
  *   Come back anytime to pick up where you left off.
  *
@@ -586,21 +590,24 @@ export async function sendRefundProcessedWhatsApp(settings, { phone, firstName, 
  *   Only Natural Gemstones
  *   from the House of Shubh Gems
  *
- * No footer, no buttons. {{3}} and {{5}} MUST be pure URLs with nothing
- * else in the variable — learned live from the gem-recommendation
- * template: WhatsApp silently strips a URL out of a variable that mixes
- * it with other text, but keeps it when the variable's entire value IS
- * the URL. So {{2}}/{{4}} are item names/filler text ONLY, {{3}}/{{5}}
- * are links ONLY, never combined.
+ * No footer, no buttons. {{3}}/{{5}}/{{7}} MUST be pure URLs with
+ * nothing else in the variable — learned live from the gem-
+ * recommendation template: WhatsApp silently strips a URL out of a
+ * variable that mixes it with other text, but keeps it when the
+ * variable's entire value IS the URL. The " - " between each pair is
+ * literal template text, not part of either variable's own value, so
+ * this holds even though the name and link render on the same line.
  *
  * ---- Variable mapping ----
  *  {{1}} first name (or "there")
- *  {{2}} first wishlisted item's name
- *  {{3}} first wishlisted item's product page link (pure URL)
- *  {{4}} second wishlisted item's name — OR, if there's only one item,
+ *  {{2}} 1st (most recently wishlisted) item's name
+ *  {{3}} 1st item's product page link (pure URL)
+ *  {{4}} 2nd item's name — OR, if there's fewer than 2 items,
  *        "Explore more gemstones" as filler text
- *  {{5}} second wishlisted item's product page link — OR, if there's
- *        only one item, the store homepage link
+ *  {{5}} 2nd item's product page link — OR the store homepage link
+ *  {{6}} 3rd item's name — OR the same "Explore more gemstones" filler
+ *        if there's fewer than 3 items
+ *  {{7}} 3rd item's product page link — OR the store homepage link
  */
 export async function sendWishlistWhatsApp(settings, { phone, email, products, productHandles, headerImageUrl }) {
   if (!settings.interaktApiKey) {
@@ -662,6 +669,8 @@ export async function sendWishlistWhatsApp(settings, { phone, email, products, p
         itemLink(0) || `https://${STORE_DOMAIN}`,
         totalItems > 1 ? itemName(1) : "Explore more gemstones",
         totalItems > 1 ? itemLink(1) || `https://${STORE_DOMAIN}` : `https://${STORE_DOMAIN}`,
+        totalItems > 2 ? itemName(2) : "Explore more gemstones",
+        totalItems > 2 ? itemLink(2) || `https://${STORE_DOMAIN}` : `https://${STORE_DOMAIN}`,
       ],
     },
   };
