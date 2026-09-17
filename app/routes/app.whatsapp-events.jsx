@@ -102,6 +102,29 @@ export const action = async ({ request }) => {
     }
   }
 
+  // Marks a failed refund WhatsApp notification as resolved WITHOUT
+  // resending it -- for a failure that's already understood/fixed (e.g.
+  // a stale template name) and not worth re-notifying the customer about
+  // days later. Rewrites the row's own status so it stops matching
+  // attention.server.js's hasFailure() check (only "FAILED"/"threw"
+  // prefixes count), while keeping the original error text for the
+  // record instead of erasing it.
+  if (intent === "dismissRefundFailure") {
+    const notificationId = formData.get("notificationId");
+    if (!notificationId) return { intent, ok: false, messageId, error: "Missing notification id" };
+    try {
+      const existing = await prisma.orderReturnEmailNotification.findUnique({ where: { id: notificationId } });
+      if (!existing) return { intent, ok: false, messageId, error: "Notification not found" };
+      await prisma.orderReturnEmailNotification.update({
+        where: { id: notificationId },
+        data: { status: `dismissed by staff (was: ${existing.status || "unknown"})` },
+      });
+      return { intent, ok: true, messageId, notificationId };
+    } catch (err) {
+      return { intent, ok: false, messageId, error: String(err?.message || err) };
+    }
+  }
+
   if (intent === "delete") {
     const deleteKey = formData.get("deleteKey");
     const deleteKeyType = formData.get("deleteKeyType"); // "messageId" or "id"
@@ -294,7 +317,7 @@ export const loader = async ({ request }) => {
   }
   for (const n of refundWhatsappNotifications) {
     const g = ensureGroup(n.orderId, n.orderName);
-    g.timeline.push({ channel: "Refund WhatsApp", notifiedAt: n.notifiedAt.toISOString(), status: n.status, triggerKey: null });
+    g.timeline.push({ channel: "Refund WhatsApp", notifiedAt: n.notifiedAt.toISOString(), status: n.status, triggerKey: null, notificationId: n.id });
   }
 
   // Oldest-first WITHIN each order so the timeline reads top-to-bottom
@@ -523,7 +546,14 @@ function orderStatusInfo(g) {
 function timelineStatusInfo(status) {
   if (!status) return { label: "—", color: brand.faint };
   if (status.startsWith("OK")) return { label: "Sent", color: brand.success };
-  if (status.startsWith("threw") || status.startsWith("failed to claim")) return { label: "Failed", color: brand.danger };
+  // "FAILED: ..." is the same send-outcome convention used everywhere else
+  // (see interakt.server.js's sendInteraktTemplateMessage) but was missing
+  // here, so a failed send fell through to the generic muted branch below
+  // and showed as raw truncated status text instead of a clear red pill.
+  if (status.startsWith("FAILED") || status.startsWith("threw") || status.startsWith("failed to claim")) {
+    return { label: "Failed", color: brand.danger };
+  }
+  if (status.startsWith("dismissed")) return { label: "Dismissed", color: brand.muted };
   if (status.startsWith("skipped")) return { label: "Skipped", color: brand.muted };
   if (status.startsWith("sending")) return { label: "Sending…", color: brand.warn };
   return { label: status.slice(0, 40), color: brand.muted };
@@ -559,29 +589,56 @@ function OrderProcessingCard({ g }) {
         </span>
       </div>
       <div style={{ padding: "6px 18px 14px" }}>
-        {g.timeline.map((t, i) => {
-          const s = timelineStatusInfo(t.status);
-          return (
-            <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: "10px", padding: "8px 0", borderTop: i === 0 ? "none" : `1px dashed ${brand.divider}` }}>
-              <span style={{ fontSize: "11px", color: brand.faint, minWidth: "150px", fontFamily: brand.mono }}>{new Date(t.notifiedAt).toLocaleString()}</span>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", fontSize: "12px", minWidth: "110px", fontWeight: 500, color: t.channel === "Email" ? brand.accent : brand.success }}>
-                <Icon name={t.channel === "Email" ? "mail" : "message"} size={12} />
-                {t.channel}
-              </span>
-              <Pill label={s.label} active color={s.color} />
-              {/* Previously truncated to 60 chars behind a hover tooltip --
-                  hover isn't reliable on every device, and this is exactly
-                  the text needed to diagnose a failure (e.g. Interakt's
-                  own error JSON), so it's now shown in full and just wraps
-                  instead of cutting off. */}
-              <span style={{ fontSize: "11.5px", color: brand.faint, flex: 1, wordBreak: "break-word" }}>
-                {t.status}
-              </span>
-            </div>
-          );
-        })}
+        {g.timeline.map((t, i) => (
+          <TimelineRow key={i} t={t} isFirst={i === 0} />
+        ))}
       </div>
     </Card>
+  );
+}
+
+// One row in an order's timeline. Refund WhatsApp rows that are currently
+// failed get a "Mark resolved" action -- for a failure that's already
+// understood and fixed (e.g. the stale template name bug), rather than
+// silently resending a days-late WhatsApp about an old refund just to
+// clear the Overview page's "needs attention" panel.
+function TimelineRow({ t, isFirst }) {
+  const fetcher = useFetcher();
+  const busy = fetcher.state !== "idle";
+  const dismissed = fetcher.data?.intent === "dismissRefundFailure" && fetcher.data?.ok;
+  const s = timelineStatusInfo(dismissed ? "dismissed by staff" : t.status);
+  const canDismiss = t.channel === "Refund WhatsApp" && t.notificationId && s.label === "Failed" && !dismissed;
+
+  const dismiss = () => {
+    fetcher.submit({ intent: "dismissRefundFailure", notificationId: t.notificationId }, { method: "POST" });
+  };
+
+  return (
+    <div style={{ display: "flex", alignItems: "flex-start", gap: "10px", padding: "8px 0", borderTop: isFirst ? "none" : `1px dashed ${brand.divider}`, opacity: busy ? 0.6 : 1 }}>
+      <span style={{ fontSize: "11px", color: brand.faint, minWidth: "150px", fontFamily: brand.mono }}>{new Date(t.notifiedAt).toLocaleString()}</span>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", fontSize: "12px", minWidth: "110px", fontWeight: 500, color: t.channel === "Email" ? brand.accent : brand.success }}>
+        <Icon name={t.channel === "Email" ? "mail" : "message"} size={12} />
+        {t.channel}
+      </span>
+      <Pill label={s.label} active color={s.color} />
+      {/* Previously truncated to 60 chars behind a hover tooltip -- hover
+          isn't reliable on every device, and this is exactly the text
+          needed to diagnose a failure (e.g. Interakt's own error JSON),
+          so it's now shown in full and just wraps instead of cutting off. */}
+      <span style={{ fontSize: "11.5px", color: brand.faint, flex: 1, wordBreak: "break-word" }}>
+        {dismissed ? `dismissed by staff (was: ${t.status})` : t.status}
+      </span>
+      {canDismiss && (
+        <button
+          type="button"
+          onClick={dismiss}
+          disabled={busy}
+          style={{ flexShrink: 0, padding: "4px 10px", borderRadius: "7px", border: `1px solid ${brand.border}`, background: "#fff", color: brand.body, fontSize: "11px", cursor: busy ? "default" : "pointer" }}
+        >
+          {busy ? "Marking…" : "Mark resolved"}
+        </button>
+      )}
+    </div>
   );
 }
 
