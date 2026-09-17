@@ -257,9 +257,20 @@ export const loader = async ({ request }) => {
   // more than once" pattern, so they keep the existing flat table.
   const otherMessages = enriched.filter((m) => m.kind !== "Order Processing");
 
-  const [waNotifications, emailNotifications] = await Promise.all([
+  const [waNotifications, emailNotifications, refundWhatsappNotifications] = await Promise.all([
     prisma.orderProcessingNotification.findMany({ orderBy: { notifiedAt: "desc" }, take: PAGE_SIZE }),
     prisma.orderProcessingEmailNotification.findMany({ orderBy: { notifiedAt: "desc" }, take: PAGE_SIZE }),
+    // Refund WhatsApp (webhooks.refunds.create.jsx) used to be invisible on
+    // this page entirely -- the Overview page's "Needs attention" panel
+    // links a failure here, but this query didn't exist, so there was
+    // nowhere to actually see the failure's real error text. Filtered to
+    // type "refund_whatsapp" since legacy rows here can carry other types
+    // (see the model's own comment) that were never sent as WhatsApp.
+    prisma.orderReturnEmailNotification.findMany({
+      where: { type: "refund_whatsapp" },
+      orderBy: { notifiedAt: "desc" },
+      take: PAGE_SIZE,
+    }),
   ]);
 
   const orderGroups = new Map();
@@ -280,6 +291,10 @@ export const loader = async ({ request }) => {
     const g = ensureGroup(n.orderId, n.orderName);
     if (n.email) g.email = n.email;
     g.timeline.push({ channel: "Email", notifiedAt: n.notifiedAt.toISOString(), status: n.status, triggerKey: n.triggerKey });
+  }
+  for (const n of refundWhatsappNotifications) {
+    const g = ensureGroup(n.orderId, n.orderName);
+    g.timeline.push({ channel: "Refund WhatsApp", notifiedAt: n.notifiedAt.toISOString(), status: n.status, triggerKey: null });
   }
 
   // Oldest-first WITHIN each order so the timeline reads top-to-bottom
@@ -549,9 +564,9 @@ function OrderProcessingCard({ g }) {
           return (
             <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: "10px", padding: "8px 0", borderTop: i === 0 ? "none" : `1px dashed ${brand.divider}` }}>
               <span style={{ fontSize: "11px", color: brand.faint, minWidth: "150px", fontFamily: brand.mono }}>{new Date(t.notifiedAt).toLocaleString()}</span>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", fontSize: "12px", minWidth: "78px", fontWeight: 500, color: t.channel === "WhatsApp" ? brand.success : brand.accent }}>
-                <Icon name={t.channel === "WhatsApp" ? "message" : "mail"} size={12} />
-                {t.channel === "WhatsApp" ? "WhatsApp" : "Email"}
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", fontSize: "12px", minWidth: "110px", fontWeight: 500, color: t.channel === "Email" ? brand.accent : brand.success }}>
+                <Icon name={t.channel === "Email" ? "mail" : "message"} size={12} />
+                {t.channel}
               </span>
               <Pill label={s.label} active color={s.color} />
               <span style={{ fontSize: "11.5px", color: brand.faint, flex: 1, wordBreak: "break-word" }} title={t.status || ""}>
