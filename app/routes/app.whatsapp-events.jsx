@@ -569,8 +569,13 @@ function OrderProcessingCard({ g }) {
                 {t.channel}
               </span>
               <Pill label={s.label} active color={s.color} />
-              <span style={{ fontSize: "11.5px", color: brand.faint, flex: 1, wordBreak: "break-word" }} title={t.status || ""}>
-                {t.status && t.status.length > 60 ? t.status.slice(0, 60) + "…" : t.status}
+              {/* Previously truncated to 60 chars behind a hover tooltip --
+                  hover isn't reliable on every device, and this is exactly
+                  the text needed to diagnose a failure (e.g. Interakt's
+                  own error JSON), so it's now shown in full and just wraps
+                  instead of cutting off. */}
+              <span style={{ fontSize: "11.5px", color: brand.faint, flex: 1, wordBreak: "break-word" }}>
+                {t.status}
               </span>
             </div>
           );
