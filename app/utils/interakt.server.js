@@ -609,8 +609,15 @@ export async function sendWishlistWhatsApp(settings, { phone, email, products, p
     return "skipped: no usable phone number on this lead";
   }
 
-  const items = Array.isArray(products) && products.length ? products : [];
-  const handles = Array.isArray(productHandles) ? productHandles : [];
+  // Reversed so index 0/1 are the two MOST RECENTLY added items, not the
+  // oldest -- the storefront wishlist array is built with .push() as
+  // items are added (see shubh-wishlist.js's toggleWishlist), so without
+  // this, a customer who wishlisted 5 items always got a WhatsApp
+  // featuring the very first thing they ever saved, no matter how much
+  // newer, more relevant stuff they've added since. .slice() first so
+  // the caller's own array isn't mutated in place.
+  const items = (Array.isArray(products) && products.length ? products : []).slice().reverse();
+  const handles = (Array.isArray(productHandles) ? productHandles : []).slice().reverse();
   const itemName = (i) => (items[i] && (items[i].title || items[i].handle)) || handles[i] || "";
   const itemLink = (i) => {
     const handle = (items[i] && items[i].handle) || handles[i];
