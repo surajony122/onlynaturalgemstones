@@ -564,7 +564,9 @@ export async function sendRefundProcessedWhatsApp(settings, { phone, firstName, 
  * Category: Utility (same reasoning as gem_recommendation).
  * Language: English
  *
- * Header: Image — store logo, same as the other two templates.
+ * Header: Image — the most recently wishlisted item's own product photo
+ *   (falls back to the store logo if that item has no image, or there
+ *   are no items at all).
  *
  * Body:
  *   Hello {{1}},
@@ -628,6 +630,23 @@ export async function sendWishlistWhatsApp(settings, { phone, email, products, p
   const firstName = (email || "").split("@")[0] || "there";
   const templateName = settings.interaktWishlistTemplateName || DEFAULT_INTERAKT_WISHLIST_TEMPLATE_NAME;
 
+  // A native WhatsApp product card (tappable, with image+price+link
+  // baked into one interactive card) can't be used here at all -- per
+  // explicit investigation, that message type is only sendable as a
+  // reply within an active 24-hour customer-initiated conversation
+  // window (a hard Meta/WhatsApp platform rule, not an Interakt
+  // limitation), and this reminder always fires hours/days after the
+  // customer's last activity, well outside that window. WhatsApp's
+  // Carousel Template format is the one real way to show product
+  // images inside a proactive template message like this one, but
+  // Interakt doesn't offer that template type (confirmed by the
+  // merchant checking their template builder). This is the realistic
+  // middle ground instead: the most recently wishlisted item's own
+  // photo as this message's header image, in place of the generic
+  // store logo -- so the recipient at least sees a picture of the
+  // actual gemstone, even without a tappable in-chat card.
+  const headerImage = (items[0] && items[0].imageUrl) || headerImageUrl || FALLBACK_HEADER_IMAGE_URL;
+
   const payload = {
     countryCode: split.countryCode,
     phoneNumber: split.phoneNumber,
@@ -636,7 +655,7 @@ export async function sendWishlistWhatsApp(settings, { phone, email, products, p
     template: {
       name: templateName,
       languageCode: "en",
-      headerValues: [headerImageUrl || FALLBACK_HEADER_IMAGE_URL],
+      headerValues: [headerImage],
       bodyValues: [
         firstName,
         itemName(0) || "Your saved items",
