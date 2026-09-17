@@ -238,7 +238,14 @@ function LeadRow({ lead, selected, onToggleSelect }) {
           "—"
         )}
       </td>
-      <td style={tdStyle} title={lead.emailSendStatus || "pending — not due yet"}>
+      <td
+        style={tdStyle}
+        title={
+          "Stage 1 (5min): " + (lead.emailSendStatus || "pending") +
+          "\nStage 2 (1hr): " + (lead.emailStage2Status || "pending") +
+          "\nStage 3 (24hr): " + (lead.emailStage3Status || "pending")
+        }
+      >
         <Pill label="Sent" active={lead.emailStatus.sent > 0} color={brand.success} />
         <Pill
           label={"Opened" + (lead.emailStatus.opened > 1 ? ` ×${lead.emailStatus.opened}` : "")}
@@ -446,9 +453,11 @@ export default function WishlistLeadsPage() {
         {isRefreshing ? "Refreshing…" : (<><Icon name="refresh" size={13} color="currentColor" /> Refresh</>)}
       </button>
       <p style={{ margin: "0 0 14px", fontSize: "12.5px", color: brand.muted }}>
-        Most recent {PAGE_SIZE} wishlist syncs · emails don't send immediately — a customer gets one email once
-        they've gone quiet for the interval set on the Settings page (default 2h), using their latest wishlist
-        snapshot · each row's "..." menu has Send Now (email) / Retry WhatsApp / Delete.
+        Most recent {PAGE_SIZE} wishlist syncs · emails don't send immediately — a customer gets up to 3 emails
+        (5 minutes, 1 hour, then 24 hours after their last wishlist change) using their latest wishlist snapshot,
+        stopping early if they add something new (the sequence restarts) · WhatsApp is still a single message, timed
+        separately on the Settings page's own wait-time setting · each row's "..." menu has Send Now (email, stage 1) /
+        Retry WhatsApp / Delete · hover the Email column for each stage's status.
       </p>
 
       <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center", marginBottom: "14px" }}>

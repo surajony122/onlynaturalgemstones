@@ -106,25 +106,51 @@ export async function handleWishlistSync(admin, shop, data) {
   return { ok: true, emailSendStatus: "pending: scheduled for the next interval check" };
 }
 
+// The 3-stage wishlist reminder EMAIL sequence, per explicit request:
+// 5 minutes / 1 hour / 24 hours after the customer's LATEST wishlist
+// activity (not their first) -- adding another item resets the whole
+// sequence, same "debounced by latest activity" reasoning the old
+// single-reminder design already used. statusField/sentAtField name
+// the WishlistLead columns each stage reads/writes (see schema.prisma).
+const WISHLIST_EMAIL_STAGES = [
+  { stage: 1, minutesAfterActivity: 5, statusField: "emailSendStatus", sentAtField: "emailStage1SentAt" },
+  { stage: 2, minutesAfterActivity: 60, statusField: "emailStage2Status", sentAtField: "emailStage2SentAt" },
+  { stage: 3, minutesAfterActivity: 60 * 24, statusField: "emailStage3Status", sentAtField: "emailStage3SentAt" },
+];
+
 /**
- * Finds every (shop, email) with a pending (emailSendStatus === null)
- * WishlistLead row whose customer has gone quiet for at least the
- * configured interval, sends ONE email per customer using their latest
- * wishlist snapshot, and marks any older pending rows for that customer
- * as superseded (so a customer who added items 5 times only ever gets
- * one email, not five). Called both by the cron route (on a timer) and
- * the dashboard's manual "Send Due Emails Now" button — same function
+ * Finds every (shop, email) still mid-sequence (stage 3 not yet
+ * resolved) on their LATEST WishlistLead row, sends whichever ONE stage
+ * is now due and hasn't gone out yet, and marks any OLDER row for that
+ * customer as fully superseded (so a customer who added items 5 times
+ * only ever progresses through the sequence for their most recent
+ * activity, not five parallel sequences). Only ever sends ONE stage per
+ * customer per run, even if the check was delayed long enough that two
+ * stages are technically due at once -- otherwise a customer whose
+ * checker was offline for a day could get stage 1 AND stage 2 back to
+ * back in the same run, which reads as spammy rather than a sequence.
+ * The next-due stage simply goes out on the following run instead.
+ *
+ * WhatsApp is checked independently in the same pass -- still a single
+ * reminder (not part of the 3-stage sequence), gated by the Settings
+ * page's own wait-time setting, per explicit request to keep its timing
+ * separate from the email schedule.
+ *
+ * Called both by the cron route (on a timer -- see
+ * app/routes/cron.wishlist-email.jsx, which now needs to run roughly
+ * every 5 minutes for stage 1 to be reasonably prompt) and the
+ * dashboard's manual "Send Due Emails Now" button — same function
  * either way, the button just runs it outside the schedule.
  */
 export async function processDueWishlistEmails(admin, shop) {
   const settings = await getAppSettings(shop);
-  const intervalHours = parseFloat(settings.wishlistEmailIntervalHours) || DEFAULT_WISHLIST_EMAIL_INTERVAL_HOURS;
 
-  const pendingRows = await prisma.wishlistLead.findMany({
-    where: { shop, emailSendStatus: null },
+  const candidateRows = await prisma.wishlistLead.findMany({
+    where: { shop, emailStage3Status: null },
     orderBy: { createdAt: "desc" },
+    select: { email: true },
   });
-  const emails = [...new Set(pendingRows.map((r) => r.email).filter(Boolean))];
+  const emails = [...new Set(candidateRows.map((r) => r.email).filter(Boolean))];
 
   const results = [];
   for (const email of emails) {
@@ -134,55 +160,73 @@ export async function processDueWishlistEmails(admin, shop) {
     });
     if (!latest) continue;
 
-    if (latest.emailSendStatus) {
-      // The truly latest sync for this customer was already resolved
-      // (sent, or explicitly skipped) by an earlier run — any older
-      // still-pending rows are stale leftovers, close them out.
-      await prisma.wishlistLead.updateMany({
-        where: { shop, email, emailSendStatus: null, createdAt: { lt: latest.createdAt } },
-        data: { emailSendStatus: "skipped: superseded by an already-processed newer sync" },
-      });
-      continue;
-    }
+    // Any OLDER row for this customer is superseded the instant a newer
+    // sync exists -- one targeted updateMany per field (not one
+    // combined query) so a field that already holds a REAL result (an
+    // actual "OK: ..."/"FAILED: ..." send, from before this newer sync
+    // arrived) is never overwritten, only genuinely-still-null ones.
+    await prisma.wishlistLead.updateMany({
+      where: { shop, email, id: { not: latest.id }, emailSendStatus: null },
+      data: { emailSendStatus: "skipped: superseded by a newer wishlist sync" },
+    });
+    await prisma.wishlistLead.updateMany({
+      where: { shop, email, id: { not: latest.id }, emailStage2Status: null },
+      data: { emailStage2Status: "skipped: superseded by a newer wishlist sync" },
+    });
+    await prisma.wishlistLead.updateMany({
+      where: { shop, email, id: { not: latest.id }, emailStage3Status: null },
+      data: { emailStage3Status: "skipped: superseded by a newer wishlist sync" },
+    });
+    await prisma.wishlistLead.updateMany({
+      where: { shop, email, id: { not: latest.id }, whatsappSendStatus: null },
+      data: { whatsappSendStatus: "skipped: superseded by a newer wishlist sync" },
+    });
 
-    const ageHours = (Date.now() - new Date(latest.createdAt).getTime()) / (60 * 60 * 1000);
-    if (ageHours < intervalHours) {
-      results.push({ email, status: `not due yet (${ageHours.toFixed(1)}h of ${intervalHours}h)` });
-      continue;
-    }
-
+    const elapsedMinutes = (Date.now() - new Date(latest.createdAt).getTime()) / 60000;
     const handles = Array.isArray(latest.productHandles) ? latest.productHandles : [];
     const products = Array.isArray(latest.products) ? latest.products : [];
-    let status;
-    try {
-      status = await sendWishlistEmail(admin, settings, email, handles, products, latest.trackingId);
-    } catch (err) {
-      status = "threw: " + err;
-      console.error("[wishlist] processDueWishlistEmails send failed for", email, err);
+
+    for (const stageDef of WISHLIST_EMAIL_STAGES) {
+      if (latest[stageDef.statusField]) continue; // this stage already resolved -- check the next one
+      if (elapsedMinutes < stageDef.minutesAfterActivity) break; // not due yet, and later stages are further out still
+
+      let status;
+      try {
+        status = await sendWishlistEmail(admin, settings, email, handles, products, latest.trackingId, stageDef.stage);
+      } catch (err) {
+        status = "threw: " + err;
+        console.error(`[wishlist] stage ${stageDef.stage} email failed for`, email, err);
+      }
+      try {
+        await prisma.wishlistLead.update({
+          where: { id: latest.id },
+          data: { [stageDef.statusField]: status, [stageDef.sentAtField]: new Date() },
+        });
+      } catch (updateErr) {
+        console.error("[wishlist] failed to record stage send result:", updateErr);
+      }
+      results.push({ email, stage: stageDef.stage, status });
+      break; // one stage per customer per run -- see doc comment above
     }
 
-    // WhatsApp goes out on the SAME schedule as the email (once per
-    // customer, when they've gone quiet for the interval) — not sent
-    // per-sync, same debounce reasoning as the email.
-    let whatsappStatus;
-    try {
-      whatsappStatus = await sendWishlistWhatsAppForLead(settings, latest);
-    } catch (err) {
-      whatsappStatus = "threw: " + err;
-      console.error("[wishlist] processDueWishlistEmails WhatsApp send failed for", email, err);
+    if (!latest.whatsappSendStatus) {
+      const intervalHours = parseFloat(settings.wishlistEmailIntervalHours) || DEFAULT_WISHLIST_EMAIL_INTERVAL_HOURS;
+      if (elapsedMinutes / 60 >= intervalHours) {
+        let whatsappStatus;
+        try {
+          whatsappStatus = await sendWishlistWhatsAppForLead(settings, latest);
+        } catch (err) {
+          whatsappStatus = "threw: " + err;
+          console.error("[wishlist] processDueWishlistEmails WhatsApp send failed for", email, err);
+        }
+        try {
+          await prisma.wishlistLead.update({ where: { id: latest.id }, data: { whatsappSendStatus } });
+        } catch (updateErr) {
+          console.error("[wishlist] failed to record WhatsApp send result:", updateErr);
+        }
+        results.push({ email, channel: "whatsapp", status: whatsappStatus });
+      }
     }
-
-    try {
-      await prisma.wishlistLead.update({ where: { id: latest.id }, data: { emailSendStatus: status, whatsappSendStatus: whatsappStatus } });
-      await prisma.wishlistLead.updateMany({
-        where: { shop, email, emailSendStatus: null, id: { not: latest.id }, createdAt: { lt: latest.createdAt } },
-        data: { emailSendStatus: "skipped: superseded by " + latest.id },
-      });
-    } catch (updateErr) {
-      console.error("[wishlist] failed to record send result:", updateErr);
-    }
-
-    results.push({ email, status, whatsappStatus });
   }
 
   return { checked: emails.length, sent: results.filter((r) => r.status?.startsWith("OK")).length, results };
@@ -192,7 +236,11 @@ export async function processDueWishlistEmails(admin, shop) {
  * Manually (re)sends the wishlist email for one specific, already-saved
  * lead — used by the "Send Now" button on the Wishlist Leads dashboard.
  * Bypasses the interval check entirely (unlike processDueWishlistEmails)
- * since a human explicitly asked for this one, right now.
+ * since a human explicitly asked for this one, right now. Always sends
+ * stage 1's content specifically -- a manual ad-hoc resend isn't part of
+ * the automatic 3-stage sequence, so there's no "which stage is next"
+ * question to answer; stage 1 is simply the reminder content people
+ * mean by "send now".
  */
 export async function resendWishlistLeadEmail(admin, leadId) {
   const lead = await prisma.wishlistLead.findUnique({ where: { id: leadId } });
@@ -205,7 +253,7 @@ export async function resendWishlistLeadEmail(admin, leadId) {
 
   let status;
   try {
-    status = await sendWishlistEmail(admin, settings, lead.email, handles, products, lead.trackingId);
+    status = await sendWishlistEmail(admin, settings, lead.email, handles, products, lead.trackingId, 1);
   } catch (err) {
     status = "threw: " + err;
     console.error("[wishlist] resendWishlistLeadEmail failed:", err);
@@ -307,7 +355,37 @@ function wishlistItemRow(product, trackingCtx) {
   );
 }
 
-function buildWishlistEmailHtml({ firstName, products, shopInfo, pixelUrl, viewAllUrl }) {
+// Distinct wording for each of the 3 sequence stages, per explicit
+// request ("gentle nudge, then more urgency, then a final reminder").
+// Stage 1 keeps the original single-reminder copy unchanged. Stages 2/3
+// lean on genuine scarcity (every gemstone is a real, one-of-a-kind
+// natural stone, not a manufactured item that gets restocked) rather
+// than an artificial countdown-timer style urgency, matching the site's
+// existing brand voice elsewhere (certified/natural/one-of-a-kind).
+const WISHLIST_STAGE_COPY = {
+  1: {
+    subjectSingle: "You saved something special",
+    subjectMultiple: "Your wishlist is waiting for you",
+    headline: (firstName) => "Hi " + firstName + ",",
+    intro: "Here’s everything you’ve saved to your wishlist — pick up right where you left off.",
+  },
+  2: {
+    subjectSingle: "Still thinking it over?",
+    subjectMultiple: "Your saved gemstones are still waiting",
+    headline: (firstName) => "Hi " + firstName + ", still deciding?",
+    intro:
+      "Your saved gemstones are still here — but every one is a genuinely one-of-a-kind natural stone, not a mass-produced item, so once it's gone there won't be another exactly like it.",
+  },
+  3: {
+    subjectSingle: "Last chance to claim your pick",
+    subjectMultiple: "Last chance for your saved gemstones",
+    headline: (firstName) => "Hi " + firstName + ", one last look",
+    intro:
+      "This is your final reminder — the gemstones below are natural and one-of-a-kind, so once someone else claims them, they're gone for good.",
+  },
+};
+
+function buildWishlistEmailHtml({ firstName, products, shopInfo, pixelUrl, viewAllUrl, stageCopy }) {
   const headerContent = shopInfo.logoUrl
     ? `<img src="${esc(shopInfo.logoUrl)}" alt="${esc(shopInfo.name)}" style="max-height:44px;max-width:220px;">`
     : `<span style="color:#3a2408;font-size:20px;font-weight:bold;letter-spacing:0.5px;">${esc(shopInfo.name)}</span>`;
@@ -329,8 +407,8 @@ function buildWishlistEmailHtml({ firstName, products, shopInfo, pixelUrl, viewA
     headerContent +
     "</td></tr>" +
     '<tr><td style="padding:32px 32px 8px;">' +
-    '<h1 style="margin:0 0 8px;font-size:22px;color:#3a2408;">Hi ' + esc(firstName) + ",</h1>" +
-    '<p style="margin:0;font-size:15px;line-height:1.6;color:#5c4a3d;">Here’s everything you’ve saved to your wishlist — pick up right where you left off.</p>' +
+    '<h1 style="margin:0 0 8px;font-size:22px;color:#3a2408;">' + esc(stageCopy.headline(firstName)) + "</h1>" +
+    '<p style="margin:0;font-size:15px;line-height:1.6;color:#5c4a3d;">' + esc(stageCopy.intro) + "</p>" +
     "</td></tr>" +
     '<tr><td style="padding:8px 32px 4px;">' +
     '<p style="margin:0;text-align:center;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#c8944a;">&#10022;&nbsp;&nbsp;Your Wishlist&nbsp;&nbsp;&#10022;</p>' +
@@ -344,7 +422,10 @@ function buildWishlistEmailHtml({ firstName, products, shopInfo, pixelUrl, viewA
   );
 }
 
-async function sendWishlistEmail(admin, settings, email, handles, products, trackingId) {
+/** stage: 1/2/3, selecting which of WISHLIST_STAGE_COPY's wording to
+ * send — defaults to 1 (the original single-reminder copy) so any
+ * existing call site that doesn't pass a stage keeps working unchanged. */
+async function sendWishlistEmail(admin, settings, email, handles, products, trackingId, stage = 1) {
   if (!settings.gmailUser || !settings.gmailAppPassword) {
     return "skipped: Gmail user / app password not set (Settings page or GMAIL_USER / GMAIL_APP_PASSWORD env vars)";
   }
@@ -366,9 +447,10 @@ async function sendWishlistEmail(admin, settings, email, handles, products, trac
   const viewAllUrl = trackedClickUrl(appUrl, trackingId, viewAllRaw, "view_full_wishlist");
 
   const firstName = email.split("@")[0];
-  const subject = products.length === 1 ? "You saved something special" : "Your wishlist is waiting for you";
+  const stageCopy = WISHLIST_STAGE_COPY[stage] || WISHLIST_STAGE_COPY[1];
+  const subject = products.length === 1 ? stageCopy.subjectSingle : stageCopy.subjectMultiple;
 
-  const htmlBody = buildWishlistEmailHtml({ firstName, products, shopInfo, pixelUrl, viewAllUrl });
+  const htmlBody = buildWishlistEmailHtml({ firstName, products, shopInfo, pixelUrl, viewAllUrl, stageCopy });
   const plainBody =
     "Hi,\n\nHere's what's in your wishlist: " +
     (products.length ? products.map((p) => p.title).join(", ") : handles.join(", ")) +
