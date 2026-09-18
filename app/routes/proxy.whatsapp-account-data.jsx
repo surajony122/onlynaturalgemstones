@@ -15,7 +15,7 @@
  *               or { ok: false, error } (e.g. expired/invalid token)
  */
 import { authenticate } from "../shopify.server";
-import { buildCustomerAdminData, buildWishlistAndRecommendation } from "../utils/customerAccountData.server";
+import { buildCustomerAdminData, buildWishlistAndRecommendation, findCustomerGidByPhone } from "../utils/customerAccountData.server";
 import { resolvePhoneFromToken } from "../utils/whatsappOtpAuth.server";
 
 export const action = async ({ request }) => {
@@ -41,17 +41,7 @@ export const action = async ({ request }) => {
   let orders = [];
   let email = null;
   try {
-    const findRes = await admin.graphql(
-      `#graphql
-      query FindCustomerByPhone($query: String!) {
-        customers(first: 1, query: $query) {
-          nodes { id }
-        }
-      }`,
-      { variables: { query: `phone:${phone}` } }
-    );
-    const findJson = await findRes.json();
-    const customerGid = findJson.data?.customers?.nodes?.[0]?.id || null;
+    const customerGid = await findCustomerGidByPhone(admin, phone);
 
     if (customerGid) {
       const adminData = await buildCustomerAdminData(admin, customerGid);

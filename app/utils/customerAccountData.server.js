@@ -78,12 +78,20 @@ export async function buildCustomerAdminData(admin, customerGid) {
     : null;
 
   const defaultAddressId = customerNode?.defaultAddress?.id || null;
-  const addresses = (customerNode?.addresses || [])
-    .map((addr) => {
-      const formatted = formatAddress(addr);
-      return formatted ? { text: formatted, isDefault: addr.id === defaultAddressId } : null;
-    })
-    .filter(Boolean);
+  const addresses = (customerNode?.addresses || []).map((addr) => ({
+    id: addr.id,
+    text: formatAddress(addr),
+    isDefault: addr.id === defaultAddressId,
+    // Raw fields alongside the display text -- the WhatsApp-OTP account
+    // page's address EDIT form needs these to pre-fill; the Customer
+    // Account Hub extension (read-only there) just ignores them.
+    address1: addr.address1 || "",
+    address2: addr.address2 || "",
+    city: addr.city || "",
+    province: addr.province || "",
+    zip: addr.zip || "",
+    country: addr.country || "",
+  }));
 
   const orders = (customerNode?.orders?.edges || []).map(({ node }) => ({
     name: node.name,
@@ -167,6 +175,132 @@ export async function buildWishlistAndRecommendation(admin, shop, { email, phone
   }
 
   return { wishlist, recommendation };
+}
+
+/** Finds a Shopify customer's GID by phone number, or null if none
+ * exists yet — the WhatsApp-OTP page's only way to identify "who is
+ * this," since it has no Shopify session token to read a GID from
+ * directly (unlike the Customer Account UI Extension). */
+export async function findCustomerGidByPhone(admin, phone) {
+  const res = await admin.graphql(
+    `#graphql
+    query FindCustomerByPhone($query: String!) {
+      customers(first: 1, query: $query) {
+        nodes { id }
+      }
+    }`,
+    { variables: { query: `phone:${phone}` } }
+  );
+  const json = await res.json();
+  return json.data?.customers?.nodes?.[0]?.id || null;
+}
+
+/** Updates an existing customer's name/email/phone, or creates a new one
+ * (seeded with this phone) if none exists yet — the WhatsApp-OTP page's
+ * "Profile" tab can be the very first place a phone-verified visitor
+ * ever becomes a real Shopify customer record, so saving the profile
+ * form must work whether or not one already exists. */
+export async function saveCustomerProfile(admin, { customerGid, phone, firstName, lastName, email }) {
+  const input = {
+    ...(customerGid ? { id: customerGid } : {}),
+    firstName: firstName || null,
+    lastName: lastName || null,
+    email: email || null,
+    phone,
+  };
+
+  const res = await admin.graphql(
+    `#graphql
+    mutation SaveCustomerProfile($input: CustomerInput!) {
+      ${customerGid ? "customerUpdate" : "customerCreate"}(input: $input) {
+        customer { id firstName lastName email phone }
+        userErrors { field message }
+      }
+    }`,
+    { variables: { input } }
+  );
+  const json = await res.json();
+  const payload = customerGid ? json.data?.customerUpdate : json.data?.customerCreate;
+  const errs = payload?.userErrors;
+  if (errs?.length) {
+    return { ok: false, error: errs.map((e) => e.message).join(" ") };
+  }
+  const customer = payload?.customer;
+  if (!customer) {
+    return { ok: false, error: "Couldn't save profile." };
+  }
+  return {
+    ok: true,
+    customerGid: customer.id,
+    profile: {
+      name: [customer.firstName, customer.lastName].filter(Boolean).join(" ") || null,
+      email: customer.email || null,
+      phone: customer.phone || null,
+    },
+  };
+}
+
+/** Creates or updates one address on a customer, optionally setting it as
+ * the default — `addressId` present means update, absent means create.
+ * `customerGid` must already exist (the caller creates the customer via
+ * saveCustomerProfile first if it doesn't). */
+export async function saveCustomerAddress(admin, customerGid, { addressId, address1, address2, city, province, zip, country }, { setDefault } = {}) {
+  const address = { address1: address1 || null, address2: address2 || null, city: city || null, province: province || null, zip: zip || null, country: country || null };
+
+  const res = await admin.graphql(
+    `#graphql
+    mutation SaveCustomerAddress($customerId: ID!, $addressId: ID, $address: MailingAddressInput!) {
+      ${addressId ? "customerAddressUpdate" : "customerAddressCreate"}(customerId: $customerId${addressId ? ", addressId: $addressId" : ""}, address: $address) {
+        address { id }
+        userErrors { field message }
+      }
+    }`,
+    { variables: { customerId: customerGid, addressId: addressId || undefined, address } }
+  );
+  const json = await res.json();
+  const payload = addressId ? json.data?.customerAddressUpdate : json.data?.customerAddressCreate;
+  const errs = payload?.userErrors;
+  if (errs?.length) {
+    return { ok: false, error: errs.map((e) => e.message).join(" ") };
+  }
+  const savedAddressId = payload?.address?.id;
+  if (!savedAddressId) {
+    return { ok: false, error: "Couldn't save address." };
+  }
+
+  if (setDefault) {
+    await admin.graphql(
+      `#graphql
+      mutation SetDefaultAddress($customerId: ID!, $addressId: ID!) {
+        customerDefaultAddressUpdate(customerId: $customerId, addressId: $addressId) {
+          userErrors { field message }
+        }
+      }`,
+      { variables: { customerId: customerGid, addressId: savedAddressId } }
+    );
+  }
+
+  return { ok: true };
+}
+
+/** Deletes one of a customer's addresses. */
+export async function deleteCustomerAddress(admin, customerGid, addressId) {
+  const res = await admin.graphql(
+    `#graphql
+    mutation DeleteCustomerAddress($customerId: ID!, $addressId: ID!) {
+      customerAddressDelete(customerId: $customerId, addressId: $addressId) {
+        deletedCustomerAddressId
+        userErrors { field message }
+      }
+    }`,
+    { variables: { customerId: customerGid, addressId } }
+  );
+  const json = await res.json();
+  const errs = json.data?.customerAddressDelete?.userErrors;
+  if (errs?.length) {
+    return { ok: false, error: errs.map((e) => e.message).join(" ") };
+  }
+  return { ok: true };
 }
 
 /** Joins a customer address's fields into one display line. Shopify's
