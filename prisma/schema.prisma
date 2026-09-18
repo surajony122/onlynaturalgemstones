@@ -627,6 +627,48 @@ model OrderInvoice {
   lastSentAt    DateTime @default(now())
 }
 
+// WhatsApp OTP login for the storefront's own "My Account" page (see
+// app/routes/proxy.whatsapp-otp-request.jsx, proxy.whatsapp-otp-verify.jsx)
+// -- built because this store is on the Grow plan, so Shopify Plus
+// Multipass (the only way a third-party login can mint a REAL Shopify
+// customer session) isn't available. This is a fully separate,
+// parallel login system from Shopify's own Customer Accounts, gated
+// purely by "can this phone number receive and read back this code" --
+// same trust model as any SMS-OTP login. One row per code SENT (not per
+// attempt); verifying checks the phone's latest unexpired, unused row.
+model WhatsAppOtpCode {
+  id        String    @id @default(cuid())
+  shop      String?
+  phone     String // normalized "+<countrycode><number>", e.g. "+919876543210"
+  code      String // 6-digit code, plaintext -- short-lived (10 min) and single-use, not a long-term credential worth hashing
+  expiresAt DateTime
+  usedAt    DateTime?
+  // Failed verify attempts against THIS specific code -- capped in
+  // whatsappOtpAuth.server.js to block brute-forcing a 6-digit space
+  // (1,000,000 possibilities) within the code's own 10-minute window.
+  attempts  Int       @default(0)
+  createdAt DateTime  @default(now())
+
+  @@index([phone])
+}
+
+// A signed-in WhatsApp-OTP session -- this page's own session, entirely
+// independent of Shopify's session/customer-account cookies. tokenHash
+// (not the raw token) is stored, same reasoning a password hash would
+// be: this row alone should never be enough to impersonate the session
+// if the database were ever read by someone else. See
+// whatsappOtpAuth.server.js's issueSession/validateSessionToken.
+model WhatsAppAccountSession {
+  id        String   @id @default(cuid())
+  shop      String?
+  phone     String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([phone])
+}
+
 // One row per wishlist email sent — mirrors AstroLead's shape but for
 // the wishlist "here's what you saved" email (see
 // app/routes/proxy.wishlist-sync.jsx). The wishlist's existing sync to

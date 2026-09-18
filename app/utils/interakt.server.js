@@ -550,6 +550,67 @@ export async function sendRefundProcessedWhatsApp(settings, { phone, firstName, 
   return result.status + (result.rawResponse ? " | raw: " + result.rawResponse : "");
 }
 
+// Approved Authentication-category template for the storefront's separate
+// WhatsApp-OTP "My Account" login (see whatsappOtpAuth.server.js) — not
+// stored on AppSettings/configurable like the other four templates below,
+// since there's only ever one login flow using it.
+const WHATSAPP_OTP_TEMPLATE_NAME = "ong_whatsapp_login_otp";
+
+/**
+ * Sends the WhatsApp login OTP code.
+ *
+ * ---- TEMPLATE (as configured in Interakt) ----
+ * Name: ong_whatsapp_login_otp
+ * Category: Authentication (a Meta-mandated fixed format — no custom
+ *   header/footer/emoji/marketing copy allowed, unlike every other
+ *   template in this file).
+ * Language: English
+ *
+ * Body (exact wording approved by Meta):
+ *   Your Only Natural Gemstones verification code is {{1}}. This code
+ *   expires in 10 minutes. Do not share it with anyone.
+ *
+ * Button: Copy Code — needs the SAME code as its own value (Meta's
+ * Authentication template buttons carry the code so tapping "Copy Code"
+ * fills the clipboard with it), same buttonValues shape already proven
+ * working for the refund template's URL button below.
+ *
+ * No headerValues — Authentication templates have no header at all,
+ * unlike every other template here which requires one.
+ *
+ * ---- Variable mapping ----
+ *  {{1}} the 6-digit code (body)
+ *  Button {{1}} the same 6-digit code
+ */
+export async function sendWhatsAppLoginOtp(settings, { phone, countryCode, phoneNumber, code }) {
+  if (!settings.interaktApiKey) {
+    return "skipped: Interakt API key not set (Settings page or INTERAKT_API_KEY env var)";
+  }
+  let split = { countryCode, phoneNumber };
+  if (!countryCode || !phoneNumber) {
+    split = splitPhoneForInterakt(phone);
+  }
+  if (!split) {
+    return "skipped: no usable phone number";
+  }
+
+  const payload = {
+    countryCode: split.countryCode,
+    phoneNumber: split.phoneNumber,
+    type: "Template",
+    callbackData: "whatsapp-otp",
+    template: {
+      name: WHATSAPP_OTP_TEMPLATE_NAME,
+      languageCode: "en",
+      bodyValues: [code],
+      buttonValues: { "0": [code] },
+    },
+  };
+
+  const result = await sendInteraktTemplateMessage(settings.interaktApiKey, payload);
+  return result.status + (result.rawResponse ? " | raw: " + result.rawResponse : "");
+}
+
 /**
  * Sends the wishlist reminder WhatsApp message — a third, separate
  * template from gem-recommendation and order-processing. Sent alongside
