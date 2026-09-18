@@ -58,7 +58,7 @@ export const action = async ({ request }) => {
           lastName
           phone
           defaultAddress { id }
-          addresses(first: 10) { id address1 address2 city province zip country }
+          addresses(first: 20) { id address1 address2 city province zip country }
           orders(first: 10, sortKey: PROCESSED_AT, reverse: true) {
             edges {
               node {

@@ -34,12 +34,15 @@
  * customer data access). Without that, sessionToken.sub may come back
  * empty and this page will just show "not signed in".
  *
- * IMPORTANT — the relative paths passed to navigation.navigate() below
- * ('/profile', '/addresses') match Shopify's documented customer-account
- * URL structure, but haven't been click-tested against a real signed-in
+ * IMPORTANT — navigation.navigate() below uses Shopify's documented
+ * 'shopify:customer-account/...' protocol (confirmed in Shopify's own
+ * navigation-api docs for 'orders' and 'profile'). There is NO documented
+ * path for a specific address's own edit form, only the built-in
+ * addresses LIST page ('shopify:customer-account/addresses') -- every
+ * "Manage address" button lands there and the customer picks which one
+ * to edit. None of this has been click-tested against a real signed-in
  * session from this environment (no way to authenticate as a real
- * customer here) -- verify these actually land on the right native page
- * once this is live, and adjust if Shopify resolves them differently.
+ * customer here) -- verify live once this is deployed.
  */
 import '@shopify/ui-extensions/preact';
 import {useNavigation} from '@shopify/ui-extensions/customer-account/preact';
@@ -50,12 +53,14 @@ import {useEffect, useState} from 'preact/hooks';
 // of this app (Interakt sends, /track routes, etc.).
 const BACKEND_URL = 'https://shubh-gems-customizer-app.onrender.com/public/customer-account-data';
 
+// 'heart' isn't in this surface's icon set, so wishlist uses the closest
+// stand-in ('star-filled'); the rest map onto icons with literal meanings.
 const TABS = [
-  {key: 'orders', label: 'Orders'},
-  {key: 'wishlist', label: 'Wishlist'},
-  {key: 'recommendation', label: 'Recommendation'},
-  {key: 'profile', label: 'Profile'},
-  {key: 'address', label: 'Address'},
+  {key: 'orders', label: 'Orders', icon: 'order'},
+  {key: 'wishlist', label: 'Wishlist', icon: 'star-filled'},
+  {key: 'recommendation', label: 'Recommendation', icon: 'gift-card'},
+  {key: 'profile', label: 'Profile', icon: 'profile'},
+  {key: 'address', label: 'Address', icon: 'location'},
 ];
 
 export default async () => {
@@ -122,16 +127,17 @@ function Extension() {
   const {wishlist, recommendation, orders, profile, addresses} = state.data || {};
 
   return (
-    <s-page heading="My Gemstone Hub" subheading="Your orders, saved items, and personalised gemstone recommendation">
+    <s-page heading="My Gemstone Hub" subheading={profile?.name ? `Welcome back, ${profile.name}` : undefined}>
       <s-section>
         <s-stack direction="inline" gap="small-100">
           {TABS.map((tab) => (
             <s-button
               key={tab.key}
               variant={activeTab === tab.key ? 'primary' : 'secondary'}
+              accessibilityLabel={tab.label}
               onClick={() => setActiveTab(tab.key)}
             >
-              {tab.label}
+              <s-icon type={tab.icon} />
             </s-button>
           ))}
         </s-stack>
@@ -278,7 +284,7 @@ function ProfileSection({profile, navigation}) {
               {profile.phone ? <s-text color="subdued">{profile.phone}</s-text> : null}
             </s-stack>
           </s-grid-item>
-          <s-button variant="primary" onClick={() => navigation.navigate('/profile')}>
+          <s-button variant="primary" onClick={() => navigation.navigate('shopify:customer-account/profile')}>
             Edit profile
           </s-button>
         </s-stack>
@@ -288,7 +294,13 @@ function ProfileSection({profile, navigation}) {
 }
 
 // Same read-only-summary-plus-handoff pattern as Profile -- see comment
-// there for why this can't be a full custom edit form.
+// there for why this can't be a full custom edit form. Shopify's
+// documented navigation targets only cover the built-in addresses LIST
+// page (shopify:customer-account/addresses), not a deep link to one
+// address's own edit form, so every "Manage address" button below lands
+// on that same list -- the customer picks the address to edit once
+// there. Flagged to the user: worth confirming live whether a future
+// API version adds a per-address deep link.
 function AddressSection({addresses, navigation}) {
   return (
     <s-section heading="Addresses">
@@ -298,17 +310,19 @@ function AddressSection({addresses, navigation}) {
         <s-stack direction="block" gap="small-100">
           {addresses.map((addr, i) => (
             <s-grid-item key={i} border="base" borderRadius="none" background="base" padding="base">
-              <s-stack direction="inline" gap="small-100" alignItems="center">
-                <s-text>{addr.text}</s-text>
-                {addr.isDefault ? <s-badge tone="auto">Default</s-badge> : null}
+              <s-stack direction="block" gap="small-100">
+                <s-stack direction="inline" gap="small-100" alignItems="center">
+                  <s-text>{addr.text}</s-text>
+                  {addr.isDefault ? <s-badge tone="auto">Default</s-badge> : null}
+                </s-stack>
+                <s-button variant="secondary" onClick={() => navigation.navigate('shopify:customer-account/addresses')}>
+                  Manage address
+                </s-button>
               </s-stack>
             </s-grid-item>
           ))}
         </s-stack>
       )}
-      <s-button variant="primary" onClick={() => navigation.navigate('/addresses')}>
-        Manage addresses
-      </s-button>
     </s-section>
   );
 }
