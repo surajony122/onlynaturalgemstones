@@ -63,8 +63,7 @@ export const action = async ({ request }) => {
                 currentTotalPriceSet { presentmentMoney { amount currencyCode } }
                 lineItems(first: 1) { edges { node { image { url } } } }
                 fulfillments(first: 5) {
-                  createdAt
-                  events(first: 10, sortKey: HAPPENED_AT) {
+                  events(first: 20) {
                     edges { node { status happenedAt } }
                   }
                 }
@@ -157,15 +156,19 @@ export const action = async ({ request }) => {
  * checked across every fulfillment in case there are multiple shipments. */
 function buildOrderTimeline(order) {
   const fulfillments = order.fulfillments || [];
-  const firstFulfillment = fulfillments[0] || null;
-  const deliveredEvent = fulfillments
-    .flatMap((f) => (f.events?.edges || []).map((e) => e.node))
-    .find((e) => e.status === "DELIVERED");
+  const allEvents = fulfillments.flatMap((f) => (f.events?.edges || []).map((e) => e.node));
+  const deliveredEvent = allEvents.find((e) => e.status === "DELIVERED");
+
+  // "Shipped" comes from the order's own aggregate fulfillment status, not
+  // just whether a fulfillment record exists -- a fulfillment can exist in
+  // a pending/unsubmitted state without anything actually having shipped,
+  // which was marking this step done too early.
+  const shipped = ["FULFILLED", "PARTIALLY_FULFILLED"].includes(order.displayFulfillmentStatus);
 
   return [
     { label: "Placed", done: true, date: order.processedAt },
     { label: "Paid", done: order.displayFinancialStatus === "PAID", date: null },
-    { label: "Shipped", done: fulfillments.length > 0, date: firstFulfillment?.createdAt || null },
+    { label: "Shipped", done: shipped, date: null },
     { label: "Delivered", done: !!deliveredEvent, date: deliveredEvent?.happenedAt || null },
   ];
 }

@@ -259,11 +259,11 @@ function StoneRow({label, stone}) {
 // rather than shrinking illegibly.
 function OrderTimeline({steps}) {
   return (
-    <s-stack direction="inline" gap="small-100">
+    <s-stack direction="block" gap="small-100">
       {steps.map((step) => (
-        <s-stack key={step.label} direction="block" gap="small-100" alignItems="center">
+        <s-stack key={step.label} direction="inline" gap="small-100" alignItems="center">
           <s-icon type={step.done ? 'check-circle' : 'circle'} tone={step.done ? 'success' : 'neutral'} size="small" />
-          <s-text color="subdued">{step.label}</s-text>
+          <s-text color={step.done ? 'base' : 'subdued'}>{step.label}</s-text>
         </s-stack>
       ))}
     </s-stack>
