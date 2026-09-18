@@ -45,6 +45,8 @@ export const action = async ({ request }) => {
 
   let email = null;
   let orders = [];
+  let profile = null;
+  let addresses = [];
   try {
     const admin = await adminClientFor(shop);
     const res = await admin.graphql(
@@ -52,6 +54,11 @@ export const action = async ({ request }) => {
       query CustomerData($id: ID!) {
         customer(id: $id) {
           email
+          firstName
+          lastName
+          phone
+          defaultAddress { id }
+          addresses(first: 10) { id address1 address2 city province zip country }
           orders(first: 10, sortKey: PROCESSED_AT, reverse: true) {
             edges {
               node {
@@ -75,7 +82,22 @@ export const action = async ({ request }) => {
       { variables: { id: customerGid } }
     );
     const json = await res.json();
-    email = json?.data?.customer?.email || null;
+    const customerNode = json?.data?.customer;
+    email = customerNode?.email || null;
+    profile = customerNode
+      ? {
+          name: [customerNode.firstName, customerNode.lastName].filter(Boolean).join(" ") || null,
+          email: customerNode.email || null,
+          phone: customerNode.phone || null,
+        }
+      : null;
+    const defaultAddressId = customerNode?.defaultAddress?.id || null;
+    addresses = (customerNode?.addresses || [])
+      .map((addr) => {
+        const formatted = formatAddress(addr);
+        return formatted ? { text: formatted, isDefault: addr.id === defaultAddressId } : null;
+      })
+      .filter(Boolean);
     orders = (json?.data?.customer?.orders?.edges || []).map(({ node }) => ({
       name: node.name,
       date: node.processedAt,
@@ -93,7 +115,16 @@ export const action = async ({ request }) => {
   }
 
   if (!email) {
-    return cors(Response.json({ signedIn: true, wishlist: { items: [] }, recommendation: null, orders: [] }));
+    return cors(
+      Response.json({
+        signedIn: true,
+        wishlist: { items: [] },
+        recommendation: null,
+        orders: [],
+        profile: null,
+        addresses: [],
+      })
+    );
   }
 
   const [wishlistLead, astroLead] = await Promise.all([
@@ -146,8 +177,19 @@ export const action = async ({ request }) => {
     };
   }
 
-  return cors(Response.json({ signedIn: true, wishlist, recommendation, orders }));
+  return cors(Response.json({ signedIn: true, wishlist, recommendation, orders, profile, addresses }));
 };
+
+/** Joins a customer address's fields into one display line. Shopify's
+ * Admin API address object has no single pre-formatted string field
+ * (that's storefront-only), so this builds one from the parts. */
+function formatAddress(addr) {
+  if (!addr) return null;
+  const line = [addr.address1, addr.address2].filter(Boolean).join(", ");
+  const cityLine = [addr.city, addr.province, addr.zip].filter(Boolean).join(", ");
+  const full = [line, cityLine, addr.country].filter(Boolean).join(" — ");
+  return full || null;
+}
 
 /** Builds a 4-step Placed -> Paid -> Shipped -> Delivered timeline from an
  * order's own fields plus its fulfillments' event history. A fulfillment's

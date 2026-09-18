@@ -2,11 +2,17 @@
  * Full-page Customer Account UI extension — a new "My Gemstone Hub" page
  * inside Shopify's hosted customer accounts (target
  * customer-account.page.render), showing the customer's recent orders,
- * saved wishlist, and their gem-recommendation reading side by side.
- * Orders come straight from the Admin API (no separate lead table), since
- * Shopify's native order-history page can't be redesigned from an
- * extension -- only supplemented with fixed injection-point blocks -- so
- * this page is a fully custom alternative rather than a reskin of it.
+ * saved wishlist, gem-recommendation reading, and read-only profile/
+ * address summaries behind an in-page tab bar (Orders / Wishlist /
+ * Recommendation / Profile / Address) instead of one long scroll.
+ *
+ * Orders/profile/addresses come straight from the Admin API (no separate
+ * lead table); wishlist/recommendation come from this app's own database.
+ * Profile and Address are READ-ONLY summaries with a button that jumps to
+ * Shopify's own native edit pages via useNavigation() -- Shopify does not
+ * let an extension render a custom editable profile/address form (only
+ * inject a block into the native ones), so this is the closest a custom
+ * page can get without duplicating Shopify's own PII-handling forms.
  *
  * This store uses Shopify's NEW hosted customer accounts (confirmed via
  * onlynaturalgemstones.com/account/login redirecting to
@@ -14,7 +20,8 @@
  * edit for this — a UI extension is the only way to add custom content
  * here. See app/routes/public.customer-account-data.jsx for the backend
  * half of this (verifies the session token, looks up
- * WishlistLead/AstroLead by the signed-in customer's email).
+ * WishlistLead/AstroLead by the signed-in customer's email, and reads
+ * orders/profile/addresses live from the Admin API).
  *
  * IMPORTANT — after this extension is deployed and published, someone
  * still needs to add a link to it manually: Shopify Admin -> Settings ->
@@ -26,8 +33,16 @@
  * data access" approved in the Partner Dashboard (App setup -> Protected
  * customer data access). Without that, sessionToken.sub may come back
  * empty and this page will just show "not signed in".
+ *
+ * IMPORTANT — the relative paths passed to navigation.navigate() below
+ * ('/profile', '/addresses') match Shopify's documented customer-account
+ * URL structure, but haven't been click-tested against a real signed-in
+ * session from this environment (no way to authenticate as a real
+ * customer here) -- verify these actually land on the right native page
+ * once this is live, and adjust if Shopify resolves them differently.
  */
 import '@shopify/ui-extensions/preact';
+import {useNavigation} from '@shopify/ui-extensions/customer-account/preact';
 import {render} from 'preact';
 import {useEffect, useState} from 'preact/hooks';
 
@@ -35,12 +50,22 @@ import {useEffect, useState} from 'preact/hooks';
 // of this app (Interakt sends, /track routes, etc.).
 const BACKEND_URL = 'https://shubh-gems-customizer-app.onrender.com/public/customer-account-data';
 
+const TABS = [
+  {key: 'orders', label: 'Orders'},
+  {key: 'wishlist', label: 'Wishlist'},
+  {key: 'recommendation', label: 'Recommendation'},
+  {key: 'profile', label: 'Profile'},
+  {key: 'address', label: 'Address'},
+];
+
 export default async () => {
   render(<Extension />, document.body);
 };
 
 function Extension() {
   const [state, setState] = useState({status: 'loading', data: null, error: null});
+  const [activeTab, setActiveTab] = useState('orders');
+  const navigation = useNavigation();
 
   useEffect(() => {
     let cancelled = false;
@@ -75,7 +100,7 @@ function Extension() {
         <s-section>
           <s-stack direction="inline" gap="base" alignItems="center">
             <s-spinner accessibilityLabel="Loading" />
-            <s-text>Loading your wishlist and recommendations…</s-text>
+            <s-text>Loading your account…</s-text>
           </s-stack>
         </s-section>
       </s-page>
@@ -94,120 +119,197 @@ function Extension() {
     );
   }
 
-  const {wishlist, recommendation, orders} = state.data || {};
+  const {wishlist, recommendation, orders, profile, addresses} = state.data || {};
 
   return (
-    <s-page heading="My Gemstone Hub" subheading="Your saved items and personalised gemstone recommendation">
-      <s-section heading="My Orders">
-        {!orders || orders.length === 0 ? (
-          <s-text>You haven't placed any orders yet.</s-text>
-        ) : (
-          <s-grid gridTemplateColumns="repeat(auto-fill, minmax(160px, 1fr))" gap="base">
-            {orders.map((order) => (
-              <s-grid-item key={order.name} border="base" borderRadius="none" background="base" padding="base">
-                <s-stack direction="block" gap="small-100">
-                  {order.image ? (
-                    <s-image
-                      src={order.image}
-                      alt={order.name}
-                      inlineSize="fill"
-                      aspectRatio="1"
-                      objectFit="cover"
-                      borderRadius="none"
-                    />
-                  ) : null}
-                  <s-text type="strong">{order.name}</s-text>
-                  {order.date ? <s-text color="subdued">{formatOrderDate(order.date)}</s-text> : null}
-                  <s-stack direction="inline" gap="small-100">
-                    {order.fulfillmentStatus ? (
-                      <s-badge tone={goodStatuses.has(order.fulfillmentStatus) ? 'auto' : 'critical'}>
-                        {formatStatusLabel(order.fulfillmentStatus)}
-                      </s-badge>
-                    ) : null}
-                    {order.financialStatus ? (
-                      <s-badge tone={goodStatuses.has(order.financialStatus) ? 'auto' : 'critical'}>
-                        {formatStatusLabel(order.financialStatus)}
-                      </s-badge>
-                    ) : null}
-                  </s-stack>
-                  {order.timeline ? <OrderTimeline steps={order.timeline} /> : null}
-                  {order.total ? <s-text color="subdued">{order.total}</s-text> : null}
-                  {order.statusUrl ? (
-                    <s-button href={order.statusUrl} target="_blank" variant="primary" inlineSize="fill">
-                      View order
-                    </s-button>
-                  ) : null}
-                </s-stack>
-              </s-grid-item>
-            ))}
-          </s-grid>
-        )}
+    <s-page heading="My Gemstone Hub" subheading="Your orders, saved items, and personalised gemstone recommendation">
+      <s-section>
+        <s-stack direction="inline" gap="small-100">
+          {TABS.map((tab) => (
+            <s-button
+              key={tab.key}
+              variant={activeTab === tab.key ? 'primary' : 'secondary'}
+              onClick={() => setActiveTab(tab.key)}
+            >
+              {tab.label}
+            </s-button>
+          ))}
+        </s-stack>
       </s-section>
 
-      <s-section heading="My Wishlist">
-        {!wishlist || !wishlist.items || wishlist.items.length === 0 ? (
-          <s-text>You haven't saved any items to your wishlist yet.</s-text>
-        ) : (
-          <s-grid gridTemplateColumns="repeat(auto-fill, minmax(160px, 1fr))" gap="base">
-            {wishlist.items.map((item, i) => (
-              <s-grid-item
-                key={item.handle || i}
-                border="base"
-                borderRadius="none"
-                background="base"
-                padding="base"
-              >
-                <s-stack direction="block" gap="small-100">
-                  {item.image ? (
-                    <s-image
-                      src={item.image}
-                      alt={item.title || 'Product'}
-                      inlineSize="fill"
-                      aspectRatio="1"
-                      objectFit="cover"
-                      borderRadius="none"
-                    />
-                  ) : null}
-                  <s-text type="strong">{item.title || 'Untitled product'}</s-text>
-                  {item.price ? <s-text color="subdued">{item.price}</s-text> : null}
-                  {item.handle ? (
-                    <s-button
-                      href={`https://onlynaturalgemstones.com/products/${item.handle}`}
-                      target="_blank"
-                      variant="primary"
-                      inlineSize="fill"
-                    >
-                      View product
-                    </s-button>
-                  ) : null}
-                </s-stack>
-              </s-grid-item>
-            ))}
-          </s-grid>
-        )}
-      </s-section>
-
-      <s-section heading="My Gemstone Recommendation">
-        {!recommendation ? (
-          <s-text>
-            You haven't submitted your birth details for a personalised gemstone recommendation yet.
-          </s-text>
-        ) : (
-          <s-stack direction="block" gap="base">
-            <s-grid gridTemplateColumns="repeat(auto-fill, minmax(160px, 1fr))" gap="base">
-              <StoneRow label="Life Stone" stone={recommendation.life} />
-              <StoneRow label="Benefic Stone" stone={recommendation.benefic} />
-              <StoneRow label="Lucky Stone" stone={recommendation.lucky} />
-            </s-grid>
-            {recommendation.resultsUrl ? (
-              <s-link href={recommendation.resultsUrl} target="_blank">
-                View my full reading
-              </s-link>
-            ) : null}
-          </s-stack>
-        )}
-      </s-section>
+      {activeTab === 'orders' ? <OrdersSection orders={orders} /> : null}
+      {activeTab === 'wishlist' ? <WishlistSection wishlist={wishlist} /> : null}
+      {activeTab === 'recommendation' ? <RecommendationSection recommendation={recommendation} /> : null}
+      {activeTab === 'profile' ? <ProfileSection profile={profile} navigation={navigation} /> : null}
+      {activeTab === 'address' ? <AddressSection addresses={addresses} navigation={navigation} /> : null}
     </s-page>
+  );
+}
+
+function OrdersSection({orders}) {
+  return (
+    <s-section heading="My Orders">
+      {!orders || orders.length === 0 ? (
+        <s-text>You haven't placed any orders yet.</s-text>
+      ) : (
+        <s-grid gridTemplateColumns="repeat(auto-fill, minmax(160px, 1fr))" gap="base">
+          {orders.map((order) => (
+            <s-grid-item key={order.name} border="base" borderRadius="none" background="base" padding="base">
+              <s-stack direction="block" gap="small-100">
+                {order.image ? (
+                  <s-image
+                    src={order.image}
+                    alt={order.name}
+                    inlineSize="fill"
+                    aspectRatio="1"
+                    objectFit="cover"
+                    borderRadius="none"
+                  />
+                ) : null}
+                <s-text type="strong">{order.name}</s-text>
+                {order.date ? <s-text color="subdued">{formatOrderDate(order.date)}</s-text> : null}
+                <s-stack direction="inline" gap="small-100">
+                  {order.fulfillmentStatus ? (
+                    <s-badge tone={goodStatuses.has(order.fulfillmentStatus) ? 'auto' : 'critical'}>
+                      {formatStatusLabel(order.fulfillmentStatus)}
+                    </s-badge>
+                  ) : null}
+                  {order.financialStatus ? (
+                    <s-badge tone={goodStatuses.has(order.financialStatus) ? 'auto' : 'critical'}>
+                      {formatStatusLabel(order.financialStatus)}
+                    </s-badge>
+                  ) : null}
+                </s-stack>
+                {order.timeline ? <OrderTimeline steps={order.timeline} /> : null}
+                {order.total ? <s-text color="subdued">{order.total}</s-text> : null}
+                {order.statusUrl ? (
+                  <s-button href={order.statusUrl} target="_blank" variant="primary" inlineSize="fill">
+                    View order
+                  </s-button>
+                ) : null}
+              </s-stack>
+            </s-grid-item>
+          ))}
+        </s-grid>
+      )}
+    </s-section>
+  );
+}
+
+function WishlistSection({wishlist}) {
+  return (
+    <s-section heading="My Wishlist">
+      {!wishlist || !wishlist.items || wishlist.items.length === 0 ? (
+        <s-text>You haven't saved any items to your wishlist yet.</s-text>
+      ) : (
+        <s-grid gridTemplateColumns="repeat(auto-fill, minmax(160px, 1fr))" gap="base">
+          {wishlist.items.map((item, i) => (
+            <s-grid-item key={item.handle || i} border="base" borderRadius="none" background="base" padding="base">
+              <s-stack direction="block" gap="small-100">
+                {item.image ? (
+                  <s-image
+                    src={item.image}
+                    alt={item.title || 'Product'}
+                    inlineSize="fill"
+                    aspectRatio="1"
+                    objectFit="cover"
+                    borderRadius="none"
+                  />
+                ) : null}
+                <s-text type="strong">{item.title || 'Untitled product'}</s-text>
+                {item.price ? <s-text color="subdued">{item.price}</s-text> : null}
+                {item.handle ? (
+                  <s-button
+                    href={`https://onlynaturalgemstones.com/products/${item.handle}`}
+                    target="_blank"
+                    variant="primary"
+                    inlineSize="fill"
+                  >
+                    View product
+                  </s-button>
+                ) : null}
+              </s-stack>
+            </s-grid-item>
+          ))}
+        </s-grid>
+      )}
+    </s-section>
+  );
+}
+
+function RecommendationSection({recommendation}) {
+  return (
+    <s-section heading="My Gemstone Recommendation">
+      {!recommendation ? (
+        <s-text>You haven't submitted your birth details for a personalised gemstone recommendation yet.</s-text>
+      ) : (
+        <s-stack direction="block" gap="base">
+          <s-grid gridTemplateColumns="repeat(auto-fill, minmax(160px, 1fr))" gap="base">
+            <StoneRow label="Life Stone" stone={recommendation.life} />
+            <StoneRow label="Benefic Stone" stone={recommendation.benefic} />
+            <StoneRow label="Lucky Stone" stone={recommendation.lucky} />
+          </s-grid>
+          {recommendation.resultsUrl ? (
+            <s-link href={recommendation.resultsUrl} target="_blank">
+              View my full reading
+            </s-link>
+          ) : null}
+        </s-stack>
+      )}
+    </s-section>
+  );
+}
+
+// Read-only -- Shopify only lets an extension inject a block into its own
+// native profile page, never render a full custom edit form, so "Edit
+// profile" hands off to that native page via useNavigation() instead of
+// duplicating it here.
+function ProfileSection({profile, navigation}) {
+  return (
+    <s-section heading="Profile">
+      {!profile ? (
+        <s-text>Profile details aren't available right now.</s-text>
+      ) : (
+        <s-stack direction="block" gap="base">
+          <s-grid-item border="base" borderRadius="none" background="base" padding="base">
+            <s-stack direction="block" gap="small-100">
+              {profile.name ? <s-text type="strong">{profile.name}</s-text> : null}
+              {profile.email ? <s-text color="subdued">{profile.email}</s-text> : null}
+              {profile.phone ? <s-text color="subdued">{profile.phone}</s-text> : null}
+            </s-stack>
+          </s-grid-item>
+          <s-button variant="primary" onClick={() => navigation.navigate('/profile')}>
+            Edit profile
+          </s-button>
+        </s-stack>
+      )}
+    </s-section>
+  );
+}
+
+// Same read-only-summary-plus-handoff pattern as Profile -- see comment
+// there for why this can't be a full custom edit form.
+function AddressSection({addresses, navigation}) {
+  return (
+    <s-section heading="Addresses">
+      {!addresses || addresses.length === 0 ? (
+        <s-text>You haven't saved any addresses yet.</s-text>
+      ) : (
+        <s-stack direction="block" gap="small-100">
+          {addresses.map((addr, i) => (
+            <s-grid-item key={i} border="base" borderRadius="none" background="base" padding="base">
+              <s-stack direction="inline" gap="small-100" alignItems="center">
+                <s-text>{addr.text}</s-text>
+                {addr.isDefault ? <s-badge tone="auto">Default</s-badge> : null}
+              </s-stack>
+            </s-grid-item>
+          ))}
+        </s-stack>
+      )}
+      <s-button variant="primary" onClick={() => navigation.navigate('/addresses')}>
+        Manage addresses
+      </s-button>
+    </s-section>
   );
 }
 
@@ -229,9 +331,7 @@ function StoneRow({label, stone}) {
             borderRadius="none"
           />
         ) : null}
-        {product ? (
-          <s-text type="strong">{product.title}</s-text>
-        ) : null}
+        {product ? <s-text type="strong">{product.title}</s-text> : null}
         {product && product.price ? <s-text color="subdued">{product.price}</s-text> : null}
         {product ? (
           <s-button
@@ -253,10 +353,10 @@ function StoneRow({label, stone}) {
   );
 }
 
-// Compact Placed -> Paid -> Shipped -> Delivered progress row for an order
-// card: a filled checkmark for completed steps, an outline circle for
-// steps not reached yet. Icons wrap onto a second line on narrow cards
-// rather than shrinking illegibly.
+// Placed -> Paid -> Shipped -> Delivered checklist for an order card: a
+// filled checkmark for completed steps, an outline circle for steps not
+// reached yet. One step per line (not a side-by-side row) so it stays
+// legible on a narrow order card.
 function OrderTimeline({steps}) {
   return (
     <s-stack direction="block" gap="small-100">
