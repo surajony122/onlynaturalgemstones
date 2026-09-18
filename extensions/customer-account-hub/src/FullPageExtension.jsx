@@ -47,11 +47,18 @@
 import '@shopify/ui-extensions/preact';
 import {useNavigation} from '@shopify/ui-extensions/customer-account/preact';
 import {render} from 'preact';
-import {useEffect, useRef, useState} from 'preact/hooks';
+import {useEffect, useState} from 'preact/hooks';
 
 // This app's own backend — same Render domain used throughout the rest
 // of this app (Interakt sends, /track routes, etc.).
 const BACKEND_URL = 'https://shubh-gems-customizer-app.onrender.com/public/customer-account-data';
+
+// The brand's own gemstone mark (shubh_gems_icon_final.svg), inlined as a
+// data URI so it renders without needing a hosted asset URL -- s-icon only
+// offers a fixed built-in icon set, no custom-SVG option, so this goes
+// through s-image instead. Shown as a small mark leading the tab bar.
+const BRAND_ICON_DATA_URI =
+  'data:image/svg+xml;base64,PHN2ZyBjbGFzcz0ic2h1YmgtdXNwcy1pY29uLXN2ZyIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2aWV3Qm94PSIwIDAgNTAwIDUwMCIgZmlsbD0iI0E5NzczRiIgYXJpYS1sYWJlbD0iR2Vtc3RvbmUgaWNvbiI+CiAgPGcgZmlsbD0iI0E5NzczRiI+CiAgICA8cGF0aCBkPSJtMTg3LjMzNCA3Ni40MzVoLTM2Ljk1NWMtMi4wNzUgMC0zLjc1Ny0xLjY4LTMuNzU3LTMuNzU3czEuNjgyLTMuNzU3IDMuNzU3LTMuNzU3aDM2Ljk1NWMyLjA3NSAwIDMuNzU3IDEuNjggMy43NTcgMy43NTdzLTEuNjgzIDMuNzU3LTMuNzU3IDMuNzU3eiIvPgogICAgPHBhdGggZD0ibTI5NS4yNTkgMTQwLjc5NmMtLjg1NyAwLTEuNzE3LS4yOS0yLjQyMi0uODg4LTEuNTg3LTEuMzM5LTEuNzg1LTMuNzA5LS40NDgtNS4yOTRsNTIuMjQyLTYxLjg1NS0zNi4zMTctNDAuMjQ1aC0xMTYuNjMzbC0zNi4zMTcgNDAuMjQ1IDUyLjIzMSA2MS44NDRjMS4zMzggMS41ODUgMS4xMzkgMy45NTUtLjQ0OCA1LjI5NC0xLjU3OSAxLjM0My0zLjk1NyAxLjE0NS01LjI5NC0uNDQ0bC01NC4zNDYtNjQuMzVjLTEuMjEzLTEuNDM4LTEuMTc4LTMuNTQ4LjA4Mi00Ljk0MmwzOS42MzQtNDMuOTIxYy43MTItLjc4OSAxLjcyNS0xLjI0IDIuNzg5LTEuMjRoMTE5Ljk3M2MxLjA2NCAwIDIuMDc3LjQ1MSAyLjc4OCAxLjI0bDM5LjYzNCA0My45MjFjMS4yNiAxLjM5NCAxLjI5NSAzLjUwNC4wODMgNC45NDJsLTU0LjM1NyA2NC4zNjFjLS43NDQuODgtMS44MDYgMS4zMzItMi44NzQgMS4zMzJ6Ii8+CiAgICA8cGF0aCBkPSJtMzQ5LjYxOSA3Ni40MzVoLTM2Ljk1NmMtMi4wNzUgMC0zLjc1Ny0xLjY4LTMuNzU3LTMuNzU3czEuNjgyLTMuNzU3IDMuNzU3LTMuNzU3aDM2Ljk1NmMyLjA3NSAwIDMuNzU3IDEuNjggMy43NTcgMy43NTctLjAwMSAyLjA3Ny0xLjY4MyAzLjc1Ny0zLjc1NyAzLjc1N3oiLz4KICAgIDxwYXRoIGQ9Im0yNjYuNzQzIDE0MC43OTZjLS43NTQgMC0xLjUxNy0uMjI3LTIuMTc4LS42OTctMS42OS0xLjIwNy0yLjA4Mi0zLjU1MS0uODc3LTUuMjQzbDQ0LjExNi02MS44MzYtMzYuNTMtMzguNDAzLTE4LjIzNyAyNS4xMTFjLTEuNDEzIDEuOTQ0LTQuNjY3IDEuOTQ0LTYuMDc5IDBsLTE4LjIzNy0yNS4xMTEtMzYuNTI4IDM4LjQwMyA0NC4xMTIgNjEuODMzYzEuMjA1IDEuNjkxLjgxMyA0LjAzNi0uODc3IDUuMjQzLTEuNjkxIDEuMi00LjAzNi44MTEtNS4yMzktLjg3N2wtNDUuOTEzLTY0LjM1N2MtMS4wNDYtMS40NjgtLjkwNC0zLjQ2Ny4zMzYtNC43NzNsNDEuNzc2LTQzLjkyMWMuNzY4LS44MTEgMS44NzEtMS4yIDIuOTctMS4xNTkgMS4xMTMuMDczIDIuMTM3LjYzOCAyLjc5MiAxLjU0MWwxNy44NDggMjQuNTc1IDE3Ljg0OS0yNC41NzVjLjY1NS0uOTAzIDEuNjc4LTEuNDY4IDIuNzkyLTEuNTQxIDEuMTAxLS4wNDEgMi4yMDIuMzQ4IDIuOTcgMS4xNTlsNDEuNzc2IDQzLjkyMWMxLjI0IDEuMzA2IDEuMzgxIDMuMzA1LjMzNSA0Ljc3M2wtNDUuOTE3IDY0LjM2MWMtLjczMSAxLjAyNi0xLjg4NiAxLjU3My0zLjA2IDEuNTczeiIvPgogICAgPHBhdGggZD0ibTI0OS45OTggMTA4LjU3MWMtMS4xNSAwLTIuMjM4LS41MjgtMi45NS0xLjQzMWwtNTkuOTg2LTc2LjA1N2MtMS4yODQtMS42MjktMS4wMDUtMy45OTIuNjI0LTUuMjc2czMuOTkyLTEuMDA1IDUuMjc2LjYyNGw1Ny4wMzYgNzIuMzE1IDU3LjAzNy03Mi4zMTVjMS4yODgtMS42MjkgMy42NTEtMS45MDggNS4yNzYtLjYyNCAxLjYyOSAxLjI4NCAxLjkwOCAzLjY0Ny42MjQgNS4yNzZsLTU5Ljk4NyA3Ni4wNTdjLS43MTIuOTAzLTEuOCAxLjQzMS0yLjk1IDEuNDMxeiIvPgogICAgPHBhdGggZD0ibTI1MC4wNzQgNDc1Yy0yLjQyNyAwLTQuODU0LS4wNDgtNy4yOTQtLjE0My05MS41NTgtMy41ODEtMTY3LjIzNC03OC4wMTMtMTcyLjI4Mi0xNjkuNDUtNC4wMDEtNzIuNDc2IDM1LjQ5Mi0xMzkuODkgMTAwLjYxNC0xNzEuNzQzIDUuMTUxLTIuNTIgMTEuMTUzLTIuMjAxIDE2LjA1OS44NjYgNC45OTcgMy4xMTkgNy45ODIgOC40ODcgNy45ODIgMTQuMzYgMCA2LjM1OS0zLjY2NCAxMi4yNjItOS4zMzIgMTUuMDM5LTUwLjUzOCAyNC43NS04MS45MzEgNzUuMDU1LTgxLjkzMSAxMzEuMjg5IDAgMzkuODM4IDE1Ljc0MyA3Ny4wNjYgNDQuMzMgMTA0LjgyNSAyOC41NzQgMjcuNzQ4IDY2LjMyMyA0Mi40MzUgMTA2LjE3NiA0MS4yMTcgNzUuMzIyLTIuMjA4IDEzNy40NzQtNjIuODMxIDE0MS40OTYtMTM4LjAwNyAzLjE0Ni01OC43NTQtMjguOTA0LTExMy40MjktODEuNjUyLTEzOS4yOTUtNS43OTUtMi44NC05LjM5NC04LjYxOC05LjM5NC0xNS4wNzIgMC01Ljg3NyAyLjk4NS0xMS4yNDkgNy45ODYtMTQuMzcxIDQuODkyLTMuMDYgMTAuODc4LTMuMzgzIDE2LjAyMi0uODY1IDYyLjI1MyAzMC40MzQgMTAwLjkyNyA5Mi4zNDQgMTAwLjkyNyAxNjEuNTY5IDAgNDkuMzU1LTE5LjU5OCA5NS4zODItNTUuMTg1IDEyOS42MDItMzMuODEyIDMyLjUxMy03Ny43OTQgNTAuMTc5LTEyNC41MjIgNTAuMTc5em0tNzEuNzExLTMzNS41MThjLTEuMzM3IDAtMi42NzguMzA4LTMuOTUuOTMyLTYyLjQwMyAzMC41MjItMTAwLjI0NiA5NS4xMjUtOTYuNDEyIDE2NC41ODEgNC44MzggODcuNjA3IDc3LjM0NyAxNTguOTIxIDE2NS4wNzMgMTYyLjM1NSA0Ny40MjkgMS44NjggOTIuMjMyLTE1LjE3MSAxMjYuMzEzLTQ3Ljk0NiAzNC4wOTktMzIuNzg5IDUyLjg3OS03Ni44OTQgNTIuODc5LTEyNC4xODYgMC02Ni4zMzQtMzcuMDU5LTEyNS42NTgtOTYuNzE0LTE1NC44MTktMi44MzgtMS4zOS02LjAyNC0xLjIwMy04Ljc0NS40ODgtMi43ODcgMS43MzktNC40NDkgNC43MjUtNC40NDkgNy45OTEgMCAzLjU3IDEuOTg5IDYuNzY2IDUuMTkgOC4zMzYgNTUuNDU4IDI3LjE5IDg5LjE1NCA4NC42NzIgODUuODQ2IDE0Ni40NDItNC4yMjggNzkuMDQ3LTY5LjU4MSAxNDIuNzkyLTE0OC43NzkgMTQ1LjExOC00MS45NiAxLjE1NS04MS41ODgtMTQuMTY2LTExMS42MzEtNDMuMzQyLTMwLjA1Ni0yOS4xODYtNDYuNjA4LTY4LjMyNy00Ni42MDgtMTEwLjIxNSAwLTU5LjEyNSAzMy4wMDctMTEyLjAxNyA4Ni4xMzktMTM4LjA0IDMuMTE0LTEuNTIzIDUuMTI0LTQuNzc3IDUuMTI0LTguMjg4IDAtMy4yNjUtMS42NjItNi4yNDgtNC40NDctNy45ODctMS41MTItLjk0My0zLjE2OS0xLjQyLTQuODI5LTEuNDJ6Ii8+CiAgICA8cGF0aCBkPSJtMzA4LjgyIDE1NC44OTVoLTExNy42NDNjLTEuMTEgMC0yLjE2NS0uNDkxLTIuODc4LTEuMzQyLS43MTQtLjg1MS0xLjAxNS0xLjk3NC0uODIyLTMuMDY4LjA5My0uNTI1LjE2MS0xLjA1My4xNjEtMS41OTYgMC0zLjYyOC0yLjA0Mi02Ljg3NS01LjMyNy04LjQ3MS0xLjU3NC0uNzY3LTIuNDEyLTIuNTE3LTIuMDItNC4yMjMuMzkzLTEuNzA2IDEuOTEyLTIuOTEzIDMuNjYxLTIuOTEzaDEzMi4wNjZjMS43NDggMCAzLjI2NSAxLjIwNyAzLjY2IDIuOTEuMzk1IDEuNzAyLS40MzggMy40NTItMi4wMDggNC4yMjMtMy4yNzYgMS42MDMtNS4zMTEgNC44NDctNS4zMTEgOC40NjQgMCAuNTU0LjA3MSAxLjA5LjE2MyAxLjYxNS4xODkgMS4wOTMtLjExMiAyLjIxNi0uODI3IDMuMDY0LS43MTQuODQ2LTEuNzY1IDEuMzM3LTIuODc1IDEuMzM3em0tMTEzLjczNC03LjUxNGgxMDkuODI0Yy4yMDQtMi4zNDguODg2LTQuNTgzIDEuOTc2LTYuNTg2aC0xMTMuNzc3YzEuMDg5IDIuMDA0IDEuNzczIDQuMjM4IDEuOTc3IDYuNTg2eiIvPgogIDwvZz4KPC9zdmc+';
 
 // 'heart' isn't in this surface's icon set, so wishlist uses the closest
 // stand-in ('star-filled'); the rest map onto icons with literal meanings.
@@ -129,7 +136,10 @@ function Extension() {
   return (
     <s-page heading="My Gemstone Hub" subheading={profile?.name ? `Welcome back, ${profile.name}` : undefined}>
       <s-section>
-        <s-stack direction="inline" gap="small-100">
+        <s-stack direction="inline" gap="small-100" alignItems="center">
+          <s-box inlineSize="28px" blockSize="28px">
+            <s-image src={BRAND_ICON_DATA_URI} alt="Only Natural Gemstones" inlineSize="fill" aspectRatio="1" objectFit="contain" />
+          </s-box>
           {TABS.map((tab) => (
             <s-button
               key={tab.key}
@@ -175,34 +185,46 @@ function OrdersSection({orders}) {
 // customer filled in during customisation. Keeps the main list scannable
 // while still surfacing the full bundle/customisation detail on demand.
 function OrderRow({order}) {
-  const modalRef = useRef(null);
+  // s-modal has no boolean "open" prop -- it's shown/hidden via the
+  // invoker-command pattern (a button's command/commandFor targeting the
+  // modal's id), not an imperative ref call, which is what "View details"
+  // not working traced back to.
+  const modalId = `order-modal-${order.name.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  const mainImage = order.bundles?.find((b) => b.image)?.image || '';
 
   return (
     <s-box border="base" borderRadius="none" background="base" padding="base">
-      <s-stack direction="block" gap="small-100">
-        <s-stack direction="inline" gap="small-100" alignItems="center">
-          <s-text type="strong">{order.name}</s-text>
-          {order.date ? <s-text color="subdued">{formatOrderDate(order.date)}</s-text> : null}
+      <s-stack direction="inline" gap="base">
+        {mainImage ? (
+          <s-box inlineSize="88px" blockSize="88px">
+            <s-image src={mainImage} alt={order.name} inlineSize="fill" aspectRatio="1" objectFit="cover" borderRadius="none" />
+          </s-box>
+        ) : null}
+        <s-stack direction="block" gap="small-100">
+          <s-stack direction="inline" gap="small-100" alignItems="center">
+            <s-text type="strong">{order.name}</s-text>
+            {order.date ? <s-text color="subdued">{formatOrderDate(order.date)}</s-text> : null}
+          </s-stack>
+          <s-stack direction="inline" gap="small-100">
+            {order.fulfillmentStatus ? (
+              <s-badge tone={goodStatuses.has(order.fulfillmentStatus) ? 'auto' : 'critical'}>
+                {formatStatusLabel(order.fulfillmentStatus)}
+              </s-badge>
+            ) : null}
+            {order.financialStatus ? (
+              <s-badge tone={goodStatuses.has(order.financialStatus) ? 'auto' : 'critical'}>
+                {formatStatusLabel(order.financialStatus)}
+              </s-badge>
+            ) : null}
+          </s-stack>
+          {order.total ? <s-text type="strong">{order.total}</s-text> : null}
+          <s-button variant="primary" command="--show" commandFor={modalId}>
+            View details
+          </s-button>
         </s-stack>
-        <s-stack direction="inline" gap="small-100">
-          {order.fulfillmentStatus ? (
-            <s-badge tone={goodStatuses.has(order.fulfillmentStatus) ? 'auto' : 'critical'}>
-              {formatStatusLabel(order.fulfillmentStatus)}
-            </s-badge>
-          ) : null}
-          {order.financialStatus ? (
-            <s-badge tone={goodStatuses.has(order.financialStatus) ? 'auto' : 'critical'}>
-              {formatStatusLabel(order.financialStatus)}
-            </s-badge>
-          ) : null}
-        </s-stack>
-        {order.total ? <s-text type="strong">{order.total}</s-text> : null}
-        <s-button variant="primary" onClick={() => modalRef.current?.showOverlay()}>
-          View details
-        </s-button>
       </s-stack>
 
-      <s-modal ref={modalRef} heading={order.name} size="large">
+      <s-modal id={modalId} heading={order.name} size="large">
         <s-stack direction="block" gap="base">
           {order.timeline ? <OrderTimeline steps={order.timeline} /> : null}
           <s-stack direction="block" gap="small-100">
