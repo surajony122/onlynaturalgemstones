@@ -62,6 +62,12 @@ export const action = async ({ request }) => {
                 displayFinancialStatus
                 currentTotalPriceSet { presentmentMoney { amount currencyCode } }
                 lineItems(first: 1) { edges { node { image { url } } } }
+                fulfillments(first: 5) {
+                  createdAt
+                  events(first: 10, sortKey: HAPPENED_AT) {
+                    edges { node { status happenedAt } }
+                  }
+                }
               }
             }
           }
@@ -81,6 +87,7 @@ export const action = async ({ request }) => {
         ? "₹" + Number(node.currentTotalPriceSet.presentmentMoney.amount).toLocaleString("en-IN")
         : null,
       statusUrl: node.statusPageUrl || null,
+      timeline: buildOrderTimeline(node),
     }));
   } catch (err) {
     console.error("[public.customer-account-data] failed to resolve customer email/orders:", err);
@@ -142,6 +149,26 @@ export const action = async ({ request }) => {
 
   return cors(Response.json({ signedIn: true, wishlist, recommendation, orders }));
 };
+
+/** Builds a 4-step Placed -> Paid -> Shipped -> Delivered timeline from an
+ * order's own fields plus its fulfillments' event history. A fulfillment's
+ * `events` connection is what actually carries a "DELIVERED" status
+ * (Fulfillment itself has no reliable deliveredAt on this API version) --
+ * checked across every fulfillment in case there are multiple shipments. */
+function buildOrderTimeline(order) {
+  const fulfillments = order.fulfillments || [];
+  const firstFulfillment = fulfillments[0] || null;
+  const deliveredEvent = fulfillments
+    .flatMap((f) => (f.events?.edges || []).map((e) => e.node))
+    .find((e) => e.status === "DELIVERED");
+
+  return [
+    { label: "Placed", done: true, date: order.processedAt },
+    { label: "Paid", done: order.displayFinancialStatus === "PAID", date: null },
+    { label: "Shipped", done: fulfillments.length > 0, date: firstFulfillment?.createdAt || null },
+    { label: "Delivered", done: !!deliveredEvent, date: deliveredEvent?.happenedAt || null },
+  ];
+}
 
 /** For each collection handle, fetches one representative in-stock product
  * (handle/title/image/price) so the recommendation can show a real product

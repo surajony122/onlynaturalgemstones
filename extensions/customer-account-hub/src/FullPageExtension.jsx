@@ -130,6 +130,7 @@ function Extension() {
                       </s-badge>
                     ) : null}
                   </s-stack>
+                  {order.timeline ? <OrderTimeline steps={order.timeline} /> : null}
                   {order.total ? <s-text color="subdued">{order.total}</s-text> : null}
                   {order.statusUrl ? (
                     <s-button href={order.statusUrl} target="_blank" variant="primary" inlineSize="fill">
@@ -249,6 +250,23 @@ function StoneRow({label, stone}) {
         ) : null}
       </s-stack>
     </s-grid-item>
+  );
+}
+
+// Compact Placed -> Paid -> Shipped -> Delivered progress row for an order
+// card: a filled checkmark for completed steps, an outline circle for
+// steps not reached yet. Icons wrap onto a second line on narrow cards
+// rather than shrinking illegibly.
+function OrderTimeline({steps}) {
+  return (
+    <s-stack direction="inline" gap="small-100">
+      {steps.map((step) => (
+        <s-stack key={step.label} direction="block" gap="small-100" alignItems="center">
+          <s-icon type={step.done ? 'check-circle' : 'circle'} tone={step.done ? 'success' : 'neutral'} size="small" />
+          <s-text color="subdued">{step.label}</s-text>
+        </s-stack>
+      ))}
+    </s-stack>
   );
 }
 
