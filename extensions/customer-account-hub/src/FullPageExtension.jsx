@@ -98,19 +98,37 @@ function Extension() {
         {!wishlist || !wishlist.items || wishlist.items.length === 0 ? (
           <s-text>You haven't saved any items to your wishlist yet.</s-text>
         ) : (
-          <s-grid gridTemplateColumns="repeat(auto-fill, minmax(140px, 1fr))" gap="base">
+          <s-grid gridTemplateColumns="repeat(auto-fill, minmax(160px, 1fr))" gap="base">
             {wishlist.items.map((item, i) => (
-              <s-grid-item key={item.handle || i}>
+              <s-grid-item
+                key={item.handle || i}
+                border="base"
+                borderRadius="none"
+                background="base"
+                padding="base"
+              >
                 <s-stack direction="block" gap="small-100">
                   {item.image ? (
-                    <s-product-thumbnail src={item.image} alt={item.title || 'Product'} />
+                    <s-image
+                      src={item.image}
+                      alt={item.title || 'Product'}
+                      inlineSize="fill"
+                      aspectRatio="1"
+                      objectFit="cover"
+                      borderRadius="none"
+                    />
                   ) : null}
-                  <s-text>{item.title || 'Untitled product'}</s-text>
+                  <s-text type="strong">{item.title || 'Untitled product'}</s-text>
                   {item.price ? <s-text color="subdued">{item.price}</s-text> : null}
                   {item.handle ? (
-                    <s-link href={`https://onlynaturalgemstones.com/products/${item.handle}`} target="_blank">
+                    <s-button
+                      href={`https://onlynaturalgemstones.com/products/${item.handle}`}
+                      target="_blank"
+                      variant="primary"
+                      inlineSize="fill"
+                    >
                       View product
-                    </s-link>
+                    </s-button>
                   ) : null}
                 </s-stack>
               </s-grid-item>
@@ -126,9 +144,11 @@ function Extension() {
           </s-text>
         ) : (
           <s-stack direction="block" gap="base">
-            <StoneRow label="Life Stone" stone={recommendation.life} />
-            <StoneRow label="Benefic Stone" stone={recommendation.benefic} />
-            <StoneRow label="Lucky Stone" stone={recommendation.lucky} />
+            <s-grid gridTemplateColumns="repeat(auto-fill, minmax(160px, 1fr))" gap="base">
+              <StoneRow label="Life Stone" stone={recommendation.life} />
+              <StoneRow label="Benefic Stone" stone={recommendation.benefic} />
+              <StoneRow label="Lucky Stone" stone={recommendation.lucky} />
+            </s-grid>
             {recommendation.resultsUrl ? (
               <s-link href={recommendation.resultsUrl} target="_blank">
                 View my full reading
@@ -143,15 +163,42 @@ function Extension() {
 
 function StoneRow({label, stone}) {
   if (!stone || !stone.gem) return null;
+  const product = stone.product;
   return (
-    <s-stack direction="inline" gap="small" alignItems="center">
-      <s-text type="strong">{label}:</s-text>
-      <s-text>{stone.gem}</s-text>
-      {stone.collection ? (
-        <s-link href={`https://onlynaturalgemstones.com/collections/${stone.collection}`} target="_blank">
-          Browse collection
-        </s-link>
-      ) : null}
-    </s-stack>
+    <s-grid-item border="base" borderRadius="none" background="base" padding="base">
+      <s-stack direction="block" gap="small-100">
+        <s-text type="strong">{label}</s-text>
+        <s-text color="subdued">{stone.gem}</s-text>
+        {product && product.image ? (
+          <s-image
+            src={product.image}
+            alt={product.title || stone.gem}
+            inlineSize="fill"
+            aspectRatio="1"
+            objectFit="cover"
+            borderRadius="none"
+          />
+        ) : null}
+        {product ? (
+          <s-text type="strong">{product.title}</s-text>
+        ) : null}
+        {product && product.price ? <s-text color="subdued">{product.price}</s-text> : null}
+        {product ? (
+          <s-button
+            href={`https://onlynaturalgemstones.com/products/${product.handle}`}
+            target="_blank"
+            variant="primary"
+            inlineSize="fill"
+          >
+            View product
+          </s-button>
+        ) : null}
+        {stone.collection ? (
+          <s-link href={`https://onlynaturalgemstones.com/collections/${stone.collection}`} target="_blank">
+            Browse collection
+          </s-link>
+        ) : null}
+      </s-stack>
+    </s-grid-item>
   );
 }

@@ -87,13 +87,68 @@ export const action = async ({ request }) => {
       { ascendant: astroLead.ascendant },
       astroLead.recommendation
     );
+    const life = astroLead.recommendation.life || null;
+    const benefic = astroLead.recommendation.benefic || null;
+    const lucky = astroLead.recommendation.lucky || null;
+
+    let productByCollection = {};
+    try {
+      const admin = await adminClientFor(shop);
+      const handles = [life, benefic, lucky].map((s) => s && s.collection);
+      productByCollection = await getFirstProductForCollections(admin, handles);
+    } catch (err) {
+      console.error("[public.customer-account-data] failed to resolve recommendation products:", err);
+    }
+
+    const withProduct = (stone) =>
+      stone ? { ...stone, product: productByCollection[stone.collection] || null } : null;
+
     recommendation = {
-      life: astroLead.recommendation.life || null,
-      benefic: astroLead.recommendation.benefic || null,
-      lucky: astroLead.recommendation.lucky || null,
+      life: withProduct(life),
+      benefic: withProduct(benefic),
+      lucky: withProduct(lucky),
       resultsUrl,
     };
   }
 
   return cors(Response.json({ signedIn: true, wishlist, recommendation }));
 };
+
+/** For each collection handle, fetches one representative in-stock product
+ * (handle/title/image/price) so the recommendation can show a real product
+ * card instead of just a bare "Browse collection" link. Same aliased
+ * single-request pattern as getProductsByHandles in wishlist.server.js. */
+async function getFirstProductForCollections(admin, handles) {
+  const unique = [...new Set(handles.filter(Boolean))];
+  if (!unique.length) return {};
+
+  try {
+    const queryParts = unique.map(
+      (h, i) =>
+        `c${i}: collectionByHandle(handle: ${JSON.stringify(h)}) {
+          products(first: 1, sortKey: BEST_SELLING, query: "available_for_sale:true") {
+            edges { node { handle title featuredImage { url } priceRangeV2 { minVariantPrice { amount } } } }
+          }
+        }`
+    );
+    const res = await admin.graphql(`#graphql\nquery RecommendationProducts { ${queryParts.join(" ")} }`);
+    const json = await res.json();
+    const result = {};
+    unique.forEach((h, i) => {
+      const node = json?.data?.[`c${i}`]?.products?.edges?.[0]?.node;
+      if (!node) return;
+      result[h] = {
+        handle: node.handle,
+        title: node.title,
+        image: node.featuredImage?.url || "",
+        price: node.priceRangeV2?.minVariantPrice?.amount
+          ? "₹" + Number(node.priceRangeV2.minVariantPrice.amount).toLocaleString("en-IN")
+          : null,
+      };
+    });
+    return result;
+  } catch (err) {
+    console.error("[public.customer-account-data] getFirstProductForCollections failed:", err);
+    return {};
+  }
+}
