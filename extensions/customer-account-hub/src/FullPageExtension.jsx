@@ -47,7 +47,7 @@
 import '@shopify/ui-extensions/preact';
 import {useNavigation} from '@shopify/ui-extensions/customer-account/preact';
 import {render} from 'preact';
-import {useEffect, useState} from 'preact/hooks';
+import {useEffect, useRef, useState} from 'preact/hooks';
 
 // This app's own backend — same Render domain used throughout the rest
 // of this app (Interakt sends, /track routes, etc.).
@@ -158,47 +158,103 @@ function OrdersSection({orders}) {
       {!orders || orders.length === 0 ? (
         <s-text>You haven't placed any orders yet.</s-text>
       ) : (
-        <s-grid gridTemplateColumns="repeat(auto-fill, minmax(160px, 1fr))" gap="base">
+        <s-stack direction="block" gap="base">
           {orders.map((order) => (
-            <s-grid-item key={order.name} border="base" borderRadius="none" background="base" padding="base">
-              <s-stack direction="block" gap="small-100">
-                {order.image ? (
-                  <s-image
-                    src={order.image}
-                    alt={order.name}
-                    inlineSize="fill"
-                    aspectRatio="1"
-                    objectFit="cover"
-                    borderRadius="none"
-                  />
-                ) : null}
-                <s-text type="strong">{order.name}</s-text>
-                {order.date ? <s-text color="subdued">{formatOrderDate(order.date)}</s-text> : null}
-                <s-stack direction="inline" gap="small-100">
-                  {order.fulfillmentStatus ? (
-                    <s-badge tone={goodStatuses.has(order.fulfillmentStatus) ? 'auto' : 'critical'}>
-                      {formatStatusLabel(order.fulfillmentStatus)}
-                    </s-badge>
-                  ) : null}
-                  {order.financialStatus ? (
-                    <s-badge tone={goodStatuses.has(order.financialStatus) ? 'auto' : 'critical'}>
-                      {formatStatusLabel(order.financialStatus)}
-                    </s-badge>
-                  ) : null}
-                </s-stack>
-                {order.timeline ? <OrderTimeline steps={order.timeline} /> : null}
-                {order.total ? <s-text color="subdued">{order.total}</s-text> : null}
-                {order.statusUrl ? (
-                  <s-button href={order.statusUrl} target="_blank" variant="primary" inlineSize="fill">
-                    View order
-                  </s-button>
-                ) : null}
-              </s-stack>
-            </s-grid-item>
+            <OrderRow key={order.name} order={order} />
           ))}
-        </s-grid>
+        </s-stack>
       )}
     </s-section>
+  );
+}
+
+// A compact summary row (name/date/status/total) plus a "View details"
+// button that opens an s-modal with everything else: the full
+// Placed->Delivered timeline, every line item broken into its gemstone +
+// linked Gemstone Customisation charge line, and every property the
+// customer filled in during customisation. Keeps the main list scannable
+// while still surfacing the full bundle/customisation detail on demand.
+function OrderRow({order}) {
+  const modalRef = useRef(null);
+
+  return (
+    <s-box border="base" borderRadius="none" background="base" padding="base">
+      <s-stack direction="block" gap="small-100">
+        <s-stack direction="inline" gap="small-100" alignItems="center">
+          <s-text type="strong">{order.name}</s-text>
+          {order.date ? <s-text color="subdued">{formatOrderDate(order.date)}</s-text> : null}
+        </s-stack>
+        <s-stack direction="inline" gap="small-100">
+          {order.fulfillmentStatus ? (
+            <s-badge tone={goodStatuses.has(order.fulfillmentStatus) ? 'auto' : 'critical'}>
+              {formatStatusLabel(order.fulfillmentStatus)}
+            </s-badge>
+          ) : null}
+          {order.financialStatus ? (
+            <s-badge tone={goodStatuses.has(order.financialStatus) ? 'auto' : 'critical'}>
+              {formatStatusLabel(order.financialStatus)}
+            </s-badge>
+          ) : null}
+        </s-stack>
+        {order.total ? <s-text type="strong">{order.total}</s-text> : null}
+        <s-button variant="primary" onClick={() => modalRef.current?.showOverlay()}>
+          View details
+        </s-button>
+      </s-stack>
+
+      <s-modal ref={modalRef} heading={order.name} size="large">
+        <s-stack direction="block" gap="base">
+          {order.timeline ? <OrderTimeline steps={order.timeline} /> : null}
+          <s-stack direction="block" gap="small-100">
+            {(order.bundles || []).map((bundle, i) => (
+              <OrderBundleItem key={i} bundle={bundle} />
+            ))}
+          </s-stack>
+          {order.total ? <s-text type="strong">{order.total}</s-text> : null}
+        </s-stack>
+        {order.statusUrl ? (
+          <s-button slot="primary-action" href={order.statusUrl} target="_blank" variant="primary">
+            View order
+          </s-button>
+        ) : null}
+      </s-modal>
+    </s-box>
+  );
+}
+
+// One row per gemstone in the order: its own thumbnail/title/quantity,
+// plus -- when it was customized -- every detail the customer filled in on
+// the linked "Gemstone Customisation" charge line (Metal Type, Design
+// Code, Size, Lab Certification, and Pooja/energisation wearer details
+// when selected). Internal-only properties (the Linked Gemstone pairing
+// key, the Setting SKU variant lookup) are already stripped server-side.
+function OrderBundleItem({bundle}) {
+  return (
+    <s-box border="base" borderRadius="none" padding="base">
+      <s-stack direction="inline" gap="base">
+        {bundle.image ? (
+          <s-box inlineSize="72px" blockSize="72px">
+            <s-image src={bundle.image} alt={bundle.title} inlineSize="fill" aspectRatio="1" objectFit="cover" borderRadius="none" />
+          </s-box>
+        ) : null}
+        <s-stack direction="block" gap="small-100">
+          <s-text type="strong">
+            {bundle.title}
+            {bundle.quantity > 1 ? ` × ${bundle.quantity}` : ''}
+          </s-text>
+          {bundle.customisation && bundle.customisation.properties.length > 0 ? (
+            <s-stack direction="block" gap="small-100">
+              <s-text color="subdued">Gemstone Customisation</s-text>
+              {bundle.customisation.properties.map((p) => (
+                <s-text key={p.label} color="subdued">
+                  {p.label}: {p.value}
+                </s-text>
+              ))}
+            </s-stack>
+          ) : null}
+        </s-stack>
+      </s-stack>
+    </s-box>
   );
 }
 

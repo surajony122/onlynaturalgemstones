@@ -68,7 +68,17 @@ export const action = async ({ request }) => {
                 displayFulfillmentStatus
                 displayFinancialStatus
                 currentTotalPriceSet { presentmentMoney { amount currencyCode } }
-                lineItems(first: 1) { edges { node { image { url } } } }
+                lineItems(first: 20) {
+                  edges {
+                    node {
+                      title
+                      quantity
+                      image { url }
+                      variant { id }
+                      customAttributes { key value }
+                    }
+                  }
+                }
                 fulfillments(first: 5) {
                   events(first: 20) {
                     edges { node { status happenedAt } }
@@ -101,7 +111,6 @@ export const action = async ({ request }) => {
     orders = (json?.data?.customer?.orders?.edges || []).map(({ node }) => ({
       name: node.name,
       date: node.processedAt,
-      image: node.lineItems?.edges?.[0]?.node?.image?.url || "",
       fulfillmentStatus: node.displayFulfillmentStatus,
       financialStatus: node.displayFinancialStatus,
       total: node.currentTotalPriceSet?.presentmentMoney?.amount
@@ -109,6 +118,7 @@ export const action = async ({ request }) => {
         : null,
       statusUrl: node.statusPageUrl || null,
       timeline: buildOrderTimeline(node),
+      bundles: buildOrderBundles(node),
     }));
   } catch (err) {
     console.error("[public.customer-account-data] failed to resolve customer email/orders:", err);
@@ -213,6 +223,66 @@ function buildOrderTimeline(order) {
     { label: "Shipped", done: shipped, date: null },
     { label: "Delivered", done: !!deliveredEvent, date: deliveredEvent?.happenedAt || null },
   ];
+}
+
+// Line-item properties that are either the internal pairing key or a raw
+// variant-id lookup value, not something a customer typed in -- never shown.
+// See CLAUDE.md "Architecture: the cart bundle system" -- same
+// Linked Gemstone / _Linked Gemstone pairing property the cart drawer and
+// cart page use, keyed by the root line's numeric variant id.
+const HIDDEN_CUSTOMISATION_KEYS = new Set(["Linked Gemstone", "_Linked Gemstone", "Setting SKU"]);
+
+/** Numeric id from a GID like "gid://shopify/ProductVariant/123" -- the
+ * cart-side code stores the plain numeric variant id in the
+ * "Linked Gemstone" property (via Liquid's `variant.id`), so this strips
+ * the GID wrapper the Admin API returns to compare them. */
+function numericIdFromGid(gid) {
+  if (!gid) return null;
+  const parts = String(gid).split("/");
+  return parts[parts.length - 1] || null;
+}
+
+/** Regroups an order's flat line items back into gemstone + linked
+ * "Gemstone Customisation" charge line pairs, mirroring the cart's own
+ * bundle logic (see CLAUDE.md). A customisation line is identified by
+ * carrying a "Linked Gemstone" property whose value is its paired root
+ * line's variant id; every other line is treated as a root/standalone
+ * line and matched against it. Orphaned customisation lines (no matching
+ * root -- the legacy ₹1 utility-variant safety net firing) are dropped
+ * rather than shown, since that path is documented as one that should
+ * never actually occur. */
+function buildOrderBundles(order) {
+  const lines = (order.lineItems?.edges || []).map(({ node }) => node);
+
+  const customisationByLinkedVariant = new Map();
+  const rootLines = [];
+  lines.forEach((line) => {
+    const attrs = line.customAttributes || [];
+    const linked = attrs.find((a) => a.key === "Linked Gemstone" || a.key === "_Linked Gemstone");
+    if (linked && linked.value) {
+      customisationByLinkedVariant.set(String(linked.value), line);
+    } else {
+      rootLines.push(line);
+    }
+  });
+
+  return rootLines.map((line) => {
+    const variantId = numericIdFromGid(line.variant?.id);
+    const customisationLine = variantId ? customisationByLinkedVariant.get(variantId) : null;
+    const customisation = customisationLine
+      ? {
+          properties: (customisationLine.customAttributes || [])
+            .filter((a) => !HIDDEN_CUSTOMISATION_KEYS.has(a.key) && !a.key.startsWith("_"))
+            .map((a) => ({ label: a.key, value: a.value })),
+        }
+      : null;
+    return {
+      title: line.title,
+      quantity: line.quantity,
+      image: line.image?.url || "",
+      customisation,
+    };
+  });
 }
 
 /** For each collection handle, fetches one representative in-stock product
