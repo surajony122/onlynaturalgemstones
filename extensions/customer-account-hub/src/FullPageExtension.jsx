@@ -1,8 +1,12 @@
 /**
  * Full-page Customer Account UI extension — a new "My Gemstone Hub" page
  * inside Shopify's hosted customer accounts (target
- * customer-account.page.render), showing the customer's saved wishlist
- * and their gem-recommendation reading side by side.
+ * customer-account.page.render), showing the customer's recent orders,
+ * saved wishlist, and their gem-recommendation reading side by side.
+ * Orders come straight from the Admin API (no separate lead table), since
+ * Shopify's native order-history page can't be redesigned from an
+ * extension -- only supplemented with fixed injection-point blocks -- so
+ * this page is a fully custom alternative rather than a reskin of it.
  *
  * This store uses Shopify's NEW hosted customer accounts (confirmed via
  * onlynaturalgemstones.com/account/login redirecting to
@@ -90,10 +94,55 @@ function Extension() {
     );
   }
 
-  const {wishlist, recommendation} = state.data || {};
+  const {wishlist, recommendation, orders} = state.data || {};
 
   return (
     <s-page heading="My Gemstone Hub" subheading="Your saved items and personalised gemstone recommendation">
+      <s-section heading="My Orders">
+        {!orders || orders.length === 0 ? (
+          <s-text>You haven't placed any orders yet.</s-text>
+        ) : (
+          <s-grid gridTemplateColumns="repeat(auto-fill, minmax(160px, 1fr))" gap="base">
+            {orders.map((order) => (
+              <s-grid-item key={order.name} border="base" borderRadius="none" background="base" padding="base">
+                <s-stack direction="block" gap="small-100">
+                  {order.image ? (
+                    <s-image
+                      src={order.image}
+                      alt={order.name}
+                      inlineSize="fill"
+                      aspectRatio="1"
+                      objectFit="cover"
+                      borderRadius="none"
+                    />
+                  ) : null}
+                  <s-text type="strong">{order.name}</s-text>
+                  {order.date ? <s-text color="subdued">{formatOrderDate(order.date)}</s-text> : null}
+                  <s-stack direction="inline" gap="small-100">
+                    {order.fulfillmentStatus ? (
+                      <s-badge tone={goodStatuses.has(order.fulfillmentStatus) ? 'auto' : 'critical'}>
+                        {formatStatusLabel(order.fulfillmentStatus)}
+                      </s-badge>
+                    ) : null}
+                    {order.financialStatus ? (
+                      <s-badge tone={goodStatuses.has(order.financialStatus) ? 'auto' : 'critical'}>
+                        {formatStatusLabel(order.financialStatus)}
+                      </s-badge>
+                    ) : null}
+                  </s-stack>
+                  {order.total ? <s-text color="subdued">{order.total}</s-text> : null}
+                  {order.statusUrl ? (
+                    <s-button href={order.statusUrl} target="_blank" variant="primary" inlineSize="fill">
+                      View order
+                    </s-button>
+                  ) : null}
+                </s-stack>
+              </s-grid-item>
+            ))}
+          </s-grid>
+        )}
+      </s-section>
+
       <s-section heading="My Wishlist">
         {!wishlist || !wishlist.items || wishlist.items.length === 0 ? (
           <s-text>You haven't saved any items to your wishlist yet.</s-text>
@@ -201,4 +250,27 @@ function StoneRow({label, stone}) {
       </s-stack>
     </s-grid-item>
   );
+}
+
+// Fulfillment/financial status values that read as "all good" get the
+// neutral 'auto' badge tone; anything else (unfulfilled, refunded, voided,
+// pending, etc.) gets 'critical' so it stands out as needing attention.
+// s-badge only exposes these two tones on this surface.
+const goodStatuses = new Set(['FULFILLED', 'PAID']);
+
+function formatStatusLabel(status) {
+  if (!status) return '';
+  return status
+    .toLowerCase()
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+function formatOrderDate(iso) {
+  try {
+    return new Date(iso).toLocaleDateString('en-IN', {day: 'numeric', month: 'short', year: 'numeric'});
+  } catch {
+    return '';
+  }
 }

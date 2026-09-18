@@ -44,21 +44,50 @@ export const action = async ({ request }) => {
   }
 
   let email = null;
+  let orders = [];
   try {
     const admin = await adminClientFor(shop);
     const res = await admin.graphql(
       `#graphql
-      query CustomerEmail($id: ID!) { customer(id: $id) { email } }`,
+      query CustomerData($id: ID!) {
+        customer(id: $id) {
+          email
+          orders(first: 10, sortKey: PROCESSED_AT, reverse: true) {
+            edges {
+              node {
+                name
+                processedAt
+                statusPageUrl
+                displayFulfillmentStatus
+                displayFinancialStatus
+                currentTotalPriceSet { presentmentMoney { amount currencyCode } }
+                lineItems(first: 1) { edges { node { image { url } } } }
+              }
+            }
+          }
+        }
+      }`,
       { variables: { id: customerGid } }
     );
     const json = await res.json();
     email = json?.data?.customer?.email || null;
+    orders = (json?.data?.customer?.orders?.edges || []).map(({ node }) => ({
+      name: node.name,
+      date: node.processedAt,
+      image: node.lineItems?.edges?.[0]?.node?.image?.url || "",
+      fulfillmentStatus: node.displayFulfillmentStatus,
+      financialStatus: node.displayFinancialStatus,
+      total: node.currentTotalPriceSet?.presentmentMoney?.amount
+        ? "₹" + Number(node.currentTotalPriceSet.presentmentMoney.amount).toLocaleString("en-IN")
+        : null,
+      statusUrl: node.statusPageUrl || null,
+    }));
   } catch (err) {
-    console.error("[public.customer-account-data] failed to resolve customer email:", err);
+    console.error("[public.customer-account-data] failed to resolve customer email/orders:", err);
   }
 
   if (!email) {
-    return cors(Response.json({ signedIn: true, wishlist: { items: [] }, recommendation: null }));
+    return cors(Response.json({ signedIn: true, wishlist: { items: [] }, recommendation: null, orders: [] }));
   }
 
   const [wishlistLead, astroLead] = await Promise.all([
@@ -111,7 +140,7 @@ export const action = async ({ request }) => {
     };
   }
 
-  return cors(Response.json({ signedIn: true, wishlist, recommendation }));
+  return cors(Response.json({ signedIn: true, wishlist, recommendation, orders }));
 };
 
 /** For each collection handle, fetches one representative in-stock product
