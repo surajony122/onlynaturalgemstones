@@ -714,3 +714,16 @@ model WishlistLead {
   // dashboard — same purpose as AstroLead.notes.
   notes           String?
 }
+
+// Simple per-article hit counter for the blog post page's "Views" display
+// (per explicit request: a plain hit counter, no per-visitor dedup) — see
+// app/routes/proxy.article-view.jsx. articleId is Shopify's own numeric
+// article id (unique across the whole store, not just within one blog),
+// so one row per article regardless of which blog it's in.
+model ArticleView {
+  id        String   @id @default(cuid())
+  shop      String?
+  articleId String   @unique
+  count     Int      @default(0)
+  updatedAt DateTime @updatedAt
+}
