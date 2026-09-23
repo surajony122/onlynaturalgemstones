@@ -41,7 +41,7 @@ const INTERAKT_CREATE_CAMPAIGN_URL = "https://api.interakt.ai/v1/public/create-c
 // this one, so this file stays a leaf with no import back to it, avoiding
 // a circular dependency. Used as the header image whenever a caller
 // doesn't pass its own headerImageUrl.
-const FALLBACK_HEADER_IMAGE_URL = "https://onlynaturalgemstones.com/cdn/shop/files/ONG_logo_home.png";
+const FALLBACK_HEADER_IMAGE_URL = "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/ONG_whatapp_final.jpg";
 
 // Used as the "View Order" button's destination whenever a caller
 // doesn't pass its own orderStatusUrl (return/refund WhatsApp
