@@ -1111,31 +1111,28 @@ export async function generateInvoicePdfBuffer(html) {
 }
 
 /**
- * Generates (or re-generates, reusing the same invoice number) the GST
- * invoice PDF for one order and emails it as an attachment — the only
- * entry point the "Send Invoice" admin action extension's backend route
- * calls.
+ * Builds the GST invoice PDF for one order (generating a new invoice
+ * number, or reusing the existing one for a re-download) WITHOUT
+ * emailing it -- the one shared code path behind both
+ * sendOrderInvoiceEmail below (attaches it to an email) and the
+ * Invoices page's own "Download PDF" button
+ * (app.invoices.jsx / app.invoices.download.jsx), so a downloaded PDF
+ * and an emailed one are always byte-identical rather than two
+ * separately-maintained builds that could drift apart.
  *
  * @param {object} admin - authenticated Admin GraphQL client
  * @param {object} settings - getAppSettings(shop) result
  * @param {string} shop - the shop domain
  * @param {string} orderGid - gid://shopify/Order/...
- * @returns {Promise<string>} "OK: .../FAILED: ..." status string, same
- *   convention as every other send* helper in this app
+ * @returns {Promise<{ok:true, pdfBuffer:Buffer, invoiceNumber:string, order:object, customerEmail:string|null, customerName:string}|{ok:false, error:string}>}
  */
-export async function sendOrderInvoiceEmail(admin, settings, shop, orderGid) {
-  if (!settings.gmailUser || !settings.gmailAppPassword) {
-    return "skipped: Gmail not configured (Settings page)";
-  }
+export async function buildInvoicePdf(admin, settings, shop, orderGid) {
   if (!settings.invoiceGstin) {
-    return "skipped: GSTIN not set (Settings page)";
+    return { ok: false, error: "GSTIN not set (Settings page)" };
   }
 
   const order = await fetchOrderForInvoice(admin, orderGid);
-  const email = order.customer?.email || order.email || order.billingAddress?.email;
-  if (!email) {
-    return "skipped: no email address on this order";
-  }
+  const email = order.customer?.email || order.email || order.billingAddress?.email || null;
 
   const { invoiceNumber } = await getOrCreateInvoiceNumber(shop, orderGid, order.name);
   const gst = computeInvoiceGst(order, settings);
@@ -1218,7 +1215,7 @@ export async function sendOrderInvoiceEmail(admin, settings, shop, orderGid) {
     invoice_date: formatDateDMY(new Date()),
     order_number: esc(order.name),
     customer_name: esc(customerName),
-    customer_email: esc(email),
+    customer_email: esc(email || "—"),
     customer_phone: esc(order.billingAddress?.phone || order.shippingAddress?.phone || "—"),
     // includeName/includePhone: false here -- the default PDF template's
     // customer block already prints {{customer_name}} and
@@ -1251,15 +1248,51 @@ export async function sendOrderInvoiceEmail(admin, settings, shop, orderGid) {
     pdfBuffer = await generateInvoicePdfBuffer(html);
   } catch (err) {
     console.error("[orderInvoice] PDF generation failed:", err);
-    await prisma.orderInvoice.update({
-      where: { orderId: orderGid },
-      data: { status: `FAILED: PDF generation error: ${err.message}`, lastSentAt: new Date() },
-    });
-    return `FAILED: PDF generation error: ${err.message}`;
+    return { ok: false, error: `PDF generation error: ${err.message}` };
   }
 
-  // shopInfo was already fetched above (for the PDF's own logo) --
-  // reused here rather than fetching it a second time.
+  return { ok: true, pdfBuffer, invoiceNumber, order, customerEmail: email, customerName };
+}
+
+/**
+ * Generates (or re-generates, reusing the same invoice number) the GST
+ * invoice PDF for one order and emails it as an attachment — the only
+ * entry point the "Send Invoice" admin action extension's backend route
+ * calls. Builds the PDF via buildInvoicePdf above so an emailed invoice
+ * and a downloaded one (app.invoices.download.jsx) are always identical.
+ *
+ * @param {object} admin - authenticated Admin GraphQL client
+ * @param {object} settings - getAppSettings(shop) result
+ * @param {string} shop - the shop domain
+ * @param {string} orderGid - gid://shopify/Order/...
+ * @returns {Promise<string>} "OK: .../FAILED: ..." status string, same
+ *   convention as every other send* helper in this app
+ */
+export async function sendOrderInvoiceEmail(admin, settings, shop, orderGid) {
+  if (!settings.gmailUser || !settings.gmailAppPassword) {
+    return "skipped: Gmail not configured (Settings page)";
+  }
+
+  const built = await buildInvoicePdf(admin, settings, shop, orderGid);
+  if (!built.ok) {
+    if (built.error.startsWith("GSTIN")) return `skipped: ${built.error}`;
+    await prisma.orderInvoice.update({
+      where: { orderId: orderGid },
+      data: { status: `FAILED: ${built.error}`, lastSentAt: new Date() },
+    }).catch(() => {});
+    return `FAILED: ${built.error}`;
+  }
+  const { pdfBuffer, invoiceNumber, order, customerEmail: email, customerName } = built;
+  if (!email) {
+    return "skipped: no email address on this order";
+  }
+
+  // shopInfo is fetched fresh here (rather than threaded through from
+  // buildInvoicePdf) -- it's a cheap, cached lookup (see its own
+  // memoization) and keeping buildInvoicePdf's return shape focused on
+  // just what a download needs is simpler than growing it to also carry
+  // every field only the email body wants.
+  const shopInfo = await getShopFooterInfo(admin);
   const orderStatusUrl = shopInfo.url;
   const firstName = order.customer?.firstName || customerName.split(" ")[0] || "there";
 

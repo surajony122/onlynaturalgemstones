@@ -159,7 +159,7 @@ export default function InvoicesPage() {
 
   return (
     <PageIn>
-      <PageHeader title="GST Invoices" description="Every recent order, with GST already computed — click Send to email a customer their invoice PDF. Nothing sends automatically." />
+      <PageHeader title="GST Invoices" description="Every recent order, with GST already computed — click Send to email a customer their invoice PDF, or Download PDF to save it yourself. Nothing sends automatically." />
 
       {!data.gstConfigured && (
         <Card style={{ marginBottom: "16px", background: "#fff8ec", borderColor: "#e8c98a" }}>
@@ -240,24 +240,56 @@ export default function InvoicesPage() {
                       )}
                     </td>
                     <td style={tdStyle}>
-                      <button
-                        type="button"
-                        onClick={() => handleSend(row)}
-                        disabled={isSending || !data.gstConfigured || !data.gmailConfigured}
-                        style={{
-                          padding: "7px 14px",
-                          borderRadius: "8px",
-                          border: "none",
-                          background: alreadySent ? brand.panel : brand.accent,
-                          color: alreadySent ? brand.body : "#fff",
-                          fontSize: "12.5px",
-                          fontWeight: 600,
-                          cursor: "pointer",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {isSending ? "Sending…" : alreadySent ? "Resend" : "Send Invoice"}
-                      </button>
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        <button
+                          type="button"
+                          onClick={() => handleSend(row)}
+                          disabled={isSending || !data.gstConfigured || !data.gmailConfigured}
+                          style={{
+                            padding: "7px 14px",
+                            borderRadius: "8px",
+                            border: "none",
+                            background: alreadySent ? brand.panel : brand.accent,
+                            color: alreadySent ? brand.body : "#fff",
+                            fontSize: "12.5px",
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {isSending ? "Sending…" : alreadySent ? "Resend" : "Send Invoice"}
+                        </button>
+                        {/* Downloads the same PDF sendOrderInvoiceEmail would attach --
+                            doesn't require Gmail to be configured, only GSTIN (the
+                            download route generates it fresh via buildInvoicePdf, it
+                            never touches email at all). target="_blank" so triggering
+                            a download doesn't navigate the embedded app view away from
+                            this table. */}
+                        <a
+                          href={`/app/invoices/download?orderId=${encodeURIComponent(row.id)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-disabled={!data.gstConfigured}
+                          onClick={(e) => {
+                            if (!data.gstConfigured) e.preventDefault();
+                          }}
+                          style={{
+                            padding: "7px 14px",
+                            borderRadius: "8px",
+                            border: `1px solid ${brand.border}`,
+                            background: "#fff",
+                            color: data.gstConfigured ? brand.body : brand.muted,
+                            fontSize: "12.5px",
+                            fontWeight: 600,
+                            cursor: data.gstConfigured ? "pointer" : "not-allowed",
+                            whiteSpace: "nowrap",
+                            textDecoration: "none",
+                            display: "inline-block",
+                          }}
+                        >
+                          Download PDF
+                        </a>
+                      </div>
                     </td>
                   </tr>
                 );
