@@ -128,6 +128,8 @@ export default function InvoicesPage() {
   // Tracks which order id is mid-send so only that row's button shows
   // "Sending…" -- sendFetcher is shared across every row's button.
   const [sendingId, setSendingId] = useState(null);
+  // Tracks which order id is mid-download, same pattern as sendingId.
+  const [downloadingId, setDownloadingId] = useState(null);
 
   const filteredRows = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -153,6 +155,44 @@ export default function InvoicesPage() {
   const handleSend = (row) => {
     setSendingId(row.id);
     sendFetcher.submit({ intent: "send", orderId: row.id, orderName: row.name }, { method: "POST" });
+  };
+
+  // A plain <a href> (what this used to be) navigates the browser
+  // straight to the Render domain, OUTSIDE the embedded admin iframe's
+  // authenticated context -- confirmed live: it returned Shopify's own
+  // embedded-app auth "bounce" page (a stub that loads app-bridge.js and
+  // expects to redirect) instead of the PDF, since a raw navigation can
+  // never carry the session token authenticate.admin() needs. A same-
+  // origin fetch() from here runs INSIDE the already-authenticated app
+  // page instead (identical auth context to sendFetcher's own POST
+  // above, which already works), so it succeeds -- the PDF comes back
+  // as a blob, which a temporary, invisible <a download> then saves.
+  const handleDownload = async (row) => {
+    setDownloadingId(row.id);
+    try {
+      const res = await fetch(`/app/invoices/download?orderId=${encodeURIComponent(row.id)}`);
+      if (!res.ok) {
+        const message = await res.text().catch(() => "");
+        toast.show(message || `Download failed (${res.status})`, { isError: true });
+        return;
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition") || "";
+      const filenameMatch = disposition.match(/filename="([^"]+)"/);
+      const filename = filenameMatch ? filenameMatch[1] : `${row.invoiceNumber || row.name}.pdf`;
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      toast.show(String(err.message || err), { isError: true });
+    } finally {
+      setDownloadingId(null);
+    }
   };
 
   const loadMoreHref = data.endCursor ? `?cursor=${encodeURIComponent(data.endCursor)}` : null;
@@ -212,6 +252,7 @@ export default function InvoicesPage() {
             ) : (
               filteredRows.map((row) => {
                 const isSending = sendingId === row.id && sendFetcher.state !== "idle";
+                const isDownloading = downloadingId === row.id;
                 const alreadySent = row.invoiceStatus?.startsWith("OK");
                 return (
                   <tr key={row.id}>
@@ -260,19 +301,20 @@ export default function InvoicesPage() {
                           {isSending ? "Sending…" : alreadySent ? "Resend" : "Send Invoice"}
                         </button>
                         {/* Downloads the same PDF sendOrderInvoiceEmail would attach --
-                            doesn't require Gmail to be configured, only GSTIN (the
-                            download route generates it fresh via buildInvoicePdf, it
-                            never touches email at all). target="_blank" so triggering
-                            a download doesn't navigate the embedded app view away from
-                            this table. */}
-                        <a
-                          href={`/app/invoices/download?orderId=${encodeURIComponent(row.id)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          aria-disabled={!data.gstConfigured}
-                          onClick={(e) => {
-                            if (!data.gstConfigured) e.preventDefault();
-                          }}
+                            doesn't require Gmail to be configured, only GSTIN. A plain
+                            <a href target="_blank"> here (the first version of this)
+                            navigated straight to the Render domain OUTSIDE the embedded
+                            admin iframe's authenticated context, so it hit Shopify's own
+                            auth "bounce" page instead of the PDF -- confirmed live. A
+                            same-origin fetch from handleDownload (same auth context as
+                            sendFetcher's already-working POST above) fixes that, and
+                            also means clicking this never opens or navigates to any URL
+                            at all -- just a background fetch + an immediate file save,
+                            per explicit request. */}
+                        <button
+                          type="button"
+                          onClick={() => handleDownload(row)}
+                          disabled={isDownloading || !data.gstConfigured}
                           style={{
                             padding: "7px 14px",
                             borderRadius: "8px",
@@ -283,12 +325,10 @@ export default function InvoicesPage() {
                             fontWeight: 600,
                             cursor: data.gstConfigured ? "pointer" : "not-allowed",
                             whiteSpace: "nowrap",
-                            textDecoration: "none",
-                            display: "inline-block",
                           }}
                         >
-                          Download PDF
-                        </a>
+                          {isDownloading ? "Downloading…" : "Download PDF"}
+                        </button>
                       </div>
                     </td>
                   </tr>
