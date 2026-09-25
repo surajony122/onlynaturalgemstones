@@ -44,6 +44,7 @@ import {
   sendWishlistWhatsApp,
   sendRefundProcessedWhatsApp,
 } from "../utils/interakt.server";
+import { sendTestEmail } from "../utils/testEmails.server";
 import { checkGmail, checkGoogleSheets, checkInterakt, checkGooglePlaces } from "../utils/serviceHealth.server";
 import { getOrderProcessingEmailTemplate, ORDER_PROCESSING_EMAIL_PLACEHOLDERS, getOrderProcessingEmailSubject } from "../utils/orderProcessingEmail.server";
 import { getOrderInvoiceTemplate, ORDER_INVOICE_PLACEHOLDERS, DEFAULT_INVOICE_NUMBER_PREFIX, DEFAULT_INVOICE_CUSTOMISATION_LINK_LABEL, getInvoiceEmailTemplate, ORDER_INVOICE_EMAIL_PLACEHOLDERS, fetchShopSellerInfo } from "../utils/orderInvoice.server";
@@ -277,6 +278,18 @@ export const action = async ({ request }) => {
       status = "threw: " + String((err && err.message) || err);
     }
     return { intent, ok: status.startsWith("OK"), status };
+  }
+
+  if (intent === "sendTestEmail") {
+    const to = formData.get("testEmailTo")?.trim();
+    const kind = formData.get("testEmailKind");
+    let status;
+    try {
+      status = await sendTestEmail(admin, session.shop, kind, to);
+    } catch (err) {
+      status = "threw: " + String((err && err.message) || err);
+    }
+    return { intent, ok: String(status).startsWith("OK"), status };
   }
 
   if (intent === "sendTestWishlistWhatsapp") {
@@ -940,6 +953,9 @@ export default function SettingsPage() {
   const testFetcher = useFetcher();
   const testOrderFetcher = useFetcher();
   const testWishlistFetcher = useFetcher();
+  const testEmailFetcher = useFetcher();
+  const isSendingTestEmail = testEmailFetcher.state !== "idle";
+  const [testEmailTo, setTestEmailTo] = useState("");
   const testRefundFetcher = useFetcher();
   const toast = useToast();
   const isSendingTest = testFetcher.state !== "idle";
@@ -1082,6 +1098,13 @@ export default function SettingsPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [testOrderFetcher.data]);
+
+  useEffect(() => {
+    if (testEmailFetcher.data?.intent === "sendTestEmail") {
+      toast.show(testEmailFetcher.data.status || (testEmailFetcher.data.ok ? "Sent" : "Failed"), { isError: !testEmailFetcher.data.ok });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [testEmailFetcher.data]);
 
   useEffect(() => {
     if (testWishlistFetcher.data?.intent === "sendTestWishlistWhatsapp") {
@@ -1234,6 +1257,30 @@ export default function SettingsPage() {
             )}
           </select>
           <div><SaveButton isSaving={wishlistTiming.isSaving} onClick={saveWishlistTiming} /></div>
+        </Card>
+
+        <Card style={{ marginBottom: "16px" }}>
+          <h2 style={{ fontSize: "14px", fontWeight: 700, margin: "0 0 10px", color: brand.ink }}>Send a test email</h2>
+          <Explain summary="What this sends">
+            Sends the real email, built by the same code as the ones customers get, to the address you type below —
+            nothing goes to any customer. The wishlist email uses a few of your active products, the order-processing
+            email uses sample order #TEST-1001, and the astro-advice email uses your most recent saved astro lead.
+          </Explain>
+          <label style={labelStyle} htmlFor="testEmailTo">Send to</label>
+          <input id="testEmailTo" style={{ ...fieldStyle, maxWidth: "320px" }} type="email" placeholder="you@example.com" value={testEmailTo} onChange={(e) => setTestEmailTo(e.target.value)} />
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            {[["wishlist", "Wishlist email"], ["processing", "Order processing email"], ["astro", "Astro advice email"]].map(([kind, label]) => (
+              <button
+                key={kind}
+                type="button"
+                disabled={isSendingTestEmail || !testEmailTo}
+                onClick={() => testEmailFetcher.submit({ intent: "sendTestEmail", testEmailKind: kind, testEmailTo }, { method: "POST" })}
+                style={{ ...secondaryBtn, padding: "9px 16px", fontSize: "12.5px", opacity: isSendingTestEmail || !testEmailTo ? 0.6 : 1 }}
+              >
+                {isSendingTestEmail && testEmailFetcher.formData?.get("testEmailKind") === kind ? "Sending…" : label}
+              </button>
+            ))}
+          </div>
         </Card>
 
         <GroupBanner icon="key">Connect your accounts — one-time technical setup</GroupBanner>

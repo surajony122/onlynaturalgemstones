@@ -863,7 +863,7 @@ function buildWishlistEmailHtml({ firstName, products, shopInfo, pixelUrl, viewA
                     <table cellpadding="0" cellspacing="0" border="0" align="center">
                       <tr>
                         <td valign="middle" style="padding-right:6px;">
-                          <img src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/Email.png?v=1788596216" alt="Email" width="18" height="18" class="contact-icon">
+                          <img src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/email_icon_24px.png?v=1790236665" alt="Email" width="18" class="contact-icon">
                         </td>
                         <td valign="middle">
                           <a href="mailto:${esc(shopInfo.email)}" class="contact-link">${esc(shopInfo.email)}</a>
@@ -886,7 +886,7 @@ function buildWishlistEmailHtml({ firstName, products, shopInfo, pixelUrl, viewA
 </html>`;
 }
 
-async function sendWishlistEmail(admin, settings, email, handles, products, trackingId) {
+export async function sendWishlistEmail(admin, settings, email, handles, products, trackingId) {
   if (!settings.gmailUser || !settings.gmailAppPassword) {
     return "skipped: Gmail user / app password not set (Settings page or GMAIL_USER / GMAIL_APP_PASSWORD env vars)";
   }

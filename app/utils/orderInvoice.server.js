@@ -430,7 +430,7 @@ table{border-spacing:0;border-collapse:collapse} img{border:0;display:block} a{t
                     <table cellpadding="0" cellspacing="0" border="0" align="center">
                       <tr>
                         <td valign="middle" style="padding-right: 6px;">
-                          <img src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/Email.png?v=1788596216" alt="Email" width="18" height="18" class="contact-icon">
+                          <img src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/email_icon_24px.png?v=1790236665" alt="Email" width="18" class="contact-icon">
                         </td>
                         <td valign="middle">
                           <a href="mailto:{{shop_email}}" class="contact-link">{{shop_email}}</a>
