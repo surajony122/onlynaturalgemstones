@@ -47,8 +47,24 @@ async function sendWishlistWhatsAppForLead(settings, lead) {
 export async function handleWishlistSync(admin, shop, data) {
   const email = (data.email || "").trim();
   const handles = Array.isArray(data.productHandles) ? data.productHandles.filter(Boolean) : [];
-  if (!email || !handles.length) {
-    return { error: "email and at least one productHandle are required" };
+  if (!email) {
+    return { error: "email is required" };
+  }
+
+  // A customer who removes their LAST item now syncs an empty list too
+  // (the theme used to skip that call, so this app kept the old
+  // snapshot: the account tab kept showing removed items and a reminder
+  // could still go out listing them). Recorded as its own newest row --
+  // pre-marked "skipped" so the reminder cron never picks it up -- which
+  // is what buildWishlistAndRecommendation reads as the customer's
+  // current wishlist. Ignored when this email has never synced anything,
+  // so a stray empty POST for an unknown address creates no row at all.
+  const emptied = handles.length === 0;
+  if (emptied) {
+    const earlier = await prisma.wishlistLead.findFirst({ where: { shop: shop || null, email } });
+    if (!earlier) {
+      return { ok: true, emailSendStatus: "ignored: empty wishlist and no earlier sync for this email" };
+    }
   }
 
   const trackingId = crypto.randomUUID();
@@ -56,7 +72,7 @@ export async function handleWishlistSync(admin, shop, data) {
   // Resolved once, up front, so the database row (for the Wishlist Leads
   // dashboard's item details, and later reused as-is when the email
   // actually sends) has real product data from the start.
-  const products = await getProductsByHandles(admin, handles);
+  const products = emptied ? [] : await getProductsByHandles(admin, handles);
 
   let lead;
   try {
@@ -68,15 +84,22 @@ export async function handleWishlistSync(admin, shop, data) {
         phone: data.phone || null,
         productHandles: handles,
         products,
-        // emailSendStatus stays null (pending) — processDueWishlistEmails
-        // picks this up once the configured interval has passed since
-        // the customer's LATEST sync (this row, unless a newer one
-        // arrives before then, which pushes the debounce point out).
+        // Non-empty: emailSendStatus stays null (pending) --
+        // processDueWishlistEmails picks this up once the configured
+        // interval has passed since the customer's LATEST sync (this
+        // row, unless a newer one arrives before then, which pushes the
+        // debounce point out). Emptied: already resolved, never sent.
+        emailSendStatus: emptied ? "skipped: customer emptied their wishlist" : undefined,
       },
     });
   } catch (dbErr) {
     console.error("[wishlist] failed to save lead to database:", dbErr);
     return { error: "Failed to save" };
+  }
+
+  // Nothing to email and no items worth a Sheet row.
+  if (emptied) {
+    return { ok: true, emailSendStatus: "skipped: customer emptied their wishlist" };
   }
 
   // Fire-and-forget, same reasoning as astroAdvice.server.js's background
@@ -209,6 +232,7 @@ export async function resendWishlistLeadEmail(admin, leadId) {
   const settings = await getAppSettings(lead.shop);
   const handles = Array.isArray(lead.productHandles) ? lead.productHandles : [];
   const products = Array.isArray(lead.products) ? lead.products : [];
+  if (!handles.length) return "skipped: this wishlist is empty";
 
   let status;
   try {
@@ -237,6 +261,7 @@ export async function resendWishlistLeadEmail(admin, leadId) {
 export async function resendWishlistWhatsapp(leadId) {
   const lead = await prisma.wishlistLead.findUnique({ where: { id: leadId } });
   if (!lead) return "error: lead not found";
+  if (!Array.isArray(lead.productHandles) || !lead.productHandles.length) return "skipped: this wishlist is empty";
 
   const settings = await getAppSettings(lead.shop);
   let status;
