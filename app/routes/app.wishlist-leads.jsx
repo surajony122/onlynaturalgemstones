@@ -11,7 +11,11 @@ import { useFetcher, useLoaderData, useRevalidator } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
-import { processDueWishlistEmails, resendWishlistLeadEmail, resendWishlistWhatsapp } from "../utils/wishlist.server";
+import { processDueWishlistEmails, resendWishlistLeadEmail, resendWishlistWhatsapp, resolveWishlistIntervalHours } from "../utils/wishlist.server";
+import { getAppSettings } from "../utils/appSettings.server";
+
+// The wishlist reminder job (render.yaml: wishlist-email-cron) runs on the 10-minute clock.
+const CRON_EVERY_MS = 10 * 60 * 1000;
 import {
   tableWrapStyle,
   tableStyle,
@@ -115,7 +119,9 @@ export const action = async ({ request }) => {
 };
 
 export const loader = async ({ request }) => {
-  await authenticate.admin(request);
+  const { session } = await authenticate.admin(request);
+  const settings = await getAppSettings(session.shop);
+  const intervalMs = resolveWishlistIntervalHours(settings) * 60 * 60 * 1000;
 
   const leads = await prisma.wishlistLead.findMany({
     orderBy: { createdAt: "desc" },
@@ -141,16 +147,78 @@ export const loader = async ({ request }) => {
     }
   }
 
+  // A customer is emailed from their LATEST snapshot only, so only the newest
+  // row per email can still be "waiting to send".
+  const seenEmails = new Set();
+  const latestPendingIds = new Set();
+  for (const l of leads) {
+    const key = (l.email || "").toLowerCase();
+    if (seenEmails.has(key)) continue;
+    seenEmails.add(key);
+    if (!l.emailSendStatus) latestPendingIds.add(l.id);
+  }
+
   return {
-    leads: leads.map((l) => ({
+    serverNow: Date.now(),
+    cronEveryMs: CRON_EVERY_MS,
+    leads: leads.map((l) => {
+      const created = l.createdAt.getTime();
+      const dueAt = created + intervalMs;
+      return {
+        schedule: latestPendingIds.has(l.id)
+          ? { createdAt: created, dueAt, sendAt: Math.ceil(dueAt / CRON_EVERY_MS) * CRON_EVERY_MS }
+          : null,
       ...l,
       createdAt: l.createdAt.toISOString(),
       productHandles: Array.isArray(l.productHandles) ? l.productHandles : [],
       products: Array.isArray(l.products) ? l.products : [],
       emailStatus: eventsByTrackingId[l.trackingId] || { sent: 0, opened: 0, clicked: 0, clickedLinks: [] },
-    })),
+      };
+    }),
   };
 };
+
+function formatCountdown(ms) {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const sec = total % 60;
+  const pad = (n) => String(n).padStart(2, "0");
+  return h > 0 ? `${h}h ${pad(m)}m ${pad(sec)}s` : `${m}m ${pad(sec)}s`;
+}
+
+/** Ticks once a second, using the server's clock so a wrong PC clock doesn't skew the bar. */
+function useServerNow(serverNow) {
+  const [offset] = useState(() => serverNow - Date.now());
+  const [now, setNow] = useState(() => Date.now() + offset);
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now() + offset), 1000);
+    return () => clearInterval(id);
+  }, [offset]);
+  return now;
+}
+
+/** Progress bar + countdown to the moment the email and WhatsApp are sent. */
+function SendCountdown({ schedule, now }) {
+  if (!schedule) return <span style={{ color: brand.muted }}>—</span>;
+  const { createdAt, dueAt, sendAt } = schedule;
+  const span = Math.max(1, sendAt - createdAt);
+  const pct = Math.min(100, Math.max(0, ((now - createdAt) / span) * 100));
+  const waiting = now < dueAt;
+  const label = now >= sendAt
+    ? "Sending on the next run…"
+    : waiting
+      ? `Sends in ${formatCountdown(sendAt - now)}`
+      : `Due · next run in ${formatCountdown(sendAt - now)}`;
+  return (
+    <div style={{ minWidth: "150px" }} title="Email and WhatsApp are sent together when this reaches zero">
+      <div style={{ height: "6px", borderRadius: "999px", background: brand.border, overflow: "hidden" }}>
+        <div style={{ width: pct + "%", height: "100%", background: brand.accent, transition: "width 1s linear" }} />
+      </div>
+      <div style={{ fontSize: "11.5px", color: brand.muted, marginTop: "4px", fontVariantNumeric: "tabular-nums" }}>{label}</div>
+    </div>
+  );
+}
 
 const smallBtn = {
   fontSize: "12px",
@@ -173,7 +241,7 @@ const inputStyle = {
   minWidth: "220px",
 };
 
-function LeadRow({ lead, selected, onToggleSelect }) {
+function LeadRow({ lead, selected, onToggleSelect, now }) {
   const fetcher = useFetcher();
   const toast = useToast();
   const [notes, setNotes] = useState(lead.notes || "");
@@ -237,6 +305,9 @@ function LeadRow({ lead, selected, onToggleSelect }) {
         ) : (
           "—"
         )}
+      </td>
+      <td style={tdStyle}>
+        <SendCountdown schedule={lead.schedule} now={now} />
       </td>
       <td style={tdStyle} title={lead.emailSendStatus || "pending — not due yet"}>
         <Pill label="Sent" active={lead.emailStatus.sent > 0} color={brand.success} />
@@ -370,7 +441,8 @@ function matchesWhatsappStatus(lead, filters) {
 }
 
 export default function WishlistLeadsPage() {
-  const { leads } = useLoaderData();
+  const { leads, serverNow, cronEveryMs } = useLoaderData();
+  const now = useServerNow(serverNow);
   const fetcher = useFetcher();
   const toast = useToast();
   const revalidator = useRevalidator();
@@ -393,6 +465,14 @@ export default function WishlistLeadsPage() {
   });
 
   const { sorted: sortedLeads, sortKey, sortDir, onSort } = useSort(filteredLeads, "createdAt", "desc");
+
+  const anyWaiting = leads.some((l) => l.schedule);
+  useEffect(() => {
+    if (!anyWaiting) return undefined;
+    const id = setInterval(() => revalidator.revalidate(), 60000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anyWaiting]);
 
   const bulk = useBulkSelect(sortedLeads, "id");
   const bulkFetcher = useFetcher();
@@ -445,6 +525,10 @@ export default function WishlistLeadsPage() {
       <button type="button" onClick={() => revalidator.revalidate()} disabled={isRefreshing} style={{ ...smallBtn, display: "inline-flex", alignItems: "center", gap: "6px", marginBottom: "12px" }}>
         {isRefreshing ? "Refreshing…" : (<><Icon name="refresh" size={13} color="currentColor" /> Refresh</>)}
       </button>
+      <p style={{ margin: "0 0 8px", fontSize: "12.5px", color: brand.ink, fontVariantNumeric: "tabular-nums" }}>
+        Reminder job runs every {Math.round(cronEveryMs / 60000)} minutes · next run in{" "}
+        <strong>{formatCountdown(Math.ceil(now / cronEveryMs) * cronEveryMs - now)}</strong>
+      </p>
       <p style={{ margin: "0 0 14px", fontSize: "12.5px", color: brand.muted }}>
         Most recent {PAGE_SIZE} wishlist syncs · emails don't send immediately — a customer gets one email once
         they've gone quiet for the interval set on the Settings page (default 2h), using their latest wishlist
@@ -481,6 +565,7 @@ export default function WishlistLeadsPage() {
                 <SortTh label="Email" sortKey="email" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
                 <SortTh label="Phone" sortKey="phone" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
                 <th style={thStyle}>Wishlist Items</th>
+                <th style={thStyle}>Next send</th>
                 <th style={thStyle}>Email</th>
                 <th style={thStyle}>WhatsApp</th>
                 <th style={thStyle}>Clicked Links</th>
@@ -490,7 +575,7 @@ export default function WishlistLeadsPage() {
             </thead>
             <tbody>
               {sortedLeads.map((lead) => (
-                <LeadRow key={lead.id} lead={lead} selected={bulk.isSelected(lead.id)} onToggleSelect={() => bulk.toggle(lead.id)} />
+                <LeadRow key={lead.id} lead={lead} selected={bulk.isSelected(lead.id)} onToggleSelect={() => bulk.toggle(lead.id)} now={now} />
               ))}
             </tbody>
           </table>

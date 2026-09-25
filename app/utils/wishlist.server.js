@@ -155,13 +155,18 @@ export async function handleWishlistSync(admin, shop, data) {
  * additive-only migration convention; nothing here reads or writes them
  * anymore.
  */
+/** Wait time (hours) after a customer's latest wishlist change. 0 is valid; blank/invalid -> default. */
+export function resolveWishlistIntervalHours(settings) {
+  const parsed = parseFloat(settings && settings.wishlistEmailIntervalHours);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_WISHLIST_EMAIL_INTERVAL_HOURS;
+}
+
 export async function processDueWishlistEmails(admin, shop) {
   const settings = await getAppSettings(shop);
   // 0 is a valid choice ("send at the next run"). The old `parseFloat(x) || DEFAULT`
   // treated 0 as empty and silently used the 2-hour default instead. Only a blank /
   // non-numeric / negative value falls back to the default.
-  const parsedInterval = parseFloat(settings.wishlistEmailIntervalHours);
-  const intervalHours = Number.isFinite(parsedInterval) && parsedInterval >= 0 ? parsedInterval : DEFAULT_WISHLIST_EMAIL_INTERVAL_HOURS;
+  const intervalHours = resolveWishlistIntervalHours(settings);
 
   const pendingRows = await prisma.wishlistLead.findMany({
     where: { shop, emailSendStatus: null },
