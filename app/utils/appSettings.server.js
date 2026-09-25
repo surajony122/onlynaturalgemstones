@@ -17,6 +17,7 @@ const FIELDS = [
   "sheetsRelayUrl",
   "sheetsRelaySecret",
   "wishlistEmailIntervalHours",
+  "currencyCountryConfig",
   "interaktApiKey",
   "interaktTemplateName",
   "interaktOrderTemplateName",

@@ -43,6 +43,7 @@ export const NAV_GROUPS = [
     label: "System",
     items: [
       { id: "server", href: "/app/server-health", label: "System Health", icon: "server" },
+      { id: "currency", href: "/app/currency-countries", label: "Currency by country", icon: "tag" },
       { id: "settings", href: "/app/settings", label: "Settings", icon: "gear" },
       { id: "documentation", href: "/app/documentation", label: "Documentation", icon: "file-text" },
       { id: "additional", href: "/app/additional", label: "Additional page", icon: "package" },

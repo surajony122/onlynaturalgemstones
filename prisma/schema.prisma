@@ -319,6 +319,9 @@ model AppSettings {
   // a string (like the rest of this model's settings-page-editable
   // fields) and parsed with a default fallback where it's used.
   wishlistEmailIntervalHours     String?
+  // JSON: { countries: { DE: { enabled: true, currency: "EUR" }, ... } } -- the storefront currency selector's
+  // per-country choices (see app/utils/currencyCountries.server.js and the Currency by country page).
+  currencyCountryConfig          String?
   // WhatsApp sending via Interakt's Send Template API — see
   // app/utils/interakt.server.js. interaktApiKey is the Basic-Auth
   // secret from Interakt → Settings → Developer Setting → Secret Key.
