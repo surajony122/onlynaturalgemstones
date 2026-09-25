@@ -148,7 +148,11 @@ export async function handleWishlistSync(admin, shop, data) {
  */
 export async function processDueWishlistEmails(admin, shop) {
   const settings = await getAppSettings(shop);
-  const intervalHours = parseFloat(settings.wishlistEmailIntervalHours) || DEFAULT_WISHLIST_EMAIL_INTERVAL_HOURS;
+  // 0 is a valid choice ("send at the next run"). The old `parseFloat(x) || DEFAULT`
+  // treated 0 as empty and silently used the 2-hour default instead. Only a blank /
+  // non-numeric / negative value falls back to the default.
+  const parsedInterval = parseFloat(settings.wishlistEmailIntervalHours);
+  const intervalHours = Number.isFinite(parsedInterval) && parsedInterval >= 0 ? parsedInterval : DEFAULT_WISHLIST_EMAIL_INTERVAL_HOURS;
 
   const pendingRows = await prisma.wishlistLead.findMany({
     where: { shop, emailSendStatus: null },
