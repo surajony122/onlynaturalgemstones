@@ -146,25 +146,3 @@ services:
       # endpoint with it.
       - key: CRON_SECRET
         sync: false
-
-  # Sends the wishlist reminder email + WhatsApp. Runs every 10 minutes:
-  # each run finds customers whose LATEST wishlist change is older than
-  # the "Wait time (hours)" setting and sends them one email + one
-  # WhatsApp (see processDueWishlistEmails in app/utils/wishlist.server.js).
-  # Before this job existed nothing in the repo ever called
-  # /cron/wishlist-email, so reminders only went out if someone had set
-  # up an external scheduler by hand. Same shape as the job above; its
-  # CRON_SECRET env var must be set in the Dashboard to the exact same
-  # value as the web service's.
-  - type: cron
-    name: wishlist-email-cron
-    runtime: node
-    schedule: "*/10 * * * *"
-    buildCommand: echo "no dependencies needed -- see startCommand"
-    startCommand: >-
-      node -e "fetch('https://shubh-gems-customizer-app.onrender.com/cron/wishlist-email?secret=' + encodeURIComponent(process.env.CRON_SECRET)).then(async r => { const t = await r.text(); console.log('HTTP', r.status, t); process.exitCode = r.ok ? 0 : 1; }).catch(e => { console.error(e); process.exitCode = 1; })"
-    envVars:
-      - key: NODE_VERSION
-        value: 20.19.0
-      - key: CRON_SECRET
-        sync: false

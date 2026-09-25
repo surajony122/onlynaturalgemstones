@@ -14,8 +14,8 @@ import prisma from "../db.server";
 import { processDueWishlistEmails, resendWishlistLeadEmail, resendWishlistWhatsapp, resolveWishlistIntervalHours } from "../utils/wishlist.server";
 import { getAppSettings } from "../utils/appSettings.server";
 
-// The wishlist reminder job (render.yaml: wishlist-email-cron) runs on the 10-minute clock.
-const CRON_EVERY_MS = 10 * 60 * 1000;
+// The in-app reminder scheduler (utils/wishlistScheduler.server.js) checks on the minute.
+const CRON_EVERY_MS = 60 * 1000;
 import {
   tableWrapStyle,
   tableStyle,
@@ -206,10 +206,10 @@ function SendCountdown({ schedule, now }) {
   const pct = Math.min(100, Math.max(0, ((now - createdAt) / span) * 100));
   const waiting = now < dueAt;
   const label = now >= sendAt
-    ? "Sending on the next run…"
+    ? "Sending now…"
     : waiting
       ? `Sends in ${formatCountdown(sendAt - now)}`
-      : `Due · next run in ${formatCountdown(sendAt - now)}`;
+      : `Due · sending in ${formatCountdown(sendAt - now)}`;
   return (
     <div style={{ minWidth: "150px" }} title="Email and WhatsApp are sent together when this reaches zero">
       <div style={{ height: "6px", borderRadius: "999px", background: brand.border, overflow: "hidden" }}>
@@ -526,7 +526,7 @@ export default function WishlistLeadsPage() {
         {isRefreshing ? "Refreshing…" : (<><Icon name="refresh" size={13} color="currentColor" /> Refresh</>)}
       </button>
       <p style={{ margin: "0 0 8px", fontSize: "12.5px", color: brand.ink, fontVariantNumeric: "tabular-nums" }}>
-        Reminder job runs every {Math.round(cronEveryMs / 60000)} minutes · next run in{" "}
+        Reminders are checked every minute · next check in{" "}
         <strong>{formatCountdown(Math.ceil(now / cronEveryMs) * cronEveryMs - now)}</strong>
       </p>
       <p style={{ margin: "0 0 14px", fontSize: "12.5px", color: brand.muted }}>

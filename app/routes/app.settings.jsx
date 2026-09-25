@@ -846,6 +846,19 @@ function SecretField({ id, label, fieldName, isSet, value, onChange, placeholder
   );
 }
 
+// Fixed choices for how long after a customer's last wishlist change the reminder goes out.
+// Stored as hours (the existing wishlistEmailIntervalHours field).
+const WISHLIST_INTERVAL_OPTIONS = [
+  { value: String(10 / 60), label: "10 minutes" },
+  { value: "0.5", label: "30 minutes" },
+  { value: "1", label: "1 hour" },
+  { value: "2", label: "2 hours (default)" },
+  { value: "3", label: "3 hours" },
+  { value: "6", label: "6 hours" },
+  { value: "12", label: "12 hours" },
+  { value: "24", label: "24 hours" },
+];
+
 const fieldStyle = {
   display: "block",
   width: "100%",
@@ -1204,13 +1217,22 @@ export default function SettingsPage() {
         <Card style={{ marginBottom: "16px" }}>
           <h2 style={{ fontSize: "14px", fontWeight: 700, margin: "0 0 10px", color: brand.ink }}>Wishlist email timing</h2>
           <Explain summary="How this timing works">
-            Hours to wait after a customer's <strong>last</strong> wishlist change before emailing them — each new
-            change pushes this out again, so someone actively adding items all day gets one email once they've gone
-            quiet, not one per add. See the <a href="/app/wishlist-leads" style={{ color: brand.accent }}>Wishlist Leads</a> page's
-            "Send Due Emails Now" button to run a check immediately instead of waiting.
+            How long to wait after a customer's <strong>last</strong> wishlist change before sending the reminder
+            email and WhatsApp — each new change pushes this out again, so someone actively adding items gets one
+            message once they've gone quiet, not one per add. The app checks every minute, so messages go out within
+            about a minute of the wait ending. The{" "}
+            <a href="/app/wishlist-leads" style={{ color: brand.accent }}>Wishlist Leads</a> page shows a countdown for
+            each waiting customer, and its "Send Due Emails Now" button runs a check immediately.
           </Explain>
-          <label style={labelStyle} htmlFor="wishlistInterval">Wait time (hours)</label>
-          <input id="wishlistInterval" style={{ ...fieldStyle, maxWidth: "120px" }} type="number" min="0" step="0.5" value={wishlistInterval} onChange={(e) => setWishlistInterval(e.target.value)} />
+          <label style={labelStyle} htmlFor="wishlistInterval">Send the reminder after</label>
+          <select id="wishlistInterval" style={{ ...fieldStyle, maxWidth: "240px" }} value={wishlistInterval} onChange={(e) => setWishlistInterval(e.target.value)}>
+            {WISHLIST_INTERVAL_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+            {!WISHLIST_INTERVAL_OPTIONS.some((o) => o.value === String(wishlistInterval)) && (
+              <option value={wishlistInterval}>Current custom value ({wishlistInterval} h)</option>
+            )}
+          </select>
           <div><SaveButton isSaving={wishlistTiming.isSaving} onClick={saveWishlistTiming} /></div>
         </Card>
 
