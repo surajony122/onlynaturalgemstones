@@ -181,6 +181,43 @@ export async function listThemes(admin) {
   return nodes.map((t) => ({ id: t.id, name: t.name, role: t.role }));
 }
 
+/** The config a theme currently holds (parsed from its snippets/shubh-currency-config.liquid), or null. */
+export async function readPublishedConfig(admin, themeGid) {
+  const res = await admin.graphql(
+    `#graphql
+    query CurrencyConfigRead($id: ID!) {
+      theme(id: $id) {
+        files(filenames: ["snippets/shubh-currency-config.liquid"], first: 1) {
+          nodes { body { ... on OnlineStoreThemeFileBodyText { content } } }
+        }
+      }
+    }`,
+    { variables: { id: themeGid } }
+  );
+  const content = (await res.json())?.data?.theme?.files?.nodes?.[0]?.body?.content;
+  if (!content) return null;
+  const m = content.match(/id="ShubhCurrencyConfig">(\{[\s\S]*\})<\/script>/);
+  if (!m) return null;
+  try { return JSON.parse(m[1]); } catch { return null; }
+}
+
+/** Compares the saved choices with what a theme holds. */
+export function compareWithPublished(cfg, published) {
+  const wanted = buildThemeConfig(cfg);
+  if (!published) return { state: "none", detail: "Nothing published to this theme yet" };
+  const pc = published.countries || {};
+  const diffs = [];
+  for (const [cc, cur] of Object.entries(wanted.countries)) {
+    if (pc[cc] !== cur) diffs.push(`${cc}: ${pc[cc] || "off"} → ${cur}`);
+  }
+  for (const cc of Object.keys(pc)) {
+    if (!(cc in wanted.countries)) diffs.push(`${cc}: ${pc[cc]} → off`);
+  }
+  return diffs.length
+    ? { state: "differs", detail: `${diffs.length} difference${diffs.length === 1 ? "" : "s"}`, diffs: diffs.slice(0, 12), more: Math.max(0, diffs.length - 12) }
+    : { state: "synced", detail: `In sync (${wanted.currencies.length} currencies, ${Object.keys(wanted.countries).length} countries)` };
+}
+
 export async function publishCurrencyConfigToTheme(admin, themeGid, cfg) {
   const body = themeSnippetBody(buildThemeConfig(cfg));
   const res = await admin.graphql(

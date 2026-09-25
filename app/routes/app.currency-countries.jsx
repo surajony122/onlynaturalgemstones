@@ -15,6 +15,8 @@ import {
   saveCurrencyCountryConfig,
   listThemes,
   publishCurrencyConfigToTheme,
+  readPublishedConfig,
+  compareWithPublished,
 } from "../utils/currencyCountries.server";
 import { Card, PageHeader, PageIn, brand } from "../components/table-kit";
 import { useToast } from "../components/toast";
@@ -24,7 +26,21 @@ export const loader = async ({ request }) => {
   const cfg = await getCurrencyCountryConfig(session.shop);
   let themes = [];
   try { themes = await listThemes(admin); } catch { themes = []; }
-  return { continents: describeContinents(), cfg, currencies: CURRENCY_OPTIONS, themes };
+  // Sync check: what each of the live theme and the default test theme currently holds vs what is saved here.
+  const targets = [];
+  const live = themes.find((t) => t.role === "MAIN");
+  const test = themes.find((t) => /test/i.test(t.name)) || themes.find((t) => t.role !== "MAIN");
+  if (live) targets.push(live);
+  if (test && test.id !== live?.id) targets.push(test);
+  const sync = [];
+  for (const t of targets) {
+    try {
+      sync.push({ id: t.id, name: t.name, live: t.role === "MAIN", ...compareWithPublished(cfg, await readPublishedConfig(admin, t.id)) });
+    } catch (err) {
+      sync.push({ id: t.id, name: t.name, live: t.role === "MAIN", state: "error", detail: "Could not read this theme" });
+    }
+  }
+  return { continents: describeContinents(), cfg, currencies: CURRENCY_OPTIONS, themes, sync };
 };
 
 export const action = async ({ request }) => {
@@ -117,7 +133,7 @@ function ContinentBlock({ continent, state, setState, currencies, defaultOpen })
 }
 
 export default function CurrencyCountriesPage() {
-  const { continents, cfg, currencies, themes } = useLoaderData();
+  const { continents, cfg, currencies, themes, sync } = useLoaderData();
   const [state, setState] = useState(cfg.countries);
   const fetcher = useFetcher();
   const toast = useToast();
@@ -170,6 +186,28 @@ export default function CurrencyCountriesPage() {
         <p style={{ margin: "10px 0 0", fontSize: "12px", color: brand.muted }}>
           Publishing writes one small file to the chosen theme. Try it on your TEST theme first, then publish to the live theme.
         </p>
+      </Card>
+
+      <Card style={{ marginBottom: "14px" }}>
+        <h2 style={{ fontSize: "14px", fontWeight: 700, margin: "0 0 8px", color: brand.ink }}>Is the website up to date?</h2>
+        <p style={{ margin: "0 0 10px", fontSize: "12.5px", color: brand.muted, lineHeight: 1.5 }}>
+          The website only changes when you click <strong>Save &amp; publish</strong>. This compares what is <strong>saved here</strong> (last time you saved) with what each theme currently holds.
+          Changes you have made on this page but not saved yet are not counted.
+        </p>
+        {sync.map((s) => (
+          <div key={s.id} style={{ display: "flex", gap: "10px", alignItems: "baseline", padding: "6px 0", borderTop: `1px solid ${brand.border}`, flexWrap: "wrap" }}>
+            <strong style={{ fontSize: "13px", minWidth: "220px" }}>{s.name} {s.live ? "(LIVE)" : ""}</strong>
+            <span style={{ fontSize: "13px", color: s.state === "synced" ? brand.success : s.state === "differs" || s.state === "error" ? brand.danger : brand.muted }}>
+              {s.state === "synced" ? "✓ " : s.state === "differs" ? "⚠ Out of date — " : ""}{s.detail}
+            </span>
+            {s.diffs && (
+              <div style={{ width: "100%", fontSize: "12px", color: brand.muted }}>
+                {s.diffs.join("  ·  ")}{s.more ? `  ·  …and ${s.more} more` : ""}
+              </div>
+            )}
+          </div>
+        ))}
+        {sync.length === 0 && <span style={{ fontSize: "12.5px", color: brand.muted }}>No themes found.</span>}
       </Card>
 
       {continents.map((c, i) => (
