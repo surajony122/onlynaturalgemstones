@@ -97,6 +97,15 @@ export async function handleWishlistSync(admin, shop, data) {
     return { error: "Failed to save" };
   }
 
+  // The storefront writes "wishlist:<handle>" tags through Shopify's contact form,
+  // which can only ADD tags -- removed items were never cleared, so a customer's
+  // profile tags drifted into a history of everything they ever saved. Only the
+  // Admin API can remove tags, so reconcile them to the current list here.
+  // Fire-and-forget: never delays or fails the sync.
+  reconcileCustomerWishlistTags(admin, email, handles).catch((err) =>
+    console.error("[wishlist] tag reconcile failed for", email, err)
+  );
+
   // Nothing to email and no items worth a Sheet row.
   if (emptied) {
     return { ok: true, emailSendStatus: "skipped: customer emptied their wishlist" };
@@ -289,6 +298,121 @@ export async function resendWishlistWhatsapp(leadId) {
  * (same pattern as astroAdvice.server.js's getCollectionImages) — skips
  * any handle that fails to resolve (unpublished/deleted product) rather
  * than failing the whole email over one bad item. */
+function lastTenDigits(v) {
+  const d = String(v || "").replace(/\D/g, "");
+  return d.length >= 10 ? d.slice(-10) : d;
+}
+
+/**
+ * Returns the saved wishlist (product handles) for a returning customer who is
+ * wishlisting on a NEW device: the storefront asks for it right after they enter
+ * their email + phone, so it can be merged into what they see instead of
+ * starting again from one item (and, worse, overwriting their saved list).
+ *
+ * Because the caller is anonymous, the phone number must match the one already
+ * on file for that email -- an email address alone reveals nothing. Only
+ * product handles that still exist are returned.
+ */
+export async function fetchSavedWishlist(admin, shop, email, phone) {
+  const cleanEmail = String(email || "").trim();
+  const wantPhone = lastTenDigits(phone);
+  if (!cleanEmail || wantPhone.length < 7) return { handles: [] };
+
+  const rows = await prisma.wishlistLead.findMany({
+    where: { shop: shop || null, email: { equals: cleanEmail, mode: "insensitive" } },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+  });
+
+  let handles = [];
+  let verified = false;
+
+  if (rows.length) {
+    verified = rows.some((r) => r.phone && lastTenDigits(r.phone) === wantPhone);
+    if (verified) {
+      const latest = rows[0];
+      handles = Array.isArray(latest.productHandles) ? latest.productHandles.filter(Boolean) : [];
+    }
+  } else if (admin) {
+    // No snapshot from this app yet (list saved before the app tracked it):
+    // fall back to the "wishlist:<handle>" tags on the Shopify customer, again
+    // only when the phone matches.
+    try {
+      const res = await admin.graphql(
+        `#graphql
+        query WishlistCustomerLookup($q: String!) {
+          customers(first: 1, query: $q) { nodes { email phone tags } }
+        }`,
+        { variables: { q: "email:" + JSON.stringify(cleanEmail) } }
+      );
+      const c = (await res.json())?.data?.customers?.nodes?.[0];
+      if (c && String(c.email || "").toLowerCase() === cleanEmail.toLowerCase() && lastTenDigits(c.phone) === wantPhone) {
+        verified = true;
+        handles = (c.tags || []).filter((t) => t.startsWith("wishlist:")).map((t) => t.slice("wishlist:".length));
+      }
+    } catch (err) {
+      console.error("[wishlist] fetchSavedWishlist tag fallback failed:", err);
+    }
+  }
+
+  if (!verified || !handles.length) return { handles: [] };
+  const products = await getProductsByHandles(admin, handles);
+  const existing = new Set(products.map((p) => p.handle));
+  return { handles: handles.filter((h) => existing.has(h)) };
+}
+
+/**
+ * Makes the customer's "wishlist:<handle>" tags match their CURRENT wishlist:
+ * removes stale ones, adds any missing. Leaves every other tag (including the
+ * bare "wishlist" tag) alone. Skips quietly when no Shopify customer exists
+ * for this email yet -- the storefront's own contact form creates it, already
+ * carrying the right tags.
+ */
+export async function reconcileCustomerWishlistTags(admin, email, handles) {
+  if (!admin || !email) return { skipped: "no admin/email" };
+  const desired = new Set((handles || []).filter(Boolean).map((h) => "wishlist:" + h));
+
+  const found = await admin.graphql(
+    `#graphql
+    query WishlistCustomerTags($q: String!) {
+      customers(first: 1, query: $q) { nodes { id email tags } }
+    }`,
+    { variables: { q: "email:" + JSON.stringify(email) } }
+  );
+  const customer = (await found.json())?.data?.customers?.nodes?.[0];
+  if (!customer || String(customer.email || "").toLowerCase() !== email.toLowerCase()) {
+    return { skipped: "no matching customer" };
+  }
+
+  const current = customer.tags || [];
+  const toRemove = current.filter((t) => t.startsWith("wishlist:") && !desired.has(t));
+  const toAdd = [...desired].filter((t) => !current.includes(t));
+
+  if (toRemove.length) {
+    const r = await admin.graphql(
+      `#graphql
+      mutation WishlistTagsRemove($id: ID!, $tags: [String!]!) {
+        tagsRemove(id: $id, tags: $tags) { userErrors { field message } }
+      }`,
+      { variables: { id: customer.id, tags: toRemove } }
+    );
+    const errs = (await r.json())?.data?.tagsRemove?.userErrors;
+    if (errs && errs.length) console.error("[wishlist] tagsRemove errors:", errs);
+  }
+  if (toAdd.length) {
+    const r = await admin.graphql(
+      `#graphql
+      mutation WishlistTagsAdd($id: ID!, $tags: [String!]!) {
+        tagsAdd(id: $id, tags: $tags) { userErrors { field message } }
+      }`,
+      { variables: { id: customer.id, tags: toAdd } }
+    );
+    const errs = (await r.json())?.data?.tagsAdd?.userErrors;
+    if (errs && errs.length) console.error("[wishlist] tagsAdd errors:", errs);
+  }
+  return { removed: toRemove.length, added: toAdd.length };
+}
+
 async function getProductsByHandles(admin, handles) {
   const unique = [...new Set(handles.filter(Boolean))];
   if (!unique.length) return [];
