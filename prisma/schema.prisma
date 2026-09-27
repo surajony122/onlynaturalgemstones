@@ -420,10 +420,6 @@ model AppSettings {
   // Photon/OpenStreetMap lookup instead (see
   // proxy.places-autocomplete.jsx for both paths).
   googlePlacesApiKey             String?
-  // The store's Google Business Profile Place ID, used with googlePlacesApiKey to
-  // fetch reviews for the storefront Google Reviews section -- see
-  // app/utils/googleReviews.server.js. Find it via Google's Place ID Finder tool.
-  googlePlaceId                  String?
   // Daily metal rates + making charge + tax rate, editable from this
   // app's own dashboard (app._index.jsx, "Daily Metal Rates & Pricing
   // Formula" panel) via the "Save Rates & Rebuild Customisation Matrix"
