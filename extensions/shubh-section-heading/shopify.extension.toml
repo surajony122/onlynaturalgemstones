@@ -1,0 +1,7 @@
+api_version = "2025-10"
+
+[[extensions]]
+name = "Shubh Section Heading"
+handle = "shubh-section-heading"
+uid = "ad1cdb49-5fb4-0f9f-5587-4c07a1d367a785efe516"
+type = "theme"

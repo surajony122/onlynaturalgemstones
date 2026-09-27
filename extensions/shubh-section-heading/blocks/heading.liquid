@@ -1,0 +1,83 @@
+{% comment %}
+  Shubh Section Heading -- reusable app block.
+
+  Font/size/weight copied from the theme's own common section-heading pattern (confirmed
+  identical across shubh-nine-planets-grid, shubh-image-gradient-cards, shubh-natural-conviction,
+  shubh-journey-steps, shubh-accreditations, shubh-gemstone-categories, shubh-testimonials,
+  shubh-accreditations-marquee and shubh-boutique-visit as of 2026-09-27: font-size 1.8rem,
+  font-weight 450, margin 0, `.h2` utility class for font-family/style/weight-var). Two of those
+  sections (Certificate Promise at 2.8rem, Journal Grid with no override at all -> 2rem) drift
+  from this and were NOT used as the source on purpose.
+
+  Merchants add this via the theme editor's block picker on any section whose schema lists
+  {"type": "@app"} in its "blocks" array, and can drag it to any position within that section.
+{% endcomment %}
+
+{%- style -%}
+  .shubh-app-heading-{{ block.id }} {
+    font-size: 1.8rem;
+    font-weight: 450;
+    line-height: 1.15;
+    margin: 0;
+    color: {{ block.settings.color | default: '#3D3C3B' }};
+    text-align: {{ block.settings.alignment }};
+    padding-top: {{ block.settings.padding_top }}px;
+    padding-bottom: {{ block.settings.padding_bottom }}px;
+  }
+{%- endstyle -%}
+
+<h2 class="h2 shubh-app-heading-{{ block.id }}" {{ block.shopify_attributes }}>
+  {{ block.settings.heading | escape }}
+</h2>
+
+{% schema %}
+{
+  "name": "Section Heading",
+  "target": "section",
+  "settings": [
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading",
+      "default": "Section heading"
+    },
+    {
+      "type": "color",
+      "id": "color",
+      "label": "Text color",
+      "default": "#3D3C3B"
+    },
+    {
+      "type": "select",
+      "id": "alignment",
+      "label": "Alignment",
+      "options": [
+        { "value": "left", "label": "Left" },
+        { "value": "center", "label": "Center" },
+        { "value": "right", "label": "Right" }
+      ],
+      "default": "center"
+    },
+    {
+      "type": "range",
+      "id": "padding_top",
+      "label": "Padding top",
+      "min": 0,
+      "max": 100,
+      "step": 2,
+      "unit": "px",
+      "default": 0
+    },
+    {
+      "type": "range",
+      "id": "padding_bottom",
+      "label": "Padding bottom",
+      "min": 0,
+      "max": 100,
+      "step": 2,
+      "unit": "px",
+      "default": 0
+    }
+  ]
+}
+{% endschema %}
