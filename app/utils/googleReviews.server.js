@@ -22,7 +22,10 @@ async function fetchFromGoogle(placeId, apiKey) {
   const res = await fetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}`, {
     headers: {
       "X-Goog-Api-Key": apiKey,
-      "X-Goog-FieldMask": "displayName,rating,userRatingCount,googleMapsUri,reviews",
+      "X-Goog-FieldMask":
+        "displayName,rating,userRatingCount,googleMapsUri," +
+        "reviews.authorAttribution,reviews.rating,reviews.text,reviews.originalText," +
+        "reviews.relativePublishTimeDescription,reviews.publishTime,reviews.googleMapsUri",
     },
   });
   const data = await res.json();
@@ -32,10 +35,14 @@ async function fetchFromGoogle(placeId, apiKey) {
   const reviews = (data.reviews || []).map((r) => ({
     authorName: r.authorAttribution?.displayName || "Google user",
     authorPhotoUrl: r.authorAttribution?.photoUri || "",
+    authorProfileUrl: r.authorAttribution?.uri || "",
     rating: r.rating || 0,
     text: r.text?.text || r.originalText?.text || "",
     relativeTime: r.relativePublishTimeDescription || "",
     time: r.publishTime || "",
+    // Opens this EXACT review on Google Maps -- falls back to the general
+    // business listing (below) only if Google didn't return one for this review.
+    reviewUrl: r.googleMapsUri || "",
   }));
   return {
     name: data.displayName?.text || "",

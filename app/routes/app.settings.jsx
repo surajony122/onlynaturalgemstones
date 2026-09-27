@@ -489,10 +489,11 @@ export const action = async ({ request }) => {
   if (intent === "testGoogleReviews") {
     const data = await getGoogleReviews(session.shop, { skipCache: true });
     if (data.error) return { intent, ok: false, status: data.error };
+    const withLink = data.reviews.filter((r) => r.reviewUrl).length;
     return {
       intent,
       ok: true,
-      status: `OK: "${data.name}" — ${data.rating}★ (${data.totalReviews} total ratings), ${data.reviews.length} review${data.reviews.length === 1 ? "" : "s"} fetched`,
+      status: `OK: "${data.name}" — ${data.rating}★ (${data.totalReviews} total ratings), ${data.reviews.length} review${data.reviews.length === 1 ? "" : "s"} fetched, ${withLink} with a direct "read on Google" link`,
     };
   }
 
