@@ -66,7 +66,7 @@ export const CONTINENTS = [
   {
     id: "africa",
     name: "Africa",
-    countries: "DZ AO BJ BW BF BI CV CM CF TD KM CG CD CI DJ EG GQ ER SZ ET GA GM GH GN GW KE LS LR LY MG MW ML MR MU YT MA MZ NA NE NG RE RW SH ST SN SC SL SO ZA SS SD TZ TG TN UG EH ZM ZW",
+    countries: "DZ AO BJ BW BF BI CV CM CF TD KM CG CD CI DJ EG GQ ER SZ ET GA GM GH GN GW IO KE LS LR LY MG MW ML MR MU YT MA MZ NA NE NG RE RW SH ST SN SC SL SO ZA SS SD TF TZ TG TN UG EH ZM ZW",
   },
   {
     id: "antarctica",
@@ -91,7 +91,7 @@ export const CONTINENTS = [
   {
     id: "south-america",
     name: "South America",
-    countries: "AR BO BR CL CO EC FK GF GY PY PE SR UY VE",
+    countries: "AR BO BR CL CO EC FK GF GS GY PY PE SR UY VE",
   },
   {
     id: "oceania",
