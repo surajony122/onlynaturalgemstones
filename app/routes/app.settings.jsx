@@ -46,6 +46,7 @@ import {
 } from "../utils/interakt.server";
 import { sendTestEmail } from "../utils/testEmails.server";
 import { checkGmail, checkGoogleSheets, checkInterakt, checkGooglePlaces } from "../utils/serviceHealth.server";
+import { getGoogleReviews } from "../utils/googleReviews.server";
 import { getOrderProcessingEmailTemplate, ORDER_PROCESSING_EMAIL_PLACEHOLDERS, getOrderProcessingEmailSubject } from "../utils/orderProcessingEmail.server";
 import { getOrderInvoiceTemplate, ORDER_INVOICE_PLACEHOLDERS, DEFAULT_INVOICE_NUMBER_PREFIX, DEFAULT_INVOICE_CUSTOMISATION_LINK_LABEL, getInvoiceEmailTemplate, ORDER_INVOICE_EMAIL_PLACEHOLDERS, fetchShopSellerInfo } from "../utils/orderInvoice.server";
 import { brand, Icon, Card, PageHeader, PageIn } from "../components/table-kit";
@@ -117,6 +118,7 @@ export const loader = async ({ request }) => {
     whatsappIntervalUnit: row?.whatsappIntervalUnit || DEFAULT_WHATSAPP_INTERVAL_UNIT,
     interaktWebhookSecretSet: !!row?.interaktWebhookSecret,
     googlePlacesApiKeySet: !!row?.googlePlacesApiKey,
+    googlePlaceId: row?.googlePlaceId || "",
     // Empty string means "using the built-in default" -- the textarea
     // shows defaultOrderProcessingEmailTemplate as its starting value in
     // that case (see getOrderProcessingEmailTemplate, the one place
@@ -480,8 +482,18 @@ export const action = async ({ request }) => {
   if (intent === "saveGooglePlaces") {
     const existing = await getRawAppSettingsRow(session.shop);
     const googlePlacesApiKey = val("googlePlacesApiKey") || existing?.googlePlacesApiKey || "";
-    await saveAppSettings(session.shop, { googlePlacesApiKey });
+    await saveAppSettings(session.shop, { googlePlacesApiKey, googlePlaceId: val("googlePlaceId") });
     return { intent, ok: true };
+  }
+
+  if (intent === "testGoogleReviews") {
+    const data = await getGoogleReviews(session.shop, { skipCache: true });
+    if (data.error) return { intent, ok: false, status: data.error };
+    return {
+      intent,
+      ok: true,
+      status: `OK: "${data.name}" — ${data.rating}★ (${data.totalReviews} total ratings), ${data.reviews.length} review${data.reviews.length === 1 ? "" : "s"} fetched`,
+    };
   }
 
   return { ok: false, error: "Unknown intent" };
@@ -1005,6 +1017,10 @@ export default function SettingsPage() {
   const [whatsappIntervalUnit, setWhatsappIntervalUnit] = useState(data.whatsappIntervalUnit);
   const [interaktWebhookSecret, setInteraktWebhookSecret] = useState("");
   const [googlePlacesApiKey, setGooglePlacesApiKey] = useState("");
+  const [googlePlaceId, setGooglePlaceId] = useState(data.googlePlaceId);
+  const testGoogleReviewsFetcher = useFetcher();
+  const isTestingGoogleReviews = testGoogleReviewsFetcher.state !== "idle";
+  const testGoogleReviews = () => testGoogleReviewsFetcher.submit({ intent: "testGoogleReviews" }, { method: "POST" });
   const [invoiceGstin, setInvoiceGstin] = useState(data.invoiceGstin);
   const [invoiceSellerLegalName, setInvoiceSellerLegalName] = useState(data.invoiceSellerLegalName);
   const [invoiceSellerAddress, setInvoiceSellerAddress] = useState(data.invoiceSellerAddress);
@@ -1207,7 +1223,7 @@ export default function SettingsPage() {
       googleServiceAccountPrivateKey: gsaKey,
       astroLeadsSpreadsheetId: sheetId,
     });
-  const saveGooglePlaces = () => googlePlacesSave.save({ googlePlacesApiKey });
+  const saveGooglePlaces = () => googlePlacesSave.save({ googlePlacesApiKey, googlePlaceId });
 
   return (
     <PageIn>
@@ -2139,7 +2155,52 @@ export default function SettingsPage() {
             placeholder="from Google Cloud Console → Credentials"
             envFallbackHint={data.envFallback.googlePlacesApiKey ? "Currently falling back to the GOOGLE_PLACES_API_KEY env var on Render." : null}
           />
+
+          <label style={labelStyle} htmlFor="googlePlaceId">
+            Place ID <span style={{ fontWeight: 400, color: brand.muted }}>(also used by the storefront's Google Reviews section below)</span>
+          </label>
+          <input
+            id="googlePlaceId"
+            style={fieldStyle}
+            type="text"
+            value={googlePlaceId}
+            onChange={(e) => setGooglePlaceId(e.target.value)}
+            placeholder="from Google's Place ID Finder tool"
+          />
           <SaveButton isSaving={googlePlacesSave.isSaving} onClick={saveGooglePlaces} />
+        </ServiceCard>
+
+        <ServiceCard
+          icon={<Icon name="star" size={19} color={brand.accent} />}
+          title="Google Reviews (storefront section)"
+          status={
+            data.googlePlacesApiKeySet && data.googlePlaceId
+              ? { ok: true, detail: "API key and Place ID are set" }
+              : { ok: false, detail: "Set the Google Places API key and Place ID above" }
+          }
+        >
+          <Explain summary="How this works">
+            Powers the "Google Reviews" section you can add to any page in the theme editor. Uses the same Google
+            Places API key and Place ID set above — nothing extra to configure here. Google's API only ever returns
+            up to 5 reviews (its own limit, picked by Google as "most relevant") along with your overall rating and
+            total review count; there's no way around that limit without Google's separate, harder-to-get Business
+            Profile API. Reviews are cached on the server for a few hours, so a new review on Google can take a
+            little while to show up here.
+          </Explain>
+          {(!data.googlePlacesApiKeySet || !data.googlePlaceId) && (
+            <p style={{ fontSize: "12.5px", color: brand.danger, margin: "0 0 10px" }}>
+              Set the Google Places API key and Place ID above first.
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={testGoogleReviews}
+            disabled={isTestingGoogleReviews || !data.googlePlacesApiKeySet || !data.googlePlaceId}
+            style={{ ...secondaryBtn, opacity: isTestingGoogleReviews || !data.googlePlacesApiKeySet || !data.googlePlaceId ? 0.6 : 1 }}
+          >
+            {isTestingGoogleReviews ? "Testing…" : "Test connection"}
+          </button>
+          <TestResult fetcherData={testGoogleReviewsFetcher.data} intent="testGoogleReviews" />
         </ServiceCard>
       </div>
 
