@@ -22,10 +22,41 @@ export const CURRENCIES = [
   ["COP", "co"], ["PEN", "pe"],
 ];
 
+// Intl's official names spell some countries out in full ("United Arab Emirates Dirham"), which wraps
+// to two lines in the dropdown next to a flag. Shortened by hand for the ones long enough to wrap.
+const SHORT_NAMES = {
+  AED: "UAE Dirham",
+  ILS: "Israeli Shekel",
+  KRW: "Korean Won",
+  TWD: "Taiwan Dollar",
+  NZD: "NZ Dollar",
+  BND: "Brunei Dollar",
+  MVR: "Maldives Rufiyaa",
+  LKR: "Lanka Rupee",
+  NPR: "Nepal Rupee",
+  BDT: "Bangladesh Taka",
+  PKR: "Pakistan Rupee",
+  KZT: "Kazakh Tenge",
+  ISK: "Iceland Krona",
+  HUF: "Hungary Forint",
+  UAH: "Ukraine Hryvnia",
+  ZAR: "S.African Rand",
+  MUR: "Mauritius Rupee",
+  NGN: "Nigeria Naira",
+  KES: "Kenya Shilling",
+  GHS: "Ghana Cedi",
+  MAD: "Morocco Dirham",
+  BRL: "Brazil Real",
+  ARS: "Argentina Peso",
+  CLP: "Chile Peso",
+  COP: "Colombia Peso",
+  PEN: "Peru Sol",
+};
+
 const currencyName = (() => {
   let dn;
   try { dn = new Intl.DisplayNames(["en"], { type: "currency" }); } catch { dn = null; }
-  return (code) => (dn && dn.of(code)) || code;
+  return (code) => SHORT_NAMES[code] || (dn && dn.of(code)) || code;
 })();
 
 export const CURRENCY_OPTIONS = CURRENCIES.map(([code, flag]) => ({ code, flag, name: currencyName(code) }));
