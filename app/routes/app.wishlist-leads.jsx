@@ -6,7 +6,7 @@
  * per-lead management: an editable internal note and a "..." row-actions
  * menu (Send Now / Retry WhatsApp / Delete).
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useFetcher, useLoaderData, useRevalidator } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
@@ -452,8 +452,24 @@ export default function WishlistLeadsPage() {
   const [searchText, setSearchText] = useState("");
   const [emailFilter, setEmailFilter] = useState([]);
   const [whatsappFilter, setWhatsappFilter] = useState([]);
+  const [uniqueOnly, setUniqueOnly] = useState(false);
 
-  const filteredLeads = leads.filter((lead) => {
+  // Filter for unique customers (latest wishlist snapshot per customer)
+  const baseLeads = useMemo(() => {
+    if (!uniqueOnly) return leads;
+    const seen = new Set();
+    const list = [];
+    for (const lead of leads) {
+      const key = (lead.email || lead.phone || lead.id).toLowerCase().trim();
+      if (!seen.has(key)) {
+        seen.add(key);
+        list.push(lead);
+      }
+    }
+    return list;
+  }, [leads, uniqueOnly]);
+
+  const filteredLeads = baseLeads.filter((lead) => {
     const q = searchText.trim().toLowerCase();
     const matchesSearch =
       !q ||
@@ -537,15 +553,33 @@ export default function WishlistLeadsPage() {
 
       <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center", marginBottom: "14px" }}>
         <input type="text" value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Search email, phone, or item…" style={inputStyle} />
+        <button
+          type="button"
+          onClick={() => setUniqueOnly((v) => !v)}
+          style={{
+            ...smallBtn,
+            padding: "8px 14px",
+            background: uniqueOnly ? brand.accentTint : "#fff",
+            borderColor: uniqueOnly ? brand.accentLine : brand.border,
+            color: uniqueOnly ? brand.heading : brand.body,
+            fontWeight: uniqueOnly ? 600 : 500,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "5px",
+          }}
+        >
+          {uniqueOnly ? <Icon name="check-circle" size={13} color={brand.accent} /> : <Icon name="user" size={13} color={brand.muted} />}
+          {uniqueOnly ? "Unique Customers Only (Latest)" : "Show Unique Customers Only"}
+        </button>
         <MultiSelect label="email status" options={EMAIL_STATUS_OPTIONS} selected={emailFilter} onChange={setEmailFilter} />
         <MultiSelect label="WhatsApp status" options={WHATSAPP_STATUS_OPTIONS} selected={whatsappFilter} onChange={setWhatsappFilter} />
-        {(searchText || emailFilter.length > 0 || whatsappFilter.length > 0) && (
-          <button type="button" onClick={() => { setSearchText(""); setEmailFilter([]); setWhatsappFilter([]); }} style={smallBtn}>
+        {(searchText || emailFilter.length > 0 || whatsappFilter.length > 0 || uniqueOnly) && (
+          <button type="button" onClick={() => { setSearchText(""); setEmailFilter([]); setWhatsappFilter([]); setUniqueOnly(false); }} style={smallBtn}>
             Clear filters
           </button>
         )}
         <span style={{ fontSize: "12.5px", color: brand.muted, marginLeft: "auto" }}>
-          Showing {filteredLeads.length} of {leads.length}
+          Showing {filteredLeads.length} of {baseLeads.length} {uniqueOnly ? "unique customers" : "syncs"}
         </span>
       </div>
 
