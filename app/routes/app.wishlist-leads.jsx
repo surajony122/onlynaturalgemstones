@@ -3,8 +3,8 @@
  * WishlistLead rows (most recent first) with rolled-up email status
  * (sent / opened / clicked, and which specific links were clicked)
  * sourced from the same EmailEvent table, matched by trackingId, plus
- * per-lead management: an editable internal note, lead disposition status,
- * and a "..." row-actions menu (Send Now / Retry WhatsApp / Delete).
+ * per-lead management: lead disposition status dropdown and a "..." row-actions
+ * menu (Send Now / Retry WhatsApp / Delete).
  */
 import { useEffect, useState, useMemo } from "react";
 import { useFetcher, useLoaderData, useRevalidator } from "react-router";
@@ -14,7 +14,6 @@ import prisma from "../db.server";
 import { processDueWishlistEmails, resendWishlistLeadEmail, resendWishlistWhatsapp, resolveWishlistIntervalHours } from "../utils/wishlist.server";
 import { getAppSettings } from "../utils/appSettings.server";
 
-// The in-app reminder scheduler (utils/wishlistScheduler.server.js) checks on the minute.
 const CRON_EVERY_MS = 60 * 1000;
 import {
   tableWrapStyle,
@@ -41,25 +40,25 @@ const PAGE_SIZE = 50;
 const MAX_LOADER_LEADS = 1000;
 
 export const LEAD_STATUS_OPTIONS = [
-  { value: "Pending", label: "New / Pending" },
-  { value: "Not Interested", label: "Not Interested" },
-  { value: "Interested", label: "Interested / Follow Up" },
-  { value: "Converted", label: "Converted / Purchased" },
-  { value: "No Response", label: "No Response" },
+  { value: "New", label: "New", color: "#5f6368", bg: "#fff" },
+  { value: "Bought Elsewhere", label: "Bought Elsewhere", color: "#c5221f", bg: "#fde8e8" },
+  { value: "Budget Too Low", label: "Budget Too Low", color: "#b06000", bg: "#fef7e0" },
+  { value: "Duplicate", label: "Duplicate", color: "#5f6368", bg: "#f1f3f4" },
+  { value: "Follow Up", label: "Follow Up", color: "#1a73e8", bg: "#e8f0fe" },
+  { value: "Junk", label: "Junk", color: "#c5221f", bg: "#fde8e8" },
+  { value: "Maybe Later", label: "Maybe Later", color: "#b06000", bg: "#fef7e0" },
+  { value: "No Response", label: "No Response", color: "#5f6368", bg: "#f1f3f4" },
+  { value: "Not Interested", label: "Not Interested", color: "#c5221f", bg: "#fde8e8" },
+  { value: "Qualified", label: "Qualified", color: "#1e7e34", bg: "#e6f4ea" },
 ];
 
-export function parseLeadNotes(rawNotes) {
-  if (!rawNotes) return { status: "Pending", text: "" };
-  const match = rawNotes.match(/^\[Status:\s*([^\]]+)\]\s*(.*)$/s);
-  if (match) {
-    return { status: match[1].trim(), text: match[2].trim() };
-  }
-  return { status: "Pending", text: rawNotes };
-}
-
-export function formatLeadNotes(status, text) {
-  if (!status || status === "Pending") return text || "";
-  return `[Status: ${status}] ${text || ""}`.trim();
+export function parseLeadStatus(rawNotes) {
+  if (!rawNotes) return "New";
+  const trimmed = rawNotes.trim();
+  const match = trimmed.match(/^\[Status:\s*([^\]]+)\]/);
+  if (match) return match[1].trim();
+  const found = LEAD_STATUS_OPTIONS.find((o) => o.value.toLowerCase() === trimmed.toLowerCase());
+  return found ? found.value : trimmed || "New";
 }
 
 function exportWishlistLeadsToCsv(leadsToExport) {
@@ -77,7 +76,6 @@ function exportWishlistLeadsToCsv(leadsToExport) {
     "Email Status",
     "WhatsApp Status",
     "Lead Status",
-    "Internal Notes",
   ];
 
   const escapeCsv = (val) => {
@@ -90,7 +88,7 @@ function exportWishlistLeadsToCsv(leadsToExport) {
     const titles = lead.products.map((p) => p.title).filter(Boolean).join(" | ");
     const skus = lead.products.map((p) => p.sku || "N/A").filter(Boolean).join(" | ");
     const prices = lead.products.map((p) => (p.price ? `₹${p.price}` : "")).filter(Boolean).join(" | ");
-    const parsedNote = parseLeadNotes(lead.notes);
+    const leadStatus = parseLeadStatus(lead.notes);
 
     return [
       escapeCsv(new Date(lead.createdAt).toLocaleString()),
@@ -101,8 +99,7 @@ function exportWishlistLeadsToCsv(leadsToExport) {
       escapeCsv(prices),
       escapeCsv(lead.emailStatus.sent > 0 ? (lead.emailStatus.clicked > 0 ? "Clicked" : lead.emailStatus.opened > 0 ? "Opened" : "Sent") : "Pending"),
       escapeCsv(lead.whatsappSendStatus || "Pending"),
-      escapeCsv(parsedNote.status),
-      escapeCsv(parsedNote.text),
+      escapeCsv(leadStatus),
     ].join(",");
   });
 
@@ -357,30 +354,23 @@ function LeadRow({ lead, selected, onToggleSelect, now }) {
   const fetcher = useFetcher();
   const toast = useToast();
 
-  const parsedInit = useMemo(() => parseLeadNotes(lead.notes), [lead.notes]);
-  const [statusVal, setStatusVal] = useState(parsedInit.status);
-  const [notesText, setNotesText] = useState(parsedInit.text);
-  const [dirty, setDirty] = useState(false);
+  const currentStatus = useMemo(() => parseLeadStatus(lead.notes), [lead.notes]);
+  const [statusVal, setStatusVal] = useState(currentStatus);
   const [confirming, setConfirming] = useState(false);
   const busy = fetcher.state !== "idle";
 
   useEffect(() => {
-    const parsed = parseLeadNotes(lead.notes);
-    setStatusVal(parsed.status);
-    setNotesText(parsed.text);
-    setDirty(false);
+    setStatusVal(parseLeadStatus(lead.notes));
   }, [lead.notes]);
 
-  useEffect(() => {
-    if (fetcher.data?.intent === "saveNotes" && fetcher.data.ok) setDirty(false);
-  }, [fetcher.data]);
+  const handleStatusChange = (newStatus) => {
+    setStatusVal(newStatus);
+    fetcher.submit({ intent: "saveNotes", leadId: lead.id, notes: newStatus }, { method: "POST" });
+    toast.show(`Status updated to "${newStatus}"`);
+  };
 
   const sendNow = () => fetcher.submit({ intent: "sendNow", leadId: lead.id }, { method: "POST" });
   const retryWhatsapp = () => fetcher.submit({ intent: "resendWhatsapp", leadId: lead.id }, { method: "POST" });
-  const saveNotes = () => {
-    const formatted = formatLeadNotes(statusVal, notesText);
-    fetcher.submit({ intent: "saveNotes", leadId: lead.id, notes: formatted }, { method: "POST" });
-  };
 
   const confirmDelete = () => {
     setConfirming(false);
@@ -473,62 +463,35 @@ function LeadRow({ lead, selected, onToggleSelect, now }) {
             ))
           : "—"}
       </td>
-      <td style={{ ...tdStyle, minWidth: "200px" }}>
-        <select
-          value={statusVal}
-          onChange={(e) => {
-            setStatusVal(e.target.value);
-            setDirty(true);
-          }}
-          style={{
-            width: "100%",
-            padding: "5px 8px",
-            borderRadius: "6px",
-            border: `1px solid ${brand.border}`,
-            fontSize: "12px",
-            fontWeight: 600,
-            marginBottom: "6px",
-            cursor: "pointer",
-            background:
-              statusVal === "Not Interested"
-                ? "#fde8e8"
-                : statusVal === "Interested"
-                ? "#e6f4ea"
-                : statusVal === "Converted"
-                ? "#e8f0fe"
-                : statusVal === "No Response"
-                ? "#f1f3f4"
-                : "#fff",
-            color:
-              statusVal === "Not Interested"
-                ? brand.danger
-                : statusVal === "Interested"
-                ? brand.success
-                : statusVal === "Converted"
-                ? brand.accent
-                : brand.body,
-          }}
-        >
-          {LEAD_STATUS_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-        <textarea
-          value={notesText}
-          onChange={(e) => {
-            setNotesText(e.target.value);
-            setDirty(true);
-          }}
-          placeholder="Internal note…"
-          style={{ width: "100%", minHeight: "44px", fontSize: "11.5px", padding: "5px 8px", border: `1px solid ${brand.border}`, borderRadius: "6px", boxSizing: "border-box", resize: "vertical", color: brand.body }}
-        />
-        {dirty && (
-          <button type="button" style={{ ...smallBtn, marginTop: "4px", padding: "4px 10px", fontSize: "11px", background: brand.accent, color: "#fff", border: "none" }} onClick={saveNotes} disabled={busy}>
-            Save Status & Note
-          </button>
-        )}
+      <td style={{ ...tdStyle, minWidth: "160px" }}>
+        {(() => {
+          const currentOpt = LEAD_STATUS_OPTIONS.find((o) => o.value === statusVal) || LEAD_STATUS_OPTIONS[0];
+          return (
+            <select
+              value={statusVal}
+              onChange={(e) => handleStatusChange(e.target.value)}
+              disabled={busy}
+              style={{
+                width: "100%",
+                padding: "6px 10px",
+                borderRadius: "8px",
+                border: `1px solid ${brand.border}`,
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: "pointer",
+                background: currentOpt.bg,
+                color: currentOpt.color,
+                boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+              }}
+            >
+              {LEAD_STATUS_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value} style={{ background: "#fff", color: brand.body, fontWeight: 500 }}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          );
+        })()}
       </td>
       <td style={{ ...tdStyle, minWidth: "150px", textAlign: "right" }}>
         {confirming ? (
@@ -609,8 +572,8 @@ function matchesWhatsappStatus(lead, filters) {
 
 function matchesLeadStatus(lead, filters) {
   if (filters.length === 0) return true;
-  const parsed = parseLeadNotes(lead.notes);
-  return filters.includes(parsed.status);
+  const status = parseLeadStatus(lead.notes);
+  return filters.includes(status);
 }
 
 export default function WishlistLeadsPage() {
@@ -816,7 +779,7 @@ export default function WishlistLeadsPage() {
                   <th style={thStyle}>Email</th>
                   <th style={thStyle}>WhatsApp</th>
                   <th style={thStyle}>Clicked Links</th>
-                  <th style={thStyle}>Lead Disposition &amp; Notes</th>
+                  <th style={thStyle}>Lead Status</th>
                   <th style={thStyle}></th>
                 </tr>
               </thead>

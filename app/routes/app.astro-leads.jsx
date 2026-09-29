@@ -2,8 +2,8 @@
  * Astro Advice leads + email tracking viewer. Shows the AstroLead rows
  * (most recent first) with a rolled-up email status (sent/opened/clicked,
  * and which specific links were clicked) sourced from EmailEvent rows
- * matched by trackingId, plus per-lead management: an editable internal
- * note and a "..." row-actions menu (Send Now / Retry WhatsApp / Delete).
+ * matched by trackingId, plus per-lead management: lead disposition status
+ * dropdown and a "..." row-actions menu (Send Now / Retry WhatsApp / Delete).
  */
 import { useEffect, useState, useMemo } from "react";
 import { useFetcher, useLoaderData, useRevalidator } from "react-router";
@@ -37,6 +37,96 @@ import { FriendlyErrorInline } from "../components/friendly-error";
 
 const PAGE_SIZE = 50;
 const MAX_LOADER_LEADS = 1000;
+
+export const LEAD_STATUS_OPTIONS = [
+  { value: "New", label: "New", color: "#5f6368", bg: "#fff" },
+  { value: "Bought Elsewhere", label: "Bought Elsewhere", color: "#c5221f", bg: "#fde8e8" },
+  { value: "Budget Too Low", label: "Budget Too Low", color: "#b06000", bg: "#fef7e0" },
+  { value: "Duplicate", label: "Duplicate", color: "#5f6368", bg: "#f1f3f4" },
+  { value: "Follow Up", label: "Follow Up", color: "#1a73e8", bg: "#e8f0fe" },
+  { value: "Junk", label: "Junk", color: "#c5221f", bg: "#fde8e8" },
+  { value: "Maybe Later", label: "Maybe Later", color: "#b06000", bg: "#fef7e0" },
+  { value: "No Response", label: "No Response", color: "#5f6368", bg: "#f1f3f4" },
+  { value: "Not Interested", label: "Not Interested", color: "#c5221f", bg: "#fde8e8" },
+  { value: "Qualified", label: "Qualified", color: "#1e7e34", bg: "#e6f4ea" },
+];
+
+const GEM_TO_HANDLE = {
+  Ruby: "ruby",
+  "Yellow Sapphire": "yellow-sapphire",
+  "Blue Sapphire": "blue-sapphire",
+  Emerald: "emerald",
+  "Red Coral": "red-coral",
+  Pearl: "pearl",
+  Hessonite: "hessonite-gomed",
+  "Cat's Eye": "cats-eye-lehsunia",
+  Diamond: "diamond",
+  "White Sapphire": "white-sapphire",
+};
+
+export function parseLeadStatus(rawNotes) {
+  if (!rawNotes) return "New";
+  const trimmed = rawNotes.trim();
+  const match = trimmed.match(/^\[Status:\s*([^\]]+)\]/);
+  if (match) return match[1].trim();
+  const found = LEAD_STATUS_OPTIONS.find((o) => o.value.toLowerCase() === trimmed.toLowerCase());
+  return found ? found.value : trimmed || "New";
+}
+
+function exportAstroLeadsToCsv(leadsToExport) {
+  if (!leadsToExport || !leadsToExport.length) {
+    alert("No astro leads to export");
+    return;
+  }
+  const headers = [
+    "Submission Date & Time",
+    "Customer Name",
+    "Customer Email",
+    "Customer Phone",
+    "Life Stone",
+    "Life Stone SKU",
+    "Calculation Status",
+    "Shopify Sync",
+    "Email Status",
+    "WhatsApp Status",
+    "Lead Status",
+  ];
+
+  const escapeCsv = (val) => {
+    if (val === null || val === undefined) return '""';
+    const str = String(val).replace(/"/g, '""');
+    return `"${str}"`;
+  };
+
+  const rows = leadsToExport.map((lead) => {
+    const leadStatus = parseLeadStatus(lead.notes);
+
+    return [
+      escapeCsv(new Date(lead.createdAt).toLocaleString()),
+      escapeCsv(lead.name || ""),
+      escapeCsv(lead.email || ""),
+      escapeCsv(lead.phone || ""),
+      escapeCsv(lead.lifeStoneGem || ""),
+      escapeCsv(lead.lifeStoneSku || "N/A"),
+      escapeCsv(lead.calculationOk ? "OK" : "Error"),
+      escapeCsv(lead.shopifySyncStatus || "N/A"),
+      escapeCsv(lead.emailStatus.sent > 0 ? (lead.emailStatus.clicked > 0 ? "Clicked" : lead.emailStatus.opened > 0 ? "Opened" : "Sent") : "Pending"),
+      escapeCsv(lead.whatsappSendStatus || "Pending"),
+      escapeCsv(leadStatus),
+    ].join(",");
+  });
+
+  const csvContent = "\uFEFF" + [headers.join(","), ...rows].join("\n");
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", `astro_leads_${new Date().toISOString().slice(0, 10)}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
 
 export const action = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
@@ -123,7 +213,7 @@ export const action = async ({ request }) => {
 };
 
 export const loader = async ({ request }) => {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
 
   const leads = await prisma.astroLead.findMany({
     orderBy: { createdAt: "desc" },
@@ -151,11 +241,41 @@ export const loader = async ({ request }) => {
     }
   }
 
+  // Collect unique gem names to fetch SKU for Life Stone
+  const uniqueGems = [...new Set(leads.map((l) => l.lifeStoneGem).filter(Boolean))];
+  const gemSkuMap = {};
+
+  if (uniqueGems.length > 0 && admin) {
+    try {
+      const queryParts = uniqueGems.map((gem, i) => {
+        const handle = GEM_TO_HANDLE[gem] || gem.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+        return `c${i}: collectionByHandle(handle: ${JSON.stringify(handle)}) { products(first: 2) { nodes { variants(first: 3) { nodes { sku } } } } }`;
+      });
+      const res = await admin.graphql(`#graphql query AstroGemSkus { ${queryParts.join(" ")} }`);
+      const json = await res.json();
+      uniqueGems.forEach((gem, i) => {
+        const collection = json?.data?.[`c${i}`];
+        const skus = [];
+        if (collection?.products?.nodes) {
+          for (const p of collection.products.nodes) {
+            for (const v of p.variants?.nodes || []) {
+              if (v.sku && !skus.includes(v.sku)) skus.push(v.sku);
+            }
+          }
+        }
+        if (skus.length) gemSkuMap[gem] = skus.slice(0, 3).join(", ");
+      });
+    } catch (err) {
+      console.error("[astro-leads] SKU lookup failed:", err);
+    }
+  }
+
   return {
     whatsappQueue,
     leads: leads.map((l) => ({
       ...l,
       createdAt: l.createdAt.toISOString(),
+      lifeStoneSku: gemSkuMap[l.lifeStoneGem] || null,
       emailStatus: eventsByTrackingId[l.trackingId] || { sent: 0, opened: 0, clicked: 0, clickedLinks: [] },
     })),
   };
@@ -240,18 +360,23 @@ function WhatsAppQueueSection({ whatsappQueue }) {
 function LeadRow({ lead, selected, onToggleSelect }) {
   const fetcher = useFetcher();
   const toast = useToast();
-  const [notes, setNotes] = useState(lead.notes || "");
-  const [dirty, setDirty] = useState(false);
+  const currentStatus = useMemo(() => parseLeadStatus(lead.notes), [lead.notes]);
+  const [statusVal, setStatusVal] = useState(currentStatus);
   const [confirming, setConfirming] = useState(false);
   const busy = fetcher.state !== "idle";
 
   useEffect(() => {
-    if (fetcher.data?.intent === "saveNotes" && fetcher.data.ok) setDirty(false);
-  }, [fetcher.data]);
+    setStatusVal(parseLeadStatus(lead.notes));
+  }, [lead.notes]);
+
+  const handleStatusChange = (newStatus) => {
+    setStatusVal(newStatus);
+    fetcher.submit({ intent: "saveNotes", leadId: lead.id, notes: newStatus }, { method: "POST" });
+    toast.show(`Status updated to "${newStatus}"`);
+  };
 
   const sendNow = () => fetcher.submit({ intent: "sendNow", leadId: lead.id }, { method: "POST" });
   const retryWhatsapp = () => fetcher.submit({ intent: "resendWhatsapp", leadId: lead.id }, { method: "POST" });
-  const saveNotes = () => fetcher.submit({ intent: "saveNotes", leadId: lead.id, notes }, { method: "POST" });
   const confirmDelete = () => {
     setConfirming(false);
     fetcher.submit({ intent: "delete", leadId: lead.id }, { method: "POST" });
@@ -276,7 +401,16 @@ function LeadRow({ lead, selected, onToggleSelect }) {
       <td style={{ ...tdStyle, fontWeight: 600, color: brand.ink }}>{lead.name || "—"}</td>
       <td style={tdStyle}>{lead.email || "—"}</td>
       <td style={tdStyle}>{lead.phone || "—"}</td>
-      <td style={tdStyle}>{lead.lifeStoneGem || "—"}</td>
+      <td style={tdStyle}>
+        <div>
+          <span style={{ fontWeight: 600, color: brand.ink }}>{lead.lifeStoneGem || "—"}</span>
+        </div>
+        {lead.lifeStoneSku ? (
+          <div style={{ fontSize: "10px", color: brand.muted, background: "#fff", padding: "1px 5px", borderRadius: "4px", border: `1px solid ${brand.border}`, marginTop: "3px", display: "inline-block" }}>
+            SKU: {lead.lifeStoneSku}
+          </div>
+        ) : null}
+      </td>
       <td style={tdStyle}>
         {lead.calculationOk ? (
           <Pill label="OK" color={brand.success} />
@@ -326,21 +460,35 @@ function LeadRow({ lead, selected, onToggleSelect }) {
             ))
           : "—"}
       </td>
-      <td style={{ ...tdStyle, minWidth: "180px" }}>
-        <textarea
-          value={notes}
-          onChange={(e) => {
-            setNotes(e.target.value);
-            setDirty(true);
-          }}
-          placeholder="Internal note…"
-          style={{ width: "100%", minHeight: "50px", fontSize: "12px", padding: "6px 8px", border: `1px solid ${brand.border}`, borderRadius: "8px", boxSizing: "border-box", resize: "vertical", color: brand.body }}
-        />
-        {dirty && (
-          <button type="button" style={{ ...smallBtn, marginTop: "4px", padding: "4px 10px", fontSize: "11px" }} onClick={saveNotes} disabled={busy}>
-            Save note
-          </button>
-        )}
+      <td style={{ ...tdStyle, minWidth: "160px" }}>
+        {(() => {
+          const currentOpt = LEAD_STATUS_OPTIONS.find((o) => o.value === statusVal) || LEAD_STATUS_OPTIONS[0];
+          return (
+            <select
+              value={statusVal}
+              onChange={(e) => handleStatusChange(e.target.value)}
+              disabled={busy}
+              style={{
+                width: "100%",
+                padding: "6px 10px",
+                borderRadius: "8px",
+                border: `1px solid ${brand.border}`,
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: "pointer",
+                background: currentOpt.bg,
+                color: currentOpt.color,
+                boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+              }}
+            >
+              {LEAD_STATUS_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value} style={{ background: "#fff", color: brand.body, fontWeight: 500 }}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          );
+        })()}
       </td>
       <td style={{ ...tdStyle, minWidth: "150px", textAlign: "right" }}>
         {confirming ? (
@@ -430,6 +578,12 @@ function matchesWhatsappStatus(lead, filters) {
   return filters.length === 0 || filters.some((f) => singleWhatsappMatch(lead, f));
 }
 
+function matchesLeadStatus(lead, filters) {
+  if (filters.length === 0) return true;
+  const status = parseLeadStatus(lead.notes);
+  return filters.includes(status);
+}
+
 export default function AstroLeadsPage() {
   const { leads, whatsappQueue } = useLoaderData();
   const revalidator = useRevalidator();
@@ -440,11 +594,12 @@ export default function AstroLeadsPage() {
   const [calcFilter, setCalcFilter] = useState([]);
   const [emailFilter, setEmailFilter] = useState([]);
   const [whatsappFilter, setWhatsappFilter] = useState([]);
+  const [leadStatusFilter, setLeadStatusFilter] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchText, calcFilter, emailFilter, whatsappFilter]);
+  }, [searchText, calcFilter, emailFilter, whatsappFilter, leadStatusFilter]);
 
   const filteredLeads = leads.filter((lead) => {
     const q = searchText.trim().toLowerCase();
@@ -453,12 +608,14 @@ export default function AstroLeadsPage() {
       (lead.name || "").toLowerCase().includes(q) ||
       (lead.email || "").toLowerCase().includes(q) ||
       (lead.phone || "").toLowerCase().includes(q) ||
-      (lead.lifeStoneGem || "").toLowerCase().includes(q);
+      (lead.lifeStoneGem || "").toLowerCase().includes(q) ||
+      (lead.lifeStoneSku || "").toLowerCase().includes(q);
     return (
       matchesSearch &&
       matchesCalcStatus(lead, calcFilter) &&
       matchesEmailStatus(lead, emailFilter) &&
-      matchesWhatsappStatus(lead, whatsappFilter)
+      matchesWhatsappStatus(lead, whatsappFilter) &&
+      matchesLeadStatus(lead, leadStatusFilter)
     );
   });
 
@@ -491,7 +648,31 @@ export default function AstroLeadsPage() {
 
   return (
     <PageIn>
-      <PageHeader title={`Astro Advice leads (${leads.length})`} description="Everyone who submitted the gem recommendation form." />
+      <PageHeader
+        title={`Astro Advice leads (${leads.length})`}
+        description="Everyone who submitted the gem recommendation form."
+        action={
+          <button
+            type="button"
+            onClick={() => exportAstroLeadsToCsv(filteredLeads)}
+            style={{
+              padding: "9px 15px",
+              borderRadius: "9px",
+              border: `1px solid ${brand.border}`,
+              background: "#fff",
+              color: brand.body,
+              fontSize: "13px",
+              fontWeight: 600,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+          >
+            <Icon name="sheets" size={15} color={brand.success} /> Export to Sheet (CSV)
+          </button>
+        }
+      />
 
       <WhatsAppQueueSection whatsappQueue={whatsappQueue} />
 
@@ -514,12 +695,13 @@ export default function AstroLeadsPage() {
       </p>
 
       <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center", marginBottom: "14px" }}>
-        <input type="text" value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Search name, email, phone, or stone…" style={inputStyle} />
+        <input type="text" value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Search name, email, phone, stone, or SKU…" style={inputStyle} />
+        <MultiSelect label="lead status" options={LEAD_STATUS_OPTIONS.map((o) => ({ value: o.value, label: o.label }))} selected={leadStatusFilter} onChange={setLeadStatusFilter} />
         <MultiSelect label="calculation status" options={CALC_STATUS_OPTIONS} selected={calcFilter} onChange={setCalcFilter} />
         <MultiSelect label="email status" options={EMAIL_STATUS_OPTIONS} selected={emailFilter} onChange={setEmailFilter} />
         <MultiSelect label="WhatsApp status" options={WHATSAPP_STATUS_OPTIONS} selected={whatsappFilter} onChange={setWhatsappFilter} />
-        {(searchText || calcFilter.length > 0 || emailFilter.length > 0 || whatsappFilter.length > 0) && (
-          <button type="button" onClick={() => { setSearchText(""); setCalcFilter([]); setEmailFilter([]); setWhatsappFilter([]); }} style={smallBtn}>
+        {(searchText || calcFilter.length > 0 || emailFilter.length > 0 || whatsappFilter.length > 0 || leadStatusFilter.length > 0) && (
+          <button type="button" onClick={() => { setSearchText(""); setCalcFilter([]); setEmailFilter([]); setWhatsappFilter([]); setLeadStatusFilter([]); }} style={smallBtn}>
             Clear filters
           </button>
         )}
@@ -545,13 +727,13 @@ export default function AstroLeadsPage() {
                   <SortTh label="Name" sortKey="name" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
                   <SortTh label="Email" sortKey="email" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
                   <th style={thStyle}>Phone</th>
-                  <SortTh label="Life Stone" sortKey="lifeStoneGem" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                  <SortTh label="Life Stone & SKU" sortKey="lifeStoneGem" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
                   <th style={thStyle}>Calculation</th>
                   <th style={thStyle}>Shopify Sync</th>
                   <th style={thStyle}>Email</th>
                   <th style={thStyle}>WhatsApp</th>
                   <th style={thStyle}>Clicked Links</th>
-                  <th style={thStyle}>Notes</th>
+                  <th style={thStyle}>Lead Status</th>
                   <th style={thStyle}></th>
                 </tr>
               </thead>
