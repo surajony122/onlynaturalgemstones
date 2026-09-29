@@ -523,7 +523,7 @@ function wishlistItemRow(product, trackingCtx) {
 // all class names/colors are copied verbatim from
 // orderProcessingEmail.server.js's default template so a future style
 // change to that shell can be mirrored here the same way.
-function buildWishlistEmailHtml({ firstName, products, shopInfo, pixelUrl, viewAllUrl }) {
+function buildWishlistEmailHtml({ firstName, products, shopInfo, pixelUrl, viewAllUrl,  storeUrl}) {
   const itemsHtml = products.length
     ? products.map((p) => wishlistItemRow(p, { appUrl: shopInfo._appUrl, trackingId: shopInfo._trackingId })).join("")
     : '<p style="margin:0;">Your saved items are ready whenever you are.</p>';
@@ -814,13 +814,66 @@ function buildWishlistEmailHtml({ firstName, products, shopInfo, pixelUrl, viewA
 
                 ${itemsHtml}
 
-                <table class="button-table" width="100%" cellpadding="0" cellspacing="0" border="0">
-                  <tr>
-                    <td>
-                      <a href="${esc(viewAllUrl)}" class="email-button">View Full Wishlist</a>
-                    </td>
-                  </tr>
-                </table>
+               <table
+  width="100%"
+  cellpadding="0"
+  cellspacing="0"
+  border="0"
+  style="margin-top:12px;margin-bottom:20px;"
+>
+  <tr>
+
+    <!-- VIEW WISHLIST -->
+    <td width="50%" style="padding-right:5px;">
+      <a
+        href="${esc(viewAllUrl)}"
+        style="
+          display:block;
+          width:100%;
+          box-sizing:border-box;
+          text-align:center;
+          background:#8c7a4e;
+          color:#ffffff !important;
+          padding:12px 5px;
+          font-size:14px;
+          font-weight:500;
+          line-height:16px;
+          border-radius:3px;
+          text-decoration:none !important;
+          white-space:nowrap;
+        "
+      >
+        View Full Wishlist
+      </a>
+    </td>
+
+    <!-- VISIT STORE -->
+    <td width="50%" style="padding-left:5px;">
+      <a
+        href="${esc(storeUrl)}"
+        style="
+          display:block;
+          width:100%;
+          box-sizing:border-box;
+          text-align:center;
+          background:#ffffff;
+          color:#8c7a4e !important;
+          padding:11px 5px;
+          font-size:14px;
+          font-weight:500;
+          line-height:16px;
+          border:1px solid #8c7a4e;
+          border-radius:3px;
+          text-decoration:none !important;
+          white-space:nowrap;
+        "
+      >
+        Visit Our Store
+      </a>
+    </td>
+
+  </tr>
+</table>
 
               </div>
             </td>
