@@ -195,7 +195,7 @@ export const action = async ({ request }) => {
 };
 
 export const loader = async ({ request }) => {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   const settings = await getAppSettings(session.shop);
   const intervalMs = resolveWishlistIntervalHours(settings) * 60 * 60 * 1000;
 
@@ -223,6 +223,36 @@ export const loader = async ({ request }) => {
     }
   }
 
+  // Collect handles needing SKU lookup so older leads also show SKU
+  const handlesNeedingSku = new Set();
+  for (const l of leads) {
+    const products = Array.isArray(l.products) ? l.products : [];
+    for (const p of products) {
+      if (p.handle && !p.sku) handlesNeedingSku.add(p.handle);
+    }
+  }
+
+  const skuMap = {};
+  if (handlesNeedingSku.size > 0 && admin) {
+    const handlesList = [...handlesNeedingSku].slice(0, 50);
+    try {
+      const queryParts = handlesList.map(
+        (h, i) => `p${i}: productByHandle(handle: ${JSON.stringify(h)}) { handle variants(first: 5) { nodes { sku } } }`
+      );
+      const res = await admin.graphql(`#graphql query WishlistSkus { ${queryParts.join(" ")} }`);
+      const json = await res.json();
+      handlesList.forEach((h, i) => {
+        const p = json?.data?.[`p${i}`];
+        if (p) {
+          const skus = (p.variants?.nodes || []).map((v) => v.sku).filter(Boolean);
+          if (skus.length) skuMap[h] = skus.join(", ");
+        }
+      });
+    } catch (err) {
+      console.error("[wishlist-leads] SKU lookup failed:", err);
+    }
+  }
+
   // A customer is emailed from their LATEST snapshot only, so only the newest
   // row per email can still be "waiting to send".
   const seenEmails = new Set();
@@ -240,6 +270,11 @@ export const loader = async ({ request }) => {
     leads: leads.map((l) => {
       const created = l.createdAt.getTime();
       const dueAt = created + intervalMs;
+      const rawProducts = Array.isArray(l.products) ? l.products : [];
+      const products = rawProducts.map((p) => ({
+        ...p,
+        sku: p.sku || skuMap[p.handle] || null,
+      }));
       return {
         schedule: latestPendingIds.has(l.id)
           ? { createdAt: created, dueAt, sendAt: Math.ceil(dueAt / CRON_EVERY_MS) * CRON_EVERY_MS }
@@ -247,7 +282,7 @@ export const loader = async ({ request }) => {
       ...l,
       createdAt: l.createdAt.toISOString(),
       productHandles: Array.isArray(l.productHandles) ? l.productHandles : [],
-      products: Array.isArray(l.products) ? l.products : [],
+      products,
       emailStatus: eventsByTrackingId[l.trackingId] || { sent: 0, opened: 0, clicked: 0, clickedLinks: [] },
       };
     }),
