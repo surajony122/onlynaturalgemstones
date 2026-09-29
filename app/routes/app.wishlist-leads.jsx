@@ -37,7 +37,8 @@ import {
 import { useToast } from "../components/toast";
 import { FriendlyErrorInline } from "../components/friendly-error";
 
-const PAGE_SIZE = 100;
+const PAGE_SIZE = 50;
+const MAX_LOADER_LEADS = 1000;
 
 export const LEAD_STATUS_OPTIONS = [
   { value: "Pending", label: "New / Pending" },
@@ -201,7 +202,7 @@ export const loader = async ({ request }) => {
 
   const leads = await prisma.wishlistLead.findMany({
     orderBy: { createdAt: "desc" },
-    take: PAGE_SIZE,
+    take: MAX_LOADER_LEADS,
   });
 
   const trackingIds = leads.map((l) => l.trackingId);
@@ -626,6 +627,11 @@ export default function WishlistLeadsPage() {
   const [whatsappFilter, setWhatsappFilter] = useState([]);
   const [leadStatusFilter, setLeadStatusFilter] = useState([]);
   const [uniqueOnly, setUniqueOnly] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchText, emailFilter, whatsappFilter, leadStatusFilter, uniqueOnly]);
 
   // Filter for unique customers (latest wishlist snapshot per customer)
   const baseLeads = useMemo(() => {
@@ -660,6 +666,12 @@ export default function WishlistLeadsPage() {
 
   const { sorted: sortedLeads, sortKey, sortDir, onSort } = useSort(filteredLeads, "createdAt", "desc");
 
+  const totalPages = Math.ceil(sortedLeads.length / PAGE_SIZE) || 1;
+  const paginatedLeads = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return sortedLeads.slice(start, start + PAGE_SIZE);
+  }, [sortedLeads, currentPage]);
+
   const anyWaiting = leads.some((l) => l.schedule);
   useEffect(() => {
     if (!anyWaiting) return undefined;
@@ -668,7 +680,7 @@ export default function WishlistLeadsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anyWaiting]);
 
-  const bulk = useBulkSelect(sortedLeads, "id");
+  const bulk = useBulkSelect(paginatedLeads, "id");
   const bulkFetcher = useFetcher();
   const bulkBusy = bulkFetcher.state !== "idle";
 
@@ -745,7 +757,7 @@ export default function WishlistLeadsPage() {
         <strong>{formatCountdown(Math.ceil(now / cronEveryMs) * cronEveryMs - now)}</strong>
       </p>
       <p style={{ margin: "0 0 14px", fontSize: "12.5px", color: brand.muted }}>
-        Most recent {PAGE_SIZE} wishlist syncs · emails don't send immediately — a customer gets one email once
+        Showing 50 leads per page · emails don't send immediately — a customer gets one email once
         they've gone quiet for the interval set on the Settings page (default 2h), using their latest wishlist
         snapshot · each row's "..." menu has Send Now (email) / Retry WhatsApp / Delete.
       </p>
@@ -779,7 +791,7 @@ export default function WishlistLeadsPage() {
           </button>
         )}
         <span style={{ fontSize: "12.5px", color: brand.muted, marginLeft: "auto" }}>
-          Showing {filteredLeads.length} of {baseLeads.length} {uniqueOnly ? "unique customers" : "syncs"}
+          Showing {sortedLeads.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, sortedLeads.length)} of {sortedLeads.length} {uniqueOnly ? "unique customers" : "syncs"}
         </span>
       </div>
 
@@ -790,30 +802,61 @@ export default function WishlistLeadsPage() {
       ) : filteredLeads.length === 0 ? (
         <p style={{ fontSize: "13px", color: brand.muted }}>No wishlist syncs match the current filters.</p>
       ) : (
-        <div style={tableWrapStyle}>
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <SelectAllTh checked={bulk.allSelected} indeterminate={bulk.count > 0 && !bulk.allSelected} onChange={bulk.toggleAll} />
-                <SortTh label="When" sortKey="createdAt" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
-                <SortTh label="Email" sortKey="email" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
-                <SortTh label="Phone" sortKey="phone" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
-                <th style={thStyle}>Wishlist Items &amp; SKUs</th>
-                <th style={thStyle}>Next send</th>
-                <th style={thStyle}>Email</th>
-                <th style={thStyle}>WhatsApp</th>
-                <th style={thStyle}>Clicked Links</th>
-                <th style={thStyle}>Lead Disposition &amp; Notes</th>
-                <th style={thStyle}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedLeads.map((lead) => (
-                <LeadRow key={lead.id} lead={lead} selected={bulk.isSelected(lead.id)} onToggleSelect={() => bulk.toggle(lead.id)} now={now} />
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <div style={tableWrapStyle}>
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <SelectAllTh checked={bulk.allSelected} indeterminate={bulk.count > 0 && !bulk.allSelected} onChange={bulk.toggleAll} />
+                  <SortTh label="When" sortKey="createdAt" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                  <SortTh label="Email" sortKey="email" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                  <SortTh label="Phone" sortKey="phone" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                  <th style={thStyle}>Wishlist Items &amp; SKUs</th>
+                  <th style={thStyle}>Next send</th>
+                  <th style={thStyle}>Email</th>
+                  <th style={thStyle}>WhatsApp</th>
+                  <th style={thStyle}>Clicked Links</th>
+                  <th style={thStyle}>Lead Disposition &amp; Notes</th>
+                  <th style={thStyle}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedLeads.map((lead) => (
+                  <LeadRow key={lead.id} lead={lead} selected={bulk.isSelected(lead.id)} onToggleSelect={() => bulk.toggle(lead.id)} now={now} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {sortedLeads.length > 0 && (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "16px", padding: "12px 16px", background: "#fff", border: `1px solid ${brand.border}`, borderRadius: "10px" }}>
+              <span style={{ fontSize: "12.5px", color: brand.muted }}>
+                Showing {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, sortedLeads.length)} of {sortedLeads.length} {uniqueOnly ? "unique customers" : "leads"} (Page {currentPage} of {totalPages})
+              </span>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  style={{ ...smallBtn, padding: "6px 14px", opacity: currentPage === 1 ? 0.5 : 1, cursor: currentPage === 1 ? "default" : "pointer" }}
+                >
+                  ← Previous
+                </button>
+                <span style={{ fontSize: "12.5px", fontWeight: 600, color: brand.ink, padding: "0 6px" }}>
+                  Page {currentPage} of {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage >= totalPages}
+                  style={{ ...smallBtn, padding: "6px 14px", opacity: currentPage >= totalPages ? 0.5 : 1, cursor: currentPage >= totalPages ? "default" : "pointer" }}
+                >
+                  Next →
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </PageIn>
   );
