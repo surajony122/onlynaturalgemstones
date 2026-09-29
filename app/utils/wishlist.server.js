@@ -1059,6 +1059,11 @@ async function getProductsByHandles(
                 currencyCode
               }
             }
+            variants(first: 5) {
+              nodes {
+                sku
+              }
+            }
           }`
       );
 
@@ -1091,6 +1096,8 @@ async function getProductsByHandles(
             return null;
           }
 
+          const skus = (p.variants?.nodes || []).map((v) => v.sku).filter(Boolean);
+          const sku = skus.length > 0 ? skus.join(", ") : null;
 
           return {
             handle: h,
@@ -1102,6 +1109,7 @@ async function getProductsByHandles(
               p.priceRangeV2
                 ?.minVariantPrice
                 ?.amount || null,
+            sku,
           };
         }
       )
