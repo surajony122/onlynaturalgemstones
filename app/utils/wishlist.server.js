@@ -458,21 +458,59 @@ function formatRupees(amount) {
 // visual identity, replacing the earlier accent-heavy row design.
 function wishlistItemRow(product, trackingCtx) {
   const rawUrl = "https://" + STORE_DOMAIN + "/products/" + product.handle;
-  const buyUrl = trackedClickUrl(trackingCtx.appUrl, trackingCtx.trackingId, rawUrl, "wishlist_" + product.handle + "_buy_now");
+
+  const buyUrl = trackedClickUrl(
+    trackingCtx.appUrl,
+    trackingCtx.trackingId,
+    rawUrl,
+    "wishlist_" + product.handle + "_buy_now"
+  );
+
   const imageCell = product.imageUrl
-    ? `<img src="${esc(product.imageUrl)}" width="70" height="70" alt="${esc(product.title)}" style="display:block;width:70px;height:70px;object-fit:cover;border-radius:6px;">`
+    ? `<img src="${esc(product.imageUrl)}"
+        width="70"
+        height="70"
+        alt="${esc(product.title)}"
+        style="display:block;width:70px;height:70px;object-fit:cover;border-radius:6px;">`
     : `<div style="width:70px;height:70px;border-radius:6px;background:#f3f2ef;"></div>`;
 
   return (
-    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-bottom:1px solid #e2dccf;">' +
-    "<tr>" +
-    '<td width="70" style="padding:14px 14px 14px 0;vertical-align:top;">' + imageCell + "</td>" +
-    '<td style="padding:14px 0;vertical-align:middle;">' +
-    '<p style="margin:0 0 4px;font-size:14px;font-weight:bold;color:#3d4652;">' + esc(product.title) + "</p>" +
-    (product.price ? '<p style="margin:0 0 8px;font-size:13px;color:#4f5965;">' + formatRupees(product.price) + "</p>" : "") +
-    '<a href="' + esc(buyUrl) + '" style="display:inline-block;background:#8c7a4e;color:#ffffff !important;font-size:12px;font-weight:500;text-decoration:none;padding:8px 20px;border-radius:3px;">BUY NOW</a>' +
-    "</td>" +
-    "</tr></table>"
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-bottom:1px solid #e2dccf;">' +
+      "<tr>" +
+
+        // PRODUCT IMAGE
+        '<td width="70" style="padding:14px 14px 14px 0;vertical-align:top;">' +
+          imageCell +
+        "</td>" +
+
+        // PRODUCT DETAILS
+        '<td style="padding:14px 10px 14px 0;vertical-align:middle;">' +
+          '<p style="margin:0 0 4px;font-size:14px;font-weight:bold;color:#3d4652;">' +
+            esc(product.title) +
+          "</p>" +
+
+          (
+            product.price
+              ? '<p style="margin:0;font-size:13px;color:#4f5965;">' +
+                  formatRupees(product.price) +
+                "</p>"
+              : ""
+          ) +
+
+        "</td>" +
+
+        // BUY NOW BUTTON — RIGHT SIDE
+        '<td width="90" style="padding:14px 0;vertical-align:middle;text-align:right;">' +
+          '<a href="' + esc(buyUrl) + '" ' +
+             'style="display:inline-block;background:#8c7a4e;color:#ffffff !important;' +
+             'font-size:12px;font-weight:500;text-decoration:none;' +
+             'padding:9px 13px;border-radius:3px;white-space:nowrap;">' +
+            "BUY NOW" +
+          "</a>" +
+        "</td>" +
+
+      "</tr>" +
+    "</table>"
   );
 }
 
@@ -906,7 +944,14 @@ export async function sendWishlistEmail(admin, settings, email, handles, product
   // building a new results page.
   const viewAllRaw = "https://" + STORE_DOMAIN + "/?shared_wishlist=" + handles.map(encodeURIComponent).join(",");
   const viewAllUrl = trackedClickUrl(appUrl, trackingId, viewAllRaw, "view_full_wishlist");
+  const storeRaw = "https://" + STORE_DOMAIN;
 
+const storeUrl = trackedClickUrl(
+  appUrl,
+  trackingId,
+  storeRaw,
+  "visit_store"
+);
   const firstName = email.split("@")[0];
   const subject = products.length === 1 ? "You saved something special" : "Your wishlist is waiting for you";
 
