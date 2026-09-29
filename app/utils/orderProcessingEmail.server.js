@@ -119,7 +119,7 @@ function getDefaultOrderProcessingEmailTemplate() {
     }
 
     .logo-section img {
-      max-width: 100px;
+      max-width: 140px;
       width: auto;
       height: auto;
       margin: 0 auto;
@@ -315,7 +315,7 @@ function getDefaultOrderProcessingEmailTemplate() {
       }
 
       .logo-section img {
-        max-width: 100px !important;
+        max-width: 120px !important;
       }
 
       .content-section {
@@ -413,7 +413,7 @@ function getDefaultOrderProcessingEmailTemplate() {
               <img
                 src="{{shop_logo_url}}"
                 alt="{{shop_name}}"
-                width="100"
+                width="140"
               >
 
             </td>

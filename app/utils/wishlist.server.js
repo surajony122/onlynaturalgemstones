@@ -1397,7 +1397,7 @@ function buildWishlistEmailHtml({
 
 
     .logo-section img {
-      max-width: 100px;
+      max-width: 140px;
       width: auto;
       height: auto;
       margin: 0 auto;
@@ -1585,7 +1585,7 @@ function buildWishlistEmailHtml({
 
 
       .logo-section img {
-        max-width: 100px !important;
+        max-width: 120px !important;
       }
 
 
@@ -1693,7 +1693,7 @@ function buildWishlistEmailHtml({
                       alt="${esc(
                         shopInfo.name
                       )}"
-                      width="100"
+                      width="140"
                     >
                   `
                   : `
