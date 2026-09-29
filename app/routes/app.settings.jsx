@@ -862,6 +862,7 @@ function SecretField({ id, label, fieldName, isSet, value, onChange, placeholder
 // Fixed choices for how long after a customer's last wishlist change the reminder goes out.
 // Stored as hours (the existing wishlistEmailIntervalHours field).
 const WISHLIST_INTERVAL_OPTIONS = [
+  { value: String(2 / 60), label: "2 minute" },
   { value: String(10 / 60), label: "10 minutes" },
   { value: "0.5", label: "30 minutes" },
   { value: "1", label: "1 hour" },
