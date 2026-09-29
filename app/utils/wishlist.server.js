@@ -251,19 +251,17 @@ export async function processDueWishlistEmails(
       settings
     );
 
-
   const pendingRows =
     await prisma.wishlistLead.findMany({
       where: {
-        shop,
         emailSendStatus: null,
+        ...(shop ? { OR: [{ shop }, { shop: null }] } : {}),
       },
 
       orderBy: {
         createdAt: "desc",
       },
     });
-
 
   const emails = [
     ...new Set(
@@ -273,16 +271,14 @@ export async function processDueWishlistEmails(
     ),
   ];
 
-
   const results = [];
-
 
   for (const email of emails) {
     const latest =
       await prisma.wishlistLead.findFirst({
         where: {
-          shop,
           email,
+          ...(shop ? { OR: [{ shop }, { shop: null }] } : {}),
         },
 
         orderBy: {
@@ -290,16 +286,13 @@ export async function processDueWishlistEmails(
         },
       });
 
-
     if (!latest) {
       continue;
     }
 
-
     if (latest.emailSendStatus) {
       await prisma.wishlistLead.updateMany({
         where: {
-          shop,
           email,
           emailSendStatus: null,
 
@@ -317,6 +310,75 @@ export async function processDueWishlistEmails(
       continue;
     }
 
+    // Cooldown Guard: check if this customer ALREADY received a wishlist email/whatsapp
+    const lastSentLead =
+      await prisma.wishlistLead.findFirst({
+        where: {
+          email,
+          id: { not: latest.id },
+          OR: [
+            { emailSendStatus: { startsWith: "sent" } },
+            { emailSendStatus: { startsWith: "OK" } },
+            { whatsappSendStatus: { startsWith: "sent" } },
+            { whatsappSendStatus: { startsWith: "OK" } },
+          ],
+        },
+
+        orderBy: {
+          createdAt: "desc",
+        },
+      });
+
+    if (lastSentLead) {
+      const hoursSinceLastSent =
+        (Date.now() - new Date(lastSentLead.createdAt).getTime()) /
+        (60 * 60 * 1000);
+
+      const currentHandles = Array.isArray(latest.productHandles)
+        ? [...latest.productHandles].sort()
+        : [];
+      const prevHandles = Array.isArray(lastSentLead.productHandles)
+        ? [...lastSentLead.productHandles].sort()
+        : [];
+      const sameProducts =
+        JSON.stringify(currentHandles) === JSON.stringify(prevHandles);
+
+      const cooldownHours = Math.max(24, intervalHours);
+      if (sameProducts || hoursSinceLastSent < cooldownHours) {
+        const skipReason = sameProducts
+          ? "skipped: customer already received reminder for these wishlist items"
+          : `skipped: customer notified ${hoursSinceLastSent.toFixed(1)}h ago (cooldown ${cooldownHours}h)`;
+
+        await prisma.wishlistLead.update({
+          where: { id: latest.id },
+
+          data: {
+            emailSendStatus: skipReason,
+            whatsappSendStatus: skipReason,
+          },
+        });
+
+        await prisma.wishlistLead.updateMany({
+          where: {
+            email,
+            emailSendStatus: null,
+
+            createdAt: {
+              lt: latest.createdAt,
+            },
+          },
+
+          data: {
+            emailSendStatus:
+              "skipped: superseded by " +
+              latest.id,
+          },
+        });
+
+        results.push({ email, status: skipReason });
+        continue;
+      }
+    }
 
     const ageHours =
       (
@@ -326,7 +388,6 @@ export async function processDueWishlistEmails(
         ).getTime()
       ) /
       (60 * 60 * 1000);
-
 
     if (ageHours < intervalHours) {
       results.push({
@@ -340,6 +401,25 @@ export async function processDueWishlistEmails(
       continue;
     }
 
+    // Immediate status lock to prevent concurrent workers/ticks from double-processing
+    try {
+      await prisma.wishlistLead.update({
+        where: { id: latest.id },
+
+        data: {
+          emailSendStatus: "processing",
+          whatsappSendStatus: "processing",
+        },
+      });
+    } catch (lockErr) {
+      console.error(
+        "[wishlist] failed to set processing lock for",
+        email,
+        lockErr
+      );
+
+      continue;
+    }
 
     const handles =
       Array.isArray(
@@ -348,7 +428,6 @@ export async function processDueWishlistEmails(
         ? latest.productHandles
         : [];
 
-
     const products =
       Array.isArray(
         latest.products
@@ -356,9 +435,7 @@ export async function processDueWishlistEmails(
         ? latest.products
         : [];
 
-
     let status;
-
 
     try {
       status =
@@ -381,12 +458,7 @@ export async function processDueWishlistEmails(
       );
     }
 
-
-    /**
-     * WhatsApp goes out on the same schedule.
-     */
     let whatsappStatus;
-
 
     try {
       whatsappStatus =
@@ -405,7 +477,6 @@ export async function processDueWishlistEmails(
       );
     }
 
-
     try {
       await prisma.wishlistLead.update({
         where: {
@@ -419,10 +490,8 @@ export async function processDueWishlistEmails(
         },
       });
 
-
       await prisma.wishlistLead.updateMany({
         where: {
-          shop,
           email,
           emailSendStatus: null,
 
@@ -448,7 +517,6 @@ export async function processDueWishlistEmails(
       );
     }
 
-
     results.push({
       email,
       status,
@@ -456,13 +524,13 @@ export async function processDueWishlistEmails(
     });
   }
 
-
   return {
     checked: emails.length,
 
     sent: results.filter(
       (r) =>
-        r.status?.startsWith("OK")
+        r.status?.startsWith("OK") ||
+        r.status?.startsWith("sent")
     ).length,
 
     results,
