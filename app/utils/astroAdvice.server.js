@@ -707,7 +707,7 @@ function getDefaultGemRecommendationEmailTemplate() {
     }
 
     .logo-section img {
-      max-width: 100px;
+      max-width: 140px;
       width: auto;
       height: auto;
       margin: 0 auto;
@@ -847,6 +847,10 @@ function getDefaultGemRecommendationEmailTemplate() {
         padding: 22px 15px !important;
       }
 
+      .logo-section img {
+        max-width: 120px !important;
+      }
+
       .content-section {
         padding: 24px 20px 8px !important;
         font-size: 16px !important;
@@ -877,7 +881,7 @@ function getDefaultGemRecommendationEmailTemplate() {
           <!-- HEADER -->
           <tr>
             <td class="logo-section">
-              <img src="{{shop_logo_url}}" alt="{{shop_name}}" width="100">
+              <img src="{{shop_logo_url}}" alt="{{shop_name}}" width="140">
             </td>
           </tr>
 

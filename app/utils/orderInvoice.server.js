@@ -271,7 +271,7 @@ table{border-spacing:0;border-collapse:collapse} img{border:0;display:block} a{t
 .email-wrapper{width:100%;background-color:#f3f2ef}.page-padding{padding:32px 0}
 .email-container{width:500px;max-width:500px;background-color:#fff;border-radius:0 0 12px 12px;overflow:hidden}
 .logo-section{padding:28px 20px 25px;text-align:center;background-color:#fffcf3;border-top:5px solid #8c7a4e}
-.logo-section img{max-width:100px;width:auto;height:auto;margin:0 auto}
+.logo-section img{max-width:140px;width:auto;height:auto;margin:0 auto}
 .logo-text{margin:0;font-size:30px;font-weight:normal;color:#a76642}
 .divider-cell{padding-left:0;padding-right:0}.divider{height:1px;background-color:#d5d0c8;width:100%;font-size:1px;line-height:1px}
 .content-section{padding:30px 28px 25px;font-size:15px;line-height:1.6;color:#4f5965;background-color:#fff}
@@ -291,12 +291,12 @@ table{border-spacing:0;border-collapse:collapse} img{border:0;display:block} a{t
 .contact-icon{width:18px;height:18px;display:block}
 @media only screen and (max-width:600px){
 .page-padding{padding:0!important}.email-container{width:100%!important;max-width:100%!important;border-radius:0!important}
-.logo-section{padding:22px 15px!important}.logo-section img{max-width:100px!important}
+.logo-section{padding:22px 15px!important}.logo-section img{max-width:120px!important}
 .content-section{padding:24px 20px 18px!important;font-size:16px!important}
 .button-table{width:100%!important;margin-top:18px!important;margin-bottom:10px!important}.button-gap{width:8px!important;min-width:8px!important}
 .email-button{font-size:13px!important;line-height:16px!important;padding:10px 3px!important}.secondary-button{padding:9px 3px!important}
 .footer-section{padding:12px 12px 14px!important}.footer-title{font-size:14px!important;line-height:1.4!important;margin-bottom:7px!important}
-.address{font-size:13px!important;line-height:1.4!important;margin-bottom:8px!important}.website-row{padding-bottom:6px!important}
+.address{font-size:13px!important;line-height:1.45!important;margin-bottom:8px!important}.website-row{padding-bottom:6px!important}
 .contact-item,.single-contact-item{padding:3px 1px!important;font-size:13px!important}.contact-link{white-space:nowrap!important}
 }
 </style>
@@ -313,7 +313,7 @@ table{border-spacing:0;border-collapse:collapse} img{border:0;display:block} a{t
 
           <tr>
             <td class="logo-section">
-              <img src="{{shop_logo_url}}" alt="{{shop_name}}" width="100">
+              <img src="{{shop_logo_url}}" alt="{{shop_name}}" width="140">
             </td>
           </tr>
 
