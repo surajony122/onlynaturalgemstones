@@ -1203,7 +1203,7 @@ function wishlistItemRow(
 
 
   return (
-    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-bottom:1px solid #e2dccf;">' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" >' +
 
     "<tr>" +
 
@@ -1729,9 +1729,7 @@ function buildWishlistEmailHtml({
                 <!-- CUSTOMER NAME -->
 
                 <p>
-                  Hello ${esc(
-                    firstName
-                  )},
+                  Hello,
                 </p>
 
 
