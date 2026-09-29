@@ -752,7 +752,7 @@ function buildWishlistEmailHtml({ firstName, products, shopInfo, pixelUrl, viewA
             <td class="logo-section">
               ${
                 shopInfo.logoUrl
-                  ? `<img src="${esc(shopInfo.logoUrl)}" alt="${esc(shopInfo.name)}" width="100">`
+                  ? `<img src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/ong-logo-house-of-shubh-gems.png" alt="${esc(shopInfo.name)}" width="100">`
                   : `<h1 class="logo-text">${esc(shopInfo.name)}</h1>`
               }
             </td>
@@ -770,7 +770,7 @@ function buildWishlistEmailHtml({ firstName, products, shopInfo, pixelUrl, viewA
             <td class="content-section">
               <div class="content-inner">
 
-                <p>Hello ${esc(firstName)},</p>
+                <p>Hello ,</p>
 
                 <p>Here's everything you've saved to your wishlist -- pick up right where you left off.</p>
 
