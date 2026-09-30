@@ -925,8 +925,11 @@ function getDefaultGemRecommendationEmailTemplate() {
 
                 <table class="button-table" width="100%" cellpadding="0" cellspacing="0" border="0">
                   <tr>
-                    <td>
+                    <td width="50%" style="padding-right:5px;">
                       <a href="{{results_url}}" class="email-button">View My Full Recommendation</a>
+                    </td>
+                    <td width="50%" style="padding-left:5px;">
+                      <a href="{{shop_url}}" class="store-button">Visit Our Store</a>
                     </td>
                   </tr>
                 </table>
