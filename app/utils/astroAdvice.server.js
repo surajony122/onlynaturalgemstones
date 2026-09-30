@@ -766,6 +766,23 @@ function getDefaultGemRecommendationEmailTemplate() {
       text-decoration: none !important;
     }
 
+    .store-button {
+      display: block;
+      width: 100%;
+      box-sizing: border-box;
+      text-align: center;
+      background-color: #ffffff;
+      color: #8c7a4e !important;
+      padding: 11px 5px;
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 16px;
+      border: 1px solid #8c7a4e;
+      border-radius: 3px;
+      white-space: nowrap;
+      text-decoration: none !important;
+    }
+
     .footer-section {
       padding: 14px 18px 16px;
       text-align: center;
@@ -908,8 +925,11 @@ function getDefaultGemRecommendationEmailTemplate() {
 
                 <table class="button-table" width="100%" cellpadding="0" cellspacing="0" border="0">
                   <tr>
-                    <td>
+                    <td width="50%" style="padding-right:5px;">
                       <a href="{{results_url}}" class="email-button">View My Full Recommendation</a>
+                    </td>
+                    <td width="50%" style="padding-left:5px;">
+                      <a href="{{shop_url}}" class="store-button">Visit Our Store</a>
                     </td>
                   </tr>
                 </table>
@@ -1345,17 +1365,16 @@ const TYPE_ACCENT = {
 function detailChip(icon, value) {
   if (!value) return "";
   return (
-    '<span style="display:inline-block;background:#faf6f0;color:#3a2408;font-size:11px;padding:5px 11px;' +
-    'border-radius:12px;margin:0 5px 5px 0;white-space:nowrap;border:1px solid #eadfd2;">' +
+    '<span style="display:inline-block;background:#faf6f0;color:#3a2408;font-size:11px;line-height:14px;padding:5px 9px;' +
+    'border-radius:8px;margin:0 4px 5px 0;white-space:nowrap;border:1px solid #eadfd2;">' +
     icon + " " + esc(value) + "</span>"
   );
 }
 
 /**
- * One recommendation row — collection image on the left, label/gem name/
- * tagline on the right, a row of detail "chips" (ruling planet, weight,
- * metal, wear finger/day, substitute), then a Buy Now button linking to
- * the COLLECTION for that gem (a recommended category, not one product).
+ * One recommendation row — product image on the left, label/gem name/
+ * tagline & detail chips in the middle, and a BUY NOW button aligned
+ * on the right side.
  */
 function stoneCard(label, stone, collectionImages, trackingCtx) {
   if (!stone || !stone.gem) return "";
@@ -1366,8 +1385,8 @@ function stoneCard(label, stone, collectionImages, trackingCtx) {
   const accent = TYPE_ACCENT[label] || TYPE_ACCENT.Life;
 
   const imageCell = imgUrl
-    ? `<img src="${esc(imgUrl)}" width="90" height="90" alt="${esc(stone.gem)}" style="display:block;width:90px;height:90px;object-fit:cover;border-radius:10px;">`
-    : `<div style="width:90px;height:90px;border-radius:10px;background:${accent.bg};"></div>`;
+    ? `<img src="${esc(imgUrl)}" width="85" height="85" alt="${esc(stone.gem)}" style="display:block;width:85px;height:85px;object-fit:cover;border-radius:10px;">`
+    : `<div style="width:85px;height:85px;border-radius:10px;background:${accent.bg};"></div>`;
 
   const chips =
     detailChip(PLANET_SYMBOL[stone.planet] || "✦", stone.planet) +
@@ -1377,15 +1396,17 @@ function stoneCard(label, stone, collectionImages, trackingCtx) {
     detailChip("↺", stone.substitute ? "Alt: " + stone.substitute : "");
 
   return (
-    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-bottom:1px solid #eadfd2;">' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-bottom:1px solid #eadfd2;margin-bottom:14px;">' +
     "<tr>" +
-    '<td width="90" style="padding:18px 16px 18px 0;vertical-align:top;">' + imageCell + "</td>" +
-    '<td style="padding:18px 0;vertical-align:top;">' +
-    '<span style="display:inline-block;background:' + accent.bg + ";color:" + accent.text + ';font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:0.5px;padding:3px 9px;border-radius:10px;margin-bottom:6px;">' + esc(label) + " Stone</span><br>" +
-    '<span style="font-size:19px;font-weight:bold;color:' + accent.text + ';">' + esc(stone.gem) + "</span>" +
-    (tagline ? '<p style="margin:2px 0 10px;font-size:12px;color:#5c4a3d;">' + tagline + "</p>" : '<div style="margin-bottom:8px;"></div>') +
-    (chips ? '<p style="margin:0 0 12px;">' + chips + "</p>" : "") +
-    '<a href="' + esc(buyUrl) + '" style="display:inline-block;background:#8c7a4e;color:#ffffff;font-size:12px;font-weight:bold;letter-spacing:0.5px;text-decoration:none;padding:10px 28px;border-radius:4px;">BUY NOW</a>' +
+    '<td width="85" style="padding:16px 12px 16px 0;vertical-align:top;">' + imageCell + "</td>" +
+    '<td style="padding:16px 8px 16px 0;vertical-align:top;">' +
+    '<span style="display:inline-block;background:' + accent.bg + ";color:" + accent.text + ';font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:0.5px;padding:3px 9px;border-radius:10px;margin-bottom:4px;">' + esc(label) + " Stone</span><br>" +
+    '<span style="font-size:18px;font-weight:bold;color:' + accent.text + ';">' + esc(stone.gem) + "</span>" +
+    (tagline ? '<p style="margin:2px 0 8px;font-size:12px;color:#5c4a3d;">' + esc(tagline) + "</p>" : '<div style="margin-bottom:6px;"></div>') +
+    (chips ? '<div style="margin:0 0 2px;">' + chips + "</div>" : "") +
+    "</td>" +
+    '<td width="95" style="padding:16px 0;vertical-align:middle;text-align:right;">' +
+    '<a href="' + esc(buyUrl) + '" style="display:inline-block;background:#8c7a4e;color:#ffffff;font-size:11px;font-weight:bold;letter-spacing:0.5px;text-decoration:none;padding:9px 16px;border-radius:4px;white-space:nowrap;">BUY NOW</a>' +
     "</td>" +
     "</tr></table>"
   );
