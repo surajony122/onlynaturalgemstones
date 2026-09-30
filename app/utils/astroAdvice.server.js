@@ -1387,9 +1387,15 @@ const TYPE_ACCENT = {
 function detailChip(icon, value) {
   if (!value) return "";
   return (
-    '<span style="display:inline-block;background:#faf6f0;color:#3a2408;font-size:11px;line-height:14px;padding:5px 9px;' +
-    'border-radius:8px;margin:0 4px 5px 0;white-space:nowrap;border:1px solid #eadfd2;">' +
-    icon + " " + esc(value) + "</span>"
+    '<span style="display:inline-block;background:#faf6f0;color:#3a2408;font-size:11px;padding:4px 8px;' +
+    'border-radius:8px;margin:0 4px 5px 0;white-space:nowrap;border:1px solid #eadfd2;vertical-align:middle;">' +
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="display:inline-table;vertical-align:middle;border-collapse:collapse;">' +
+    "<tr>" +
+    '<td style="padding:0 4px 0 0;vertical-align:middle;font-size:12px;line-height:1;white-space:nowrap;">' + icon + "</td>" +
+    '<td style="padding:0;vertical-align:middle;font-size:11px;line-height:14px;white-space:nowrap;color:#3a2408;">' + esc(value) + "</td>" +
+    "</tr>" +
+    "</table>" +
+    "</span>"
   );
 }
 
