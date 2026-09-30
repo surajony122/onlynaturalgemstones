@@ -925,11 +925,8 @@ function getDefaultGemRecommendationEmailTemplate() {
 
                 <table class="button-table" width="100%" cellpadding="0" cellspacing="0" border="0">
                   <tr>
-                    <td width="50%" style="padding-right:5px;">
+                    <td>
                       <a href="{{results_url}}" class="email-button">View My Full Recommendation</a>
-                    </td>
-                    <td width="50%" style="padding-left:5px;">
-                      <a href="{{shop_url}}" class="store-button">Visit Our Store</a>
                     </td>
                   </tr>
                 </table>
@@ -1391,24 +1388,27 @@ function stoneCard(label, stone, collectionImages, trackingCtx) {
   const chips =
     detailChip(PLANET_SYMBOL[stone.planet] || "✦", stone.planet) +
     detailChip("◆", stone.wearMetal) +
-    detailChip("✋", stone.wearFinger) +
-    detailChip("📅", stone.wearDay) +
     detailChip("↺", stone.substitute ? "Alt: " + stone.substitute : "");
 
   return (
-    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-bottom:1px solid #eadfd2;margin-bottom:14px;">' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">' +
     "<tr>" +
-    '<td width="85" style="padding:16px 12px 16px 0;vertical-align:top;">' + imageCell + "</td>" +
-    '<td style="padding:16px 8px 16px 0;vertical-align:top;">' +
+    '<td width="85" style="padding:0 14px 10px 0;vertical-align:top;">' + imageCell + "</td>" +
+    '<td style="padding:0 0 10px;vertical-align:top;">' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>' +
+    '<td style="vertical-align:top;">' +
     '<span style="display:inline-block;background:' + accent.bg + ";color:" + accent.text + ';font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:0.5px;padding:3px 9px;border-radius:10px;margin-bottom:4px;">' + esc(label) + " Stone</span><br>" +
     '<span style="font-size:18px;font-weight:bold;color:' + accent.text + ';">' + esc(stone.gem) + "</span>" +
-    (tagline ? '<p style="margin:2px 0 8px;font-size:12px;color:#5c4a3d;">' + esc(tagline) + "</p>" : '<div style="margin-bottom:6px;"></div>') +
-    (chips ? '<div style="margin:0 0 2px;">' + chips + "</div>" : "") +
+    (tagline ? '<p style="margin:2px 0 0;font-size:12px;color:#5c4a3d;">' + esc(tagline) + "</p>" : "") +
     "</td>" +
-    '<td width="95" style="padding:16px 0;vertical-align:middle;text-align:right;">' +
+    '<td width="95" style="vertical-align:top;text-align:right;">' +
     '<a href="' + esc(buyUrl) + '" style="display:inline-block;background:#8c7a4e;color:#ffffff;font-size:11px;font-weight:bold;letter-spacing:0.5px;text-decoration:none;padding:9px 16px;border-radius:4px;white-space:nowrap;">BUY NOW</a>' +
     "</td>" +
-    "</tr></table>"
+    "</tr></table>" +
+    "</td>" +
+    "</tr>" +
+    (chips ? '<tr><td colspan="2" style="padding:0 0 10px;"><div style="margin:0;">' + chips + "</div></td></tr>" : "") +
+    "</table>"
   );
 }
 
