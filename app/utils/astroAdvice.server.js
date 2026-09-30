@@ -56,16 +56,16 @@ const GEM_KEY_TO_COLLECTION = {
 // AstrologyAPI doesn't supply these, so it's a fixed lookup by the gem's
 // display name (matches GEM_KEY_TO_COLLECTION's "gem" values).
 const GEM_TAGLINE = {
-  Ruby: "for Leadership, Vitality &amp; Success",
-  Pearl: "for Peace, Emotional Balance &amp; Calm",
-  "Red Coral": "for Courage, Strength &amp; Vitality",
-  Emerald: "for Health, Success &amp; Growth",
-  "Yellow Sapphire": "for Wealth, Wisdom &amp; Prosperity",
-  Diamond: "for Luxury, Love &amp; Elegance",
-  "Blue Sapphire": "for Good Fortune, Wealth &amp; Success",
-  Hessonite: "for Protection &amp; Stability",
-  "Cat's Eye": "for Protection &amp; Spiritual Insight",
-  Opal: "for Marital Bliss, Luxury &amp; Pleasure",
+  Ruby: "for Leadership, Vitality & Success",
+  Pearl: "for Peace, Emotional Balance & Calm",
+  "Red Coral": "for Courage, Strength & Vitality",
+  Emerald: "for Health, Success & Growth",
+  "Yellow Sapphire": "for Wealth, Wisdom & Prosperity",
+  Diamond: "for Luxury, Love & Elegance",
+  "Blue Sapphire": "for Good Fortune, Wealth & Success",
+  Hessonite: "for Protection & Stability",
+  "Cat's Eye": "for Protection & Spiritual Insight",
+  Opal: "for Marital Bliss, Luxury & Pleasure",
 };
 
 // Custom stone mapping overrides for Substitutes/Alternates and Metals
