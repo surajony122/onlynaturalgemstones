@@ -661,14 +661,12 @@ export async function sendWhatsAppLoginOtp(settings, { phone, countryCode, phone
  *
  * ---- Variable mapping ----
  *  {{1}} first name (or "there")
- *  {{2}} 1st (most recently wishlisted) item's name
+ *  {{2}} 1st (most recently wishlisted) item's name (or "Your saved items")
  *  {{3}} 1st item's product page link (pure URL)
- *  {{4}} 2nd item's name — OR, if there's fewer than 2 items,
- *        "Explore more gemstones" as filler text
- *  {{5}} 2nd item's product page link — OR the store homepage link
- *  {{6}} 3rd item's name — OR the same "Explore more gemstones" filler
- *        if there's fewer than 3 items
- *  {{7}} 3rd item's product page link — OR the store homepage link
+ *  {{4}} 2nd item's name — OR, if there's < 2 items, "Explore More Gemstones"
+ *  {{5}} 2nd item's link — OR https://${STORE_DOMAIN}/pages/list-of-natural-gemstones
+ *  {{6}} 3rd item's name — OR "Get Your Gemstone Recommendation"
+ *  {{7}} 3rd item's link — OR https://${STORE_DOMAIN}/pages/gemstone-recommendation
  */
 export async function sendWishlistWhatsApp(settings, { phone, email, products, productHandles, headerImageUrl }) {
   if (!settings.interaktApiKey) {
@@ -698,22 +696,8 @@ export async function sendWishlistWhatsApp(settings, { phone, email, products, p
   const firstName = (email || "").split("@")[0] || "there";
   const templateName = settings.interaktWishlistTemplateName || DEFAULT_INTERAKT_WISHLIST_TEMPLATE_NAME;
 
-  // A native WhatsApp product card (tappable, with image+price+link
-  // baked into one interactive card) can't be used here at all -- per
-  // explicit investigation, that message type is only sendable as a
-  // reply within an active 24-hour customer-initiated conversation
-  // window (a hard Meta/WhatsApp platform rule, not an Interakt
-  // limitation), and this reminder always fires hours/days after the
-  // customer's last activity, well outside that window. WhatsApp's
-  // Carousel Template format is the one real way to show product
-  // images inside a proactive template message like this one, but
-  // Interakt doesn't offer that template type (confirmed by the
-  // merchant checking their template builder). This is the realistic
-  // middle ground instead: the most recently wishlisted item's own
-  // photo as this message's header image, in place of the generic
-  // store logo -- so the recipient at least sees a picture of the
-  // actual gemstone, even without a tappable in-chat card.
-  const headerImage = (items[0] && items[0].imageUrl) || headerImageUrl || FALLBACK_HEADER_IMAGE_URL;
+  // Use the Store Logo header image instead of product image
+  const headerImage = headerImageUrl || FALLBACK_HEADER_IMAGE_URL;
 
   const payload = {
     countryCode: split.countryCode,
@@ -728,10 +712,10 @@ export async function sendWishlistWhatsApp(settings, { phone, email, products, p
         firstName,
         itemName(0) || "Your saved items",
         itemLink(0) || `https://${STORE_DOMAIN}`,
-        totalItems > 1 ? itemName(1) : "Explore more gemstones",
-        totalItems > 1 ? itemLink(1) || `https://${STORE_DOMAIN}` : `https://${STORE_DOMAIN}`,
-        totalItems > 2 ? itemName(2) : "Explore more gemstones",
-        totalItems > 2 ? itemLink(2) || `https://${STORE_DOMAIN}` : `https://${STORE_DOMAIN}`,
+        totalItems > 1 ? itemName(1) : "Explore More Gemstones",
+        totalItems > 1 ? itemLink(1) || `https://${STORE_DOMAIN}/pages/list-of-natural-gemstones` : `https://${STORE_DOMAIN}/pages/list-of-natural-gemstones`,
+        totalItems > 2 ? itemName(2) : "Get Your Gemstone Recommendation",
+        totalItems > 2 ? itemLink(2) || `https://${STORE_DOMAIN}/pages/gemstone-recommendation` : `https://${STORE_DOMAIN}/pages/gemstone-recommendation`,
       ],
     },
   };
