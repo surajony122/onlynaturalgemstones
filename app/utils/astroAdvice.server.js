@@ -1412,7 +1412,7 @@ function stoneCard(label, stone, collectionImages, trackingCtx) {
 
   const chips =
     detailChip(PLANET_SYMBOL[stone.planet] || "✦", stone.planet) +
-    detailChip("◆", stone.wearMetal) +
+    detailChip("💍", stone.wearMetal) +
     detailChip("↺", stone.substitute ? "Alt: " + stone.substitute : "");
 
   return (
