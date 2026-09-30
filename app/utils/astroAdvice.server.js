@@ -1371,7 +1371,6 @@ function stoneCard(label, stone, collectionImages, trackingCtx) {
 
   const chips =
     detailChip(PLANET_SYMBOL[stone.planet] || "✦", stone.planet) +
-    detailChip("⚖", stone.weightCarat ? stone.weightCarat + " ct" : "") +
     detailChip("◆", stone.wearMetal) +
     detailChip("✋", stone.wearFinger) +
     detailChip("📅", stone.wearDay) +
