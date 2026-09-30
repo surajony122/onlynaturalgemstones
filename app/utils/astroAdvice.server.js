@@ -1035,7 +1035,11 @@ function getDefaultGemRecommendationEmailTemplate() {
  * above otherwise. The ONE place this decision is made, so the Settings
  * page's preview and the real send path never see different answers. */
 export function getGemRecommendationEmailTemplate(settings) {
-  return (settings && settings.gemRecommendationEmailTemplate) || getDefaultGemRecommendationEmailTemplate();
+  const custom = settings && settings.gemRecommendationEmailTemplate;
+  if (custom && custom.includes("store-button")) {
+    return custom;
+  }
+  return getDefaultGemRecommendationEmailTemplate();
 }
 
 export const DEFAULT_GEM_RECOMMENDATION_EMAIL_SUBJECT = "Your Personalised Gemstone Recommendation";
