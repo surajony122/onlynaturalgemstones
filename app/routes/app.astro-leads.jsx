@@ -401,12 +401,30 @@ function LeadRow({ lead, selected, onToggleSelect }) {
       <td style={{ ...tdStyle, fontWeight: 600, color: brand.ink }}>{lead.name || "—"}</td>
       <td style={tdStyle}>{lead.email || "—"}</td>
       <td style={tdStyle}>{lead.phone || "—"}</td>
-      <td style={tdStyle}>
-        <div>
-          <span style={{ fontWeight: 600, color: brand.ink }}>{lead.lifeStoneGem || "—"}</span>
+      <td style={{ ...tdStyle, minWidth: "170px" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+          {lead.lifeStoneGem && (
+            <div style={{ fontSize: "12px", color: brand.ink }}>
+              <span style={{ fontSize: "9px", fontWeight: 700, textTransform: "uppercase", color: "#c8712f", background: "#fdf1e7", padding: "1px 5px", borderRadius: "4px", marginRight: "5px" }}>Life</span>
+              <span style={{ fontWeight: 600 }}>{lead.lifeStoneGem}</span>
+            </div>
+          )}
+          {lead.beneficStoneGem && (
+            <div style={{ fontSize: "12px", color: brand.ink }}>
+              <span style={{ fontSize: "9px", fontWeight: 700, textTransform: "uppercase", color: "#5c8c5c", background: "#eef4ec", padding: "1px 5px", borderRadius: "4px", marginRight: "5px" }}>Benefic</span>
+              <span style={{ fontWeight: 600 }}>{lead.beneficStoneGem}</span>
+            </div>
+          )}
+          {lead.luckyStoneGem && (
+            <div style={{ fontSize: "12px", color: brand.ink }}>
+              <span style={{ fontSize: "9px", fontWeight: 700, textTransform: "uppercase", color: "#4a6fa5", background: "#eaf1f8", padding: "1px 5px", borderRadius: "4px", marginRight: "5px" }}>Lucky</span>
+              <span style={{ fontWeight: 600 }}>{lead.luckyStoneGem}</span>
+            </div>
+          )}
+          {!lead.lifeStoneGem && !lead.beneficStoneGem && !lead.luckyStoneGem && "—"}
         </div>
         {lead.lifeStoneSku ? (
-          <div style={{ fontSize: "10px", color: brand.muted, background: "#fff", padding: "1px 5px", borderRadius: "4px", border: `1px solid ${brand.border}`, marginTop: "3px", display: "inline-block" }}>
+          <div style={{ fontSize: "10px", color: brand.muted, background: "#fff", padding: "1px 5px", borderRadius: "4px", border: `1px solid ${brand.border}`, marginTop: "4px", display: "inline-block" }}>
             SKU: {lead.lifeStoneSku}
           </div>
         ) : null}
@@ -727,7 +745,7 @@ export default function AstroLeadsPage() {
                   <SortTh label="Name" sortKey="name" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
                   <SortTh label="Email" sortKey="email" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
                   <th style={thStyle}>Phone</th>
-                  <SortTh label="Life Stone & SKU" sortKey="lifeStoneGem" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                  <SortTh label="Stones & SKU" sortKey="lifeStoneGem" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
                   <th style={thStyle}>Calculation</th>
                   <th style={thStyle}>Shopify Sync</th>
                   <th style={thStyle}>Email</th>
