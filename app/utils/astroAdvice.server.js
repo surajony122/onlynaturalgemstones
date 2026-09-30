@@ -68,16 +68,34 @@ const GEM_TAGLINE = {
   Opal: "for Marital Bliss, Luxury &amp; Pleasure",
 };
 
+// Custom stone mapping overrides for Substitutes/Alternates and Metals
+const GEM_CUSTOM_OVERRIDES = {
+  blue_sapphire: { substitute: "Amethyst, Iolite", wearMetal: "Gold or Silver" },
+  cats_eye: { substitute: null, wearMetal: "Silver or Panchdhatu" },
+  emerald: { substitute: "Peridot", wearMetal: "Gold or Panchdhatu" },
+  hessonite: { substitute: null, wearMetal: "Silver or Panchdhatu" },
+  gomed: { substitute: null, wearMetal: "Silver or Panchdhatu" },
+  diamond: { substitute: "Opal, White Zircon", wearMetal: "Silver or White Gold" },
+  pearl: { substitute: "Moonstone", wearMetal: "Silver or White Gold" },
+  red_coral: { substitute: null, wearMetal: "Gold or Panchdhatu" },
+  ruby: { substitute: "Red Garnet", wearMetal: "Gold or Copper" },
+  yellow_sapphire: { substitute: "Citrine", wearMetal: "Gold or Panchdhatu" },
+  opal: { substitute: "White Zircon", wearMetal: "Silver or White Gold" },
+};
+
 function buildGemInfo(entry) {
   if (!entry || !entry.gem_key) return null;
-  const info = GEM_KEY_TO_COLLECTION[entry.gem_key] || { gem: entry.name, collection: null };
+  const key = String(entry.gem_key).toLowerCase().replace(/[\s'-]+/g, "_");
+  const info = GEM_KEY_TO_COLLECTION[key] || GEM_KEY_TO_COLLECTION[entry.gem_key] || { gem: entry.name, collection: null };
+  const custom = GEM_CUSTOM_OVERRIDES[key] || GEM_CUSTOM_OVERRIDES[entry.gem_key] || {};
+
   return {
     planet: entry.gem_deity || null,
     gem: info.gem || entry.name,
     collection: info.collection,
-    substitute: entry.semi_gem || null,
+    substitute: custom.substitute !== undefined ? custom.substitute : (entry.semi_gem || null),
     weightCarat: entry.weight_caret || null,
-    wearMetal: entry.wear_metal || null,
+    wearMetal: custom.wearMetal || entry.wear_metal || null,
     wearFinger: entry.wear_finger || null,
     wearDay: entry.wear_day || null,
   };
