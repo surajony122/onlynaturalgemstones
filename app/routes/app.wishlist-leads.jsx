@@ -3,10 +3,10 @@
  * WishlistLead rows (most recent first) with rolled-up email status
  * (sent / opened / clicked, and which specific links were clicked)
  * sourced from the same EmailEvent table, matched by trackingId, plus
- * per-lead management: an editable internal note and a "..." row-actions
+ * per-lead management: lead disposition status dropdown and a "..." row-actions
  * menu (Send Now / Retry WhatsApp / Delete).
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useFetcher, useLoaderData, useRevalidator } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
@@ -14,7 +14,6 @@ import prisma from "../db.server";
 import { processDueWishlistEmails, resendWishlistLeadEmail, resendWishlistWhatsapp, resolveWishlistIntervalHours } from "../utils/wishlist.server";
 import { getAppSettings } from "../utils/appSettings.server";
 
-// The in-app reminder scheduler (utils/wishlistScheduler.server.js) checks on the minute.
 const CRON_EVERY_MS = 60 * 1000;
 import {
   tableWrapStyle,
@@ -37,7 +36,84 @@ import {
 import { useToast } from "../components/toast";
 import { FriendlyErrorInline } from "../components/friendly-error";
 
-const PAGE_SIZE = 100;
+const PAGE_SIZE = 50;
+const MAX_LOADER_LEADS = 1000;
+
+export const LEAD_STATUS_OPTIONS = [
+  { value: "New", label: "New", color: "#5f6368", bg: "#fff" },
+  { value: "Bought Elsewhere", label: "Bought Elsewhere", color: "#c5221f", bg: "#fde8e8" },
+  { value: "Budget Too Low", label: "Budget Too Low", color: "#b06000", bg: "#fef7e0" },
+  { value: "Duplicate", label: "Duplicate", color: "#5f6368", bg: "#f1f3f4" },
+  { value: "Follow Up", label: "Follow Up", color: "#1a73e8", bg: "#e8f0fe" },
+  { value: "Junk", label: "Junk", color: "#c5221f", bg: "#fde8e8" },
+  { value: "Maybe Later", label: "Maybe Later", color: "#b06000", bg: "#fef7e0" },
+  { value: "No Response", label: "No Response", color: "#5f6368", bg: "#f1f3f4" },
+  { value: "Not Interested", label: "Not Interested", color: "#c5221f", bg: "#fde8e8" },
+  { value: "Qualified", label: "Qualified", color: "#1e7e34", bg: "#e6f4ea" },
+];
+
+export function parseLeadStatus(rawNotes) {
+  if (!rawNotes) return "New";
+  const trimmed = rawNotes.trim();
+  const match = trimmed.match(/^\[Status:\s*([^\]]+)\]/);
+  if (match) return match[1].trim();
+  const found = LEAD_STATUS_OPTIONS.find((o) => o.value.toLowerCase() === trimmed.toLowerCase());
+  return found ? found.value : trimmed || "New";
+}
+
+function exportWishlistLeadsToCsv(leadsToExport) {
+  if (!leadsToExport || !leadsToExport.length) {
+    alert("No wishlist leads to export");
+    return;
+  }
+  const headers = [
+    "Sync Date & Time",
+    "Customer Email",
+    "Customer Phone",
+    "Wishlist Product Titles",
+    "Wishlist Product SKUs",
+    "Wishlist Item Prices (INR)",
+    "Email Status",
+    "WhatsApp Status",
+    "Lead Status",
+  ];
+
+  const escapeCsv = (val) => {
+    if (val === null || val === undefined) return '""';
+    const str = String(val).replace(/"/g, '""');
+    return `"${str}"`;
+  };
+
+  const rows = leadsToExport.map((lead) => {
+    const titles = lead.products.map((p) => p.title).filter(Boolean).join(" | ");
+    const skus = lead.products.map((p) => p.sku || "N/A").filter(Boolean).join(" | ");
+    const prices = lead.products.map((p) => (p.price ? `₹${p.price}` : "")).filter(Boolean).join(" | ");
+    const leadStatus = parseLeadStatus(lead.notes);
+
+    return [
+      escapeCsv(new Date(lead.createdAt).toLocaleString()),
+      escapeCsv(lead.email || ""),
+      escapeCsv(lead.phone || ""),
+      escapeCsv(titles || lead.productHandles.join(", ")),
+      escapeCsv(skus),
+      escapeCsv(prices),
+      escapeCsv(lead.emailStatus.sent > 0 ? (lead.emailStatus.clicked > 0 ? "Clicked" : lead.emailStatus.opened > 0 ? "Opened" : "Sent") : "Pending"),
+      escapeCsv(lead.whatsappSendStatus || "Pending"),
+      escapeCsv(leadStatus),
+    ].join(",");
+  });
+
+  const csvContent = "\uFEFF" + [headers.join(","), ...rows].join("\n");
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", `wishlist_leads_${new Date().toISOString().slice(0, 10)}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
 
 export const action = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
@@ -53,9 +129,7 @@ export const action = async ({ request }) => {
     }
   }
 
-  // Bulk delete -- checked before the single-leadId guard below since
-  // this intent works off a whole array (leadIds) instead. Mirrors
-  // app.astro-leads.jsx's own bulkDelete exactly.
+  // Bulk delete
   if (intent === "bulkDelete") {
     const ids = JSON.parse(formData.get("leadIds") || "[]");
     if (!ids.length) return { intent, ok: false, error: "No leads selected" };
@@ -119,13 +193,13 @@ export const action = async ({ request }) => {
 };
 
 export const loader = async ({ request }) => {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   const settings = await getAppSettings(session.shop);
   const intervalMs = resolveWishlistIntervalHours(settings) * 60 * 60 * 1000;
 
   const leads = await prisma.wishlistLead.findMany({
     orderBy: { createdAt: "desc" },
-    take: PAGE_SIZE,
+    take: MAX_LOADER_LEADS,
   });
 
   const trackingIds = leads.map((l) => l.trackingId);
@@ -147,6 +221,36 @@ export const loader = async ({ request }) => {
     }
   }
 
+  // Collect handles needing SKU lookup so older leads also show SKU
+  const handlesNeedingSku = new Set();
+  for (const l of leads) {
+    const products = Array.isArray(l.products) ? l.products : [];
+    for (const p of products) {
+      if (p.handle && !p.sku) handlesNeedingSku.add(p.handle);
+    }
+  }
+
+  const skuMap = {};
+  if (handlesNeedingSku.size > 0 && admin) {
+    const handlesList = [...handlesNeedingSku].slice(0, 50);
+    try {
+      const queryParts = handlesList.map(
+        (h, i) => `p${i}: productByHandle(handle: ${JSON.stringify(h)}) { handle variants(first: 5) { nodes { sku } } }`
+      );
+      const res = await admin.graphql(`#graphql query WishlistSkus { ${queryParts.join(" ")} }`);
+      const json = await res.json();
+      handlesList.forEach((h, i) => {
+        const p = json?.data?.[`p${i}`];
+        if (p) {
+          const skus = (p.variants?.nodes || []).map((v) => v.sku).filter(Boolean);
+          if (skus.length) skuMap[h] = skus.join(", ");
+        }
+      });
+    } catch (err) {
+      console.error("[wishlist-leads] SKU lookup failed:", err);
+    }
+  }
+
   // A customer is emailed from their LATEST snapshot only, so only the newest
   // row per email can still be "waiting to send".
   const seenEmails = new Set();
@@ -164,6 +268,11 @@ export const loader = async ({ request }) => {
     leads: leads.map((l) => {
       const created = l.createdAt.getTime();
       const dueAt = created + intervalMs;
+      const rawProducts = Array.isArray(l.products) ? l.products : [];
+      const products = rawProducts.map((p) => ({
+        ...p,
+        sku: p.sku || skuMap[p.handle] || null,
+      }));
       return {
         schedule: latestPendingIds.has(l.id)
           ? { createdAt: created, dueAt, sendAt: Math.ceil(dueAt / CRON_EVERY_MS) * CRON_EVERY_MS }
@@ -171,7 +280,7 @@ export const loader = async ({ request }) => {
       ...l,
       createdAt: l.createdAt.toISOString(),
       productHandles: Array.isArray(l.productHandles) ? l.productHandles : [],
-      products: Array.isArray(l.products) ? l.products : [],
+      products,
       emailStatus: eventsByTrackingId[l.trackingId] || { sent: 0, opened: 0, clicked: 0, clickedLinks: [] },
       };
     }),
@@ -244,18 +353,25 @@ const inputStyle = {
 function LeadRow({ lead, selected, onToggleSelect, now }) {
   const fetcher = useFetcher();
   const toast = useToast();
-  const [notes, setNotes] = useState(lead.notes || "");
-  const [dirty, setDirty] = useState(false);
+
+  const currentStatus = useMemo(() => parseLeadStatus(lead.notes), [lead.notes]);
+  const [statusVal, setStatusVal] = useState(currentStatus);
   const [confirming, setConfirming] = useState(false);
   const busy = fetcher.state !== "idle";
 
   useEffect(() => {
-    if (fetcher.data?.intent === "saveNotes" && fetcher.data.ok) setDirty(false);
-  }, [fetcher.data]);
+    setStatusVal(parseLeadStatus(lead.notes));
+  }, [lead.notes]);
+
+  const handleStatusChange = (newStatus) => {
+    setStatusVal(newStatus);
+    fetcher.submit({ intent: "saveNotes", leadId: lead.id, notes: newStatus }, { method: "POST" });
+    toast.show(`Status updated to "${newStatus}"`);
+  };
 
   const sendNow = () => fetcher.submit({ intent: "sendNow", leadId: lead.id }, { method: "POST" });
   const retryWhatsapp = () => fetcher.submit({ intent: "resendWhatsapp", leadId: lead.id }, { method: "POST" });
-  const saveNotes = () => fetcher.submit({ intent: "saveNotes", leadId: lead.id, notes }, { method: "POST" });
+
   const confirmDelete = () => {
     setConfirming(false);
     fetcher.submit({ intent: "delete", leadId: lead.id }, { method: "POST" });
@@ -263,7 +379,7 @@ function LeadRow({ lead, selected, onToggleSelect, now }) {
   };
 
   if (fetcher.data?.intent === "delete" && fetcher.data.ok && fetcher.data.leadId === lead.id) {
-    return null; // optimistically hide once deleted
+    return null;
   }
 
   const lastActionResult =
@@ -279,22 +395,27 @@ function LeadRow({ lead, selected, onToggleSelect, now }) {
       <td style={tdStyle}>{new Date(lead.createdAt).toLocaleString()}</td>
       <td style={tdStyle}>{lead.email || "—"}</td>
       <td style={tdStyle}>{lead.phone || "—"}</td>
-      <td style={{ ...tdStyle, whiteSpace: "normal", minWidth: "260px" }}>
+      <td style={{ ...tdStyle, whiteSpace: "normal", minWidth: "280px" }}>
         {lead.products.length ? (
           <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
             {lead.products.map((p) => (
               <div
                 key={p.handle}
-                title={p.title}
-                style={{ display: "flex", alignItems: "center", gap: "6px", background: brand.panel, border: `1px solid ${brand.divider}`, borderRadius: "10px", padding: "3px 8px 3px 3px" }}
+                title={p.title + (p.sku ? ` (SKU: ${p.sku})` : "")}
+                style={{ display: "flex", alignItems: "center", gap: "6px", background: brand.panel, border: `1px solid ${brand.divider}`, borderRadius: "10px", padding: "4px 8px 4px 4px" }}
               >
                 {p.imageUrl ? (
                   <img src={p.imageUrl} alt={p.title} width={28} height={28} style={{ width: 28, height: 28, borderRadius: 6, objectFit: "cover", display: "block" }} />
                 ) : (
                   <div style={{ width: 28, height: 28, borderRadius: 6, background: brand.divider }} />
                 )}
-                <span style={{ fontSize: "11.5px", color: brand.body, maxWidth: "140px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.title}</span>
-                {p.price ? <span style={{ fontSize: "11.5px", color: brand.accent, fontWeight: 500 }}>₹{Number(p.price).toLocaleString("en-IN")}</span> : null}
+                <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+                  <span style={{ fontSize: "11.5px", color: brand.body, maxWidth: "140px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.title}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    {p.price ? <span style={{ fontSize: "11px", color: brand.accent, fontWeight: 500 }}>₹{Number(p.price).toLocaleString("en-IN")}</span> : null}
+                    {p.sku ? <span style={{ fontSize: "10px", color: brand.muted, background: "#fff", padding: "0 4px", borderRadius: "4px", border: `1px solid ${brand.border}` }}>SKU: {p.sku}</span> : null}
+                  </div>
+                </div>
               </div>
             ))}
           </div>
@@ -342,21 +463,35 @@ function LeadRow({ lead, selected, onToggleSelect, now }) {
             ))
           : "—"}
       </td>
-      <td style={{ ...tdStyle, minWidth: "180px" }}>
-        <textarea
-          value={notes}
-          onChange={(e) => {
-            setNotes(e.target.value);
-            setDirty(true);
-          }}
-          placeholder="Internal note…"
-          style={{ width: "100%", minHeight: "50px", fontSize: "12px", padding: "6px 8px", border: `1px solid ${brand.border}`, borderRadius: "8px", boxSizing: "border-box", resize: "vertical", color: brand.body }}
-        />
-        {dirty && (
-          <button type="button" style={{ ...smallBtn, marginTop: "4px", padding: "4px 10px", fontSize: "11px" }} onClick={saveNotes} disabled={busy}>
-            Save note
-          </button>
-        )}
+      <td style={{ ...tdStyle, minWidth: "160px" }}>
+        {(() => {
+          const currentOpt = LEAD_STATUS_OPTIONS.find((o) => o.value === statusVal) || LEAD_STATUS_OPTIONS[0];
+          return (
+            <select
+              value={statusVal}
+              onChange={(e) => handleStatusChange(e.target.value)}
+              disabled={busy}
+              style={{
+                width: "100%",
+                padding: "6px 10px",
+                borderRadius: "8px",
+                border: `1px solid ${brand.border}`,
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: "pointer",
+                background: currentOpt.bg,
+                color: currentOpt.color,
+                boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+              }}
+            >
+              {LEAD_STATUS_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value} style={{ background: "#fff", color: brand.body, fontWeight: 500 }}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          );
+        })()}
       </td>
       <td style={{ ...tdStyle, minWidth: "150px", textAlign: "right" }}>
         {confirming ? (
@@ -399,11 +534,6 @@ function LeadRow({ lead, selected, onToggleSelect, now }) {
   );
 }
 
-// Values used both as the MultiSelect's options and as the match test
-// below — kept in one place so the dropdown and the filter logic can't
-// drift out of sync with each other. No "all"/"any" pseudo-option any
-// more — an EMPTY selection means "no filter" (MultiSelect shows
-// "Any ..." itself), and picking more than one value matches ANY of them.
 const EMAIL_STATUS_OPTIONS = [
   { value: "sent", label: "Sent" },
   { value: "opened", label: "Opened" },
@@ -440,6 +570,12 @@ function matchesWhatsappStatus(lead, filters) {
   return filters.length === 0 || filters.some((f) => singleWhatsappMatch(lead, f));
 }
 
+function matchesLeadStatus(lead, filters) {
+  if (filters.length === 0) return true;
+  const status = parseLeadStatus(lead.notes);
+  return filters.includes(status);
+}
+
 export default function WishlistLeadsPage() {
   const { leads, serverNow, cronEveryMs } = useLoaderData();
   const now = useServerNow(serverNow);
@@ -452,19 +588,52 @@ export default function WishlistLeadsPage() {
   const [searchText, setSearchText] = useState("");
   const [emailFilter, setEmailFilter] = useState([]);
   const [whatsappFilter, setWhatsappFilter] = useState([]);
+  const [leadStatusFilter, setLeadStatusFilter] = useState([]);
+  const [uniqueOnly, setUniqueOnly] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
 
-  const filteredLeads = leads.filter((lead) => {
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchText, emailFilter, whatsappFilter, leadStatusFilter, uniqueOnly]);
+
+  // Filter for unique customers (latest wishlist snapshot per customer)
+  const baseLeads = useMemo(() => {
+    if (!uniqueOnly) return leads;
+    const seen = new Set();
+    const list = [];
+    for (const lead of leads) {
+      const key = (lead.email || lead.phone || lead.id).toLowerCase().trim();
+      if (!seen.has(key)) {
+        seen.add(key);
+        list.push(lead);
+      }
+    }
+    return list;
+  }, [leads, uniqueOnly]);
+
+  const filteredLeads = baseLeads.filter((lead) => {
     const q = searchText.trim().toLowerCase();
     const matchesSearch =
       !q ||
       (lead.email || "").toLowerCase().includes(q) ||
       (lead.phone || "").toLowerCase().includes(q) ||
-      lead.products.some((p) => (p.title || "").toLowerCase().includes(q)) ||
+      lead.products.some((p) => (p.title || "").toLowerCase().includes(q) || (p.sku || "").toLowerCase().includes(q)) ||
       lead.productHandles.some((h) => (h || "").toLowerCase().includes(q));
-    return matchesSearch && matchesEmailStatus(lead, emailFilter) && matchesWhatsappStatus(lead, whatsappFilter);
+    return (
+      matchesSearch &&
+      matchesEmailStatus(lead, emailFilter) &&
+      matchesWhatsappStatus(lead, whatsappFilter) &&
+      matchesLeadStatus(lead, leadStatusFilter)
+    );
   });
 
   const { sorted: sortedLeads, sortKey, sortDir, onSort } = useSort(filteredLeads, "createdAt", "desc");
+
+  const totalPages = Math.ceil(sortedLeads.length / PAGE_SIZE) || 1;
+  const paginatedLeads = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return sortedLeads.slice(start, start + PAGE_SIZE);
+  }, [sortedLeads, currentPage]);
 
   const anyWaiting = leads.some((l) => l.schedule);
   useEffect(() => {
@@ -474,7 +643,7 @@ export default function WishlistLeadsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anyWaiting]);
 
-  const bulk = useBulkSelect(sortedLeads, "id");
+  const bulk = useBulkSelect(paginatedLeads, "id");
   const bulkFetcher = useFetcher();
   const bulkBusy = bulkFetcher.state !== "idle";
 
@@ -511,14 +680,35 @@ export default function WishlistLeadsPage() {
         title={`Wishlist leads (${leads.length})`}
         description="Customers with saved wishlist items, and their reminder email status."
         action={
-          <button
-            type="button"
-            onClick={sendDueNow}
-            disabled={isSending}
-            style={{ padding: "9px 16px", borderRadius: "9px", border: "none", background: brand.accent, color: "#fff", fontSize: "13px", fontWeight: 600, cursor: isSending ? "default" : "pointer", opacity: isSending ? 0.7 : 1 }}
-          >
-            {isSending ? "Sending…" : "Send Due Emails Now"}
-          </button>
+          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            <button
+              type="button"
+              onClick={() => exportWishlistLeadsToCsv(filteredLeads)}
+              style={{
+                padding: "9px 15px",
+                borderRadius: "9px",
+                border: `1px solid ${brand.border}`,
+                background: "#fff",
+                color: brand.body,
+                fontSize: "13px",
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+              }}
+            >
+              <Icon name="sheets" size={15} color={brand.success} /> Export to Sheet (CSV)
+            </button>
+            <button
+              type="button"
+              onClick={sendDueNow}
+              disabled={isSending}
+              style={{ padding: "9px 16px", borderRadius: "9px", border: "none", background: brand.accent, color: "#fff", fontSize: "13px", fontWeight: 600, cursor: isSending ? "default" : "pointer", opacity: isSending ? 0.7 : 1 }}
+            >
+              {isSending ? "Sending…" : "Send Due Emails Now"}
+            </button>
+          </div>
         }
       />
 
@@ -530,22 +720,41 @@ export default function WishlistLeadsPage() {
         <strong>{formatCountdown(Math.ceil(now / cronEveryMs) * cronEveryMs - now)}</strong>
       </p>
       <p style={{ margin: "0 0 14px", fontSize: "12.5px", color: brand.muted }}>
-        Most recent {PAGE_SIZE} wishlist syncs · emails don't send immediately — a customer gets one email once
+        Showing 50 leads per page · emails don't send immediately — a customer gets one email once
         they've gone quiet for the interval set on the Settings page (default 2h), using their latest wishlist
         snapshot · each row's "..." menu has Send Now (email) / Retry WhatsApp / Delete.
       </p>
 
       <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center", marginBottom: "14px" }}>
-        <input type="text" value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Search email, phone, or item…" style={inputStyle} />
+        <input type="text" value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Search email, phone, SKU, or item…" style={inputStyle} />
+        <button
+          type="button"
+          onClick={() => setUniqueOnly((v) => !v)}
+          style={{
+            ...smallBtn,
+            padding: "8px 14px",
+            background: uniqueOnly ? brand.accentTint : "#fff",
+            borderColor: uniqueOnly ? brand.accentLine : brand.border,
+            color: uniqueOnly ? brand.heading : brand.body,
+            fontWeight: uniqueOnly ? 600 : 500,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "5px",
+          }}
+        >
+          {uniqueOnly ? <Icon name="check-circle" size={13} color={brand.accent} /> : <Icon name="user" size={13} color={brand.muted} />}
+          {uniqueOnly ? "Unique Customers Only (Latest)" : "Show Unique Customers Only"}
+        </button>
+        <MultiSelect label="lead status" options={LEAD_STATUS_OPTIONS.map((o) => ({ value: o.value, label: o.label }))} selected={leadStatusFilter} onChange={setLeadStatusFilter} />
         <MultiSelect label="email status" options={EMAIL_STATUS_OPTIONS} selected={emailFilter} onChange={setEmailFilter} />
         <MultiSelect label="WhatsApp status" options={WHATSAPP_STATUS_OPTIONS} selected={whatsappFilter} onChange={setWhatsappFilter} />
-        {(searchText || emailFilter.length > 0 || whatsappFilter.length > 0) && (
-          <button type="button" onClick={() => { setSearchText(""); setEmailFilter([]); setWhatsappFilter([]); }} style={smallBtn}>
+        {(searchText || emailFilter.length > 0 || whatsappFilter.length > 0 || leadStatusFilter.length > 0 || uniqueOnly) && (
+          <button type="button" onClick={() => { setSearchText(""); setEmailFilter([]); setWhatsappFilter([]); setLeadStatusFilter([]); setUniqueOnly(false); }} style={smallBtn}>
             Clear filters
           </button>
         )}
         <span style={{ fontSize: "12.5px", color: brand.muted, marginLeft: "auto" }}>
-          Showing {filteredLeads.length} of {leads.length}
+          Showing {sortedLeads.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, sortedLeads.length)} of {sortedLeads.length} {uniqueOnly ? "unique customers" : "syncs"}
         </span>
       </div>
 
@@ -556,30 +765,61 @@ export default function WishlistLeadsPage() {
       ) : filteredLeads.length === 0 ? (
         <p style={{ fontSize: "13px", color: brand.muted }}>No wishlist syncs match the current filters.</p>
       ) : (
-        <div style={tableWrapStyle}>
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <SelectAllTh checked={bulk.allSelected} indeterminate={bulk.count > 0 && !bulk.allSelected} onChange={bulk.toggleAll} />
-                <SortTh label="When" sortKey="createdAt" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
-                <SortTh label="Email" sortKey="email" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
-                <SortTh label="Phone" sortKey="phone" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
-                <th style={thStyle}>Wishlist Items</th>
-                <th style={thStyle}>Next send</th>
-                <th style={thStyle}>Email</th>
-                <th style={thStyle}>WhatsApp</th>
-                <th style={thStyle}>Clicked Links</th>
-                <th style={thStyle}>Notes</th>
-                <th style={thStyle}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedLeads.map((lead) => (
-                <LeadRow key={lead.id} lead={lead} selected={bulk.isSelected(lead.id)} onToggleSelect={() => bulk.toggle(lead.id)} now={now} />
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <div style={tableWrapStyle}>
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <SelectAllTh checked={bulk.allSelected} indeterminate={bulk.count > 0 && !bulk.allSelected} onChange={bulk.toggleAll} />
+                  <SortTh label="When" sortKey="createdAt" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                  <SortTh label="Email" sortKey="email" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                  <SortTh label="Phone" sortKey="phone" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                  <th style={thStyle}>Wishlist Items &amp; SKUs</th>
+                  <th style={thStyle}>Next send</th>
+                  <th style={thStyle}>Email</th>
+                  <th style={thStyle}>WhatsApp</th>
+                  <th style={thStyle}>Clicked Links</th>
+                  <th style={thStyle}>Lead Status</th>
+                  <th style={thStyle}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedLeads.map((lead) => (
+                  <LeadRow key={lead.id} lead={lead} selected={bulk.isSelected(lead.id)} onToggleSelect={() => bulk.toggle(lead.id)} now={now} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {sortedLeads.length > 0 && (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "16px", padding: "12px 16px", background: "#fff", border: `1px solid ${brand.border}`, borderRadius: "10px" }}>
+              <span style={{ fontSize: "12.5px", color: brand.muted }}>
+                Showing {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, sortedLeads.length)} of {sortedLeads.length} {uniqueOnly ? "unique customers" : "leads"} (Page {currentPage} of {totalPages})
+              </span>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  style={{ ...smallBtn, padding: "6px 14px", opacity: currentPage === 1 ? 0.5 : 1, cursor: currentPage === 1 ? "default" : "pointer" }}
+                >
+                  ← Previous
+                </button>
+                <span style={{ fontSize: "12.5px", fontWeight: 600, color: brand.ink, padding: "0 6px" }}>
+                  Page {currentPage} of {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage >= totalPages}
+                  style={{ ...smallBtn, padding: "6px 14px", opacity: currentPage >= totalPages ? 0.5 : 1, cursor: currentPage >= totalPages ? "default" : "pointer" }}
+                >
+                  Next →
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </PageIn>
   );
