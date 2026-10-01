@@ -655,6 +655,30 @@ model WhatsAppOtpCode {
   @@index([phone])
 }
 
+// OTP verification for the storefront's Gem Recommendation ("Astro
+// Advice") form -- see gemAdviceOtp.server.js, proxy.gem-advice-otp-
+// request.jsx, proxy.gem-advice-otp-verify.jsx. Deliberately a separate
+// table from WhatsAppOtpCode above: that one is keyed by phone only for
+// the "My Account" login; this form collects and verifies BOTH a phone
+// and an email in one step, and reusing the login table would couple
+// two unrelated features together. 4-digit code (shorter than the
+// login flow's 6 digits, per explicit request), same TTL/rate-limit/
+// attempt-cap pattern.
+model GemAdviceOtpCode {
+  id        String    @id @default(cuid())
+  shop      String?
+  phone     String? // normalized "+<countrycode><number>"
+  email     String?
+  code      String // 4-digit code, plaintext -- short-lived (10 min) and single-use
+  expiresAt DateTime
+  usedAt    DateTime?
+  attempts  Int       @default(0)
+  createdAt DateTime  @default(now())
+
+  @@index([phone])
+  @@index([email])
+}
+
 // A signed-in WhatsApp-OTP session -- this page's own session, entirely
 // independent of Shopify's session/customer-account cookies. tokenHash
 // (not the raw token) is stored, same reasoning a password hash would

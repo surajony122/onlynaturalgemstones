@@ -611,6 +611,58 @@ export async function sendWhatsAppLoginOtp(settings, { phone, countryCode, phone
   return result.status + (result.rawResponse ? " | raw: " + result.rawResponse : "");
 }
 
+// Separate, approved Authentication-category template for the Gem
+// Recommendation ("Astro Advice") form's OTP step — kept distinct from
+// WHATSAPP_OTP_TEMPLATE_NAME above since that one's approved copy is
+// specific to the "My Account" login flow; this is its own template so
+// Meta's approval/wording stays scoped to this feature. 4-digit code
+// (vs. that flow's 6), same body/button shape otherwise.
+const GEM_ADVICE_OTP_TEMPLATE_NAME = "ong_gem_advice_otp";
+
+/**
+ * Sends the Gem Recommendation form's WhatsApp OTP code.
+ *
+ * ---- TEMPLATE (as configured in Interakt) ----
+ * Name: ong_gem_advice_otp
+ * Category: Authentication
+ * Language: English
+ *
+ * Body (exact wording approved by Meta):
+ *   Your Only Natural Gemstones verification code is {{1}}. This code
+ *   expires in 10 minutes. Do not share it with anyone.
+ *
+ * Button: Copy Code — same code as its own value.
+ *
+ * ---- Variable mapping ----
+ *  {{1}} the 4-digit code (body)
+ *  Button {{1}} the same 4-digit code
+ */
+export async function sendGemAdviceWhatsAppOtp(settings, { phone, code }) {
+  if (!settings.interaktApiKey) {
+    return "skipped: Interakt API key not set (Settings page or INTERAKT_API_KEY env var)";
+  }
+  const split = splitPhoneForInterakt(phone);
+  if (!split) {
+    return "skipped: no usable phone number";
+  }
+
+  const payload = {
+    countryCode: split.countryCode,
+    phoneNumber: split.phoneNumber,
+    type: "Template",
+    callbackData: "gem-advice-otp",
+    template: {
+      name: GEM_ADVICE_OTP_TEMPLATE_NAME,
+      languageCode: "en",
+      bodyValues: [code],
+      buttonValues: { "0": [code] },
+    },
+  };
+
+  const result = await sendInteraktTemplateMessage(settings.interaktApiKey, payload);
+  return result.status + (result.rawResponse ? " | raw: " + result.rawResponse : "");
+}
+
 /**
  * Sends the wishlist reminder WhatsApp message — a third, separate
  * template from gem-recommendation and order-processing. Sent alongside
