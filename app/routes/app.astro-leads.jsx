@@ -429,6 +429,36 @@ function LeadRow({ lead, selected, onToggleSelect }) {
           </div>
         ) : null}
       </td>
+      <td style={{ ...tdStyle, minWidth: "160px" }}>
+        {(() => {
+          const currentOpt = LEAD_STATUS_OPTIONS.find((o) => o.value === statusVal) || LEAD_STATUS_OPTIONS[0];
+          return (
+            <select
+              value={statusVal}
+              onChange={(e) => handleStatusChange(e.target.value)}
+              disabled={busy}
+              style={{
+                width: "100%",
+                padding: "6px 10px",
+                borderRadius: "8px",
+                border: `1px solid ${brand.border}`,
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: "pointer",
+                background: currentOpt.bg,
+                color: currentOpt.color,
+                boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+              }}
+            >
+              {LEAD_STATUS_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value} style={{ background: "#fff", color: brand.body, fontWeight: 500 }}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          );
+        })()}
+      </td>
       <td style={tdStyle}>
         {lead.calculationOk ? (
           <Pill label="OK" color={brand.success} />
@@ -477,36 +507,6 @@ function LeadRow({ lead, selected, onToggleSelect }) {
               </span>
             ))
           : "—"}
-      </td>
-      <td style={{ ...tdStyle, minWidth: "160px" }}>
-        {(() => {
-          const currentOpt = LEAD_STATUS_OPTIONS.find((o) => o.value === statusVal) || LEAD_STATUS_OPTIONS[0];
-          return (
-            <select
-              value={statusVal}
-              onChange={(e) => handleStatusChange(e.target.value)}
-              disabled={busy}
-              style={{
-                width: "100%",
-                padding: "6px 10px",
-                borderRadius: "8px",
-                border: `1px solid ${brand.border}`,
-                fontSize: "12px",
-                fontWeight: 600,
-                cursor: "pointer",
-                background: currentOpt.bg,
-                color: currentOpt.color,
-                boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
-              }}
-            >
-              {LEAD_STATUS_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value} style={{ background: "#fff", color: brand.body, fontWeight: 500 }}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          );
-        })()}
       </td>
       <td style={{ ...tdStyle, minWidth: "150px", textAlign: "right" }}>
         {confirming ? (
@@ -746,12 +746,12 @@ export default function AstroLeadsPage() {
                   <SortTh label="Email" sortKey="email" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
                   <th style={thStyle}>Phone</th>
                   <SortTh label="Stones & SKU" sortKey="lifeStoneGem" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                  <th style={thStyle}>Lead Status</th>
                   <th style={thStyle}>Calculation</th>
                   <th style={thStyle}>Shopify Sync</th>
                   <th style={thStyle}>Email</th>
                   <th style={thStyle}>WhatsApp</th>
                   <th style={thStyle}>Clicked Links</th>
-                  <th style={thStyle}>Lead Status</th>
                   <th style={thStyle}></th>
                 </tr>
               </thead>
