@@ -100,55 +100,414 @@ function buildOtpEmailHtml({ firstName, code, shopInfo }) {
     esc(d) + "</td>"
   ).join('<td style="width:10px;"></td>');
 
+  const shopName = esc(shopInfo?.name || "Only Natural Gemstones");
+  const shopUrl = esc(shopInfo?.url || "https://onlynaturalgemstones.com");
+  const shopEmail = esc(shopInfo?.email || "info@onlynaturalgemstones.com");
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Verify your details</title>
-<style>
-  body { margin:0; padding:0; width:100%; background-color:#f3f2ef; font-family:Arial, Helvetica, sans-serif; color:#4f5965; }
-  table { border-spacing:0; border-collapse:collapse; }
-  img { border:0; display:block; }
-  a { text-decoration:none; }
-  @media only screen and (max-width:600px) {
-    .email-container { width:100% !important; max-width:100% !important; border-radius:0 !important; }
-    .logo-section img { max-width:120px !important; }
+<title>Your verification code: ${esc(code)}</title>
+<style type="text/css">
+  body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    background-color: #f3f2ef;
+    font-family: Arial, Helvetica, sans-serif;
+    color: #4f5965;
+  }
+  table {
+    border-spacing: 0;
+    border-collapse: collapse;
+  }
+  img {
+    border: 0;
+    display: block;
+  }
+  a {
+    text-decoration: none;
+  }
+  .email-wrapper {
+    width: 100%;
+    background-color: #f3f2ef;
+  }
+  .page-padding {
+    padding: 32px 0;
+  }
+  .email-container {
+    width: 500px;
+    max-width: 500px;
+    background-color: #ffffff;
+    border-radius: 0 0 12px 12px;
+    overflow: hidden;
+  }
+  .logo-section {
+    padding: 28px 20px 25px;
+    text-align: center;
+    background-color: #fffcf3;
+    border-top: 5px solid #8c7a4e;
+  }
+  .logo-section img {
+    max-width: 180px;
+    width: auto;
+    height: auto;
+    margin: 0 auto;
+  }
+  .divider-cell {
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .divider {
+    height: 1px;
+    background-color: #d5d0c8;
+    width: 100%;
+    font-size: 1px;
+    line-height: 1px;
+  }
+  .content-section {
+    padding: 30px 28px 25px;
+    font-size: 15px;
+    line-height: 1.6;
+    color: #4f5965;
+    background-color: #ffffff;
+    text-align: center;
+  }
+  .footer-section {
+    padding: 14px 18px 16px;
+    text-align: center;
+    color: #4f5965;
+    background-color: #fffcf3;
+  }
+  .footer-title {
+    margin: 0 0 8px;
+    font-size: 14px;
+    line-height: 1.45;
+    color: #4f5965;
+  }
+  .address {
+    margin: 0 0 10px;
+    font-size: 13px;
+    line-height: 1.45;
+    color: #333333 !important;
+  }
+  .address a {
+    color: #333333 !important;
+    text-decoration: none !important;
+  }
+  .contact-table {
+    width: 100%;
+    margin: 0 auto;
+    table-layout: fixed;
+  }
+  .website-row {
+    padding-bottom: 8px;
+  }
+  .contact-item {
+    width: 50%;
+    padding: 3px 2px;
+    text-align: center;
+    vertical-align: middle;
+    font-size: 13px;
+    line-height: 18px;
+  }
+  .single-contact-item {
+    padding: 3px 2px;
+    text-align: center;
+    vertical-align: middle;
+    font-size: 13px;
+    line-height: 18px;
+  }
+  .contact-link {
+    color: #333333 !important;
+    text-decoration: none !important;
+    white-space: nowrap;
+  }
+  .contact-icon {
+    width: 18px;
+    height: 18px;
+    display: block;
+  }
+  @media only screen and (max-width: 600px) {
+    .page-padding {
+      padding: 0 !important;
+    }
+    .email-container {
+      width: 100% !important;
+      max-width: 100% !important;
+      border-radius: 0 !important;
+    }
+    .logo-section {
+      padding: 22px 15px !important;
+    }
+    .logo-section img {
+      max-width: 120px !important;
+    }
+    .content-section {
+      padding: 24px 20px 18px !important;
+      font-size: 16px !important;
+    }
+    .footer-section {
+      padding: 12px 12px 14px !important;
+    }
+    .footer-title {
+      font-size: 14px !important;
+      line-height: 1.4 !important;
+      margin-bottom: 7px !important;
+    }
+    .address {
+      font-size: 13px !important;
+      line-height: 1.4 !important;
+      margin-bottom: 8px !important;
+    }
+    .website-row {
+      padding-bottom: 6px !important;
+    }
+    .contact-item,
+    .single-contact-item {
+      padding: 3px 1px !important;
+      font-size: 13px !important;
+    }
+    .contact-link {
+      white-space: nowrap !important;
+    }
   }
 </style>
 </head>
 <body>
-  <table class="email-wrapper" width="100%" style="background-color:#f3f2ef;">
+  <table class="email-wrapper" width="100%" cellpadding="0" cellspacing="0" border="0">
     <tr>
-      <td align="center" style="padding:32px 0;">
-        <table class="email-container" width="500" style="width:500px;max-width:500px;background-color:#ffffff;border-radius:0 0 12px 12px;overflow:hidden;">
+      <td class="page-padding" align="center">
+        <table class="email-container" width="500" cellpadding="0" cellspacing="0" border="0">
+          <!-- LOGO HEADER -->
           <tr>
-            <td class="logo-section" style="padding:28px 20px 25px;text-align:center;background-color:#fffcf3;border-top:5px solid #8c7a4e;">
-              <img src="${esc(shopInfo.logoUrl || "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/ong-logo-house-of-shubh-gems.png?v=1788589827")}" alt="${esc(shopInfo.name || "Only Natural Gemstones")}" style="max-width:180px;width:auto;height:auto;margin:0 auto;display:block;">
+            <td class="logo-section">
+              <img src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/ong-logo-house-of-shubh-gems.png?v=1788589827" alt="${shopName}" style="max-width:180px;width:auto;height:auto;margin:0 auto;display:block;">
             </td>
           </tr>
-          <tr><td style="height:1px;background-color:#d5d0c8;font-size:1px;line-height:1px;">&nbsp;</td></tr>
+
+          <!-- DIVIDER -->
           <tr>
-            <td style="padding:34px 28px 8px;font-size:15px;line-height:1.6;color:#4f5965;background-color:#ffffff;text-align:center;">
+            <td class="divider-cell">
+              <div class="divider">&nbsp;</div>
+            </td>
+          </tr>
+
+          <!-- CONTENT -->
+          <tr>
+            <td class="content-section">
               <p style="margin:0 0 6px;font-size:18px;font-weight:600;color:#3a2408;">Verify your mobile &amp; email</p>
               <p style="margin:0 0 24px;">Hi ${esc(firstName)}, here's the code to confirm your details and get your personalised gemstone recommendation.</p>
               <table align="center" style="margin:0 auto 20px;">
                 <tr>${digits}</tr>
               </table>
-              <p style="margin:0 0 4px;font-size:13px;color:#8c7a4e;font-weight:600;">This code expires in 10 minutes.</p>
-              <p style="margin:0 0 28px;font-size:13px;color:#8a8278;">Didn't request this? You can safely ignore this email.</p>
+              <p style="margin:0 0 4px;font-size:13px;color:#8c7a4e;font-weight:600;">⏱️ This code expires in 10 minutes.</p>
+              <p style="margin:0;font-size:13px;color:#8a8278;">Didn't request this? You can safely ignore this email.</p>
             </td>
           </tr>
+
+          <!-- DIVIDER -->
           <tr>
-            <td style="background:#faf6f0;padding:24px 32px;text-align:center;border-top:1px solid #eadfd2;">
-              <p style="margin:0 0 4px;font-size:12px;color:#5c4a3d;"><strong>${esc(shopInfo.name)}</strong>${shopInfo.addressLine ? ", " + esc(shopInfo.addressLine) : ""}</p>
-              <p style="margin:0;font-size:12px;color:#8c7a4e;">
-                <a href="${esc(shopInfo.url)}" style="color:#8c7a4e;">${esc(shopInfo.url.replace(/^https?:\/\//, ""))}</a>
-                &nbsp;&middot;&nbsp;
-                <a href="mailto:${esc(shopInfo.email)}" style="color:#8c7a4e;">${esc(shopInfo.email)}</a>
-              </p>
+            <td class="divider-cell">
+              <div class="divider">&nbsp;</div>
             </td>
           </tr>
+
+          <!-- FOOTER -->
+          <tr>
+            <td class="footer-section">
+
+              <p class="footer-title">
+                Thanks for choosing ${shopName} from the House of ONG.
+              </p>
+
+              <p class="address">
+                <a href="https://maps.app.goo.gl/vffRkrDyMiM9q895A">
+                  L-75-76, Lajpat Nagar 2, New Delhi - Delhi - 110024, India
+                </a>
+              </p>
+
+              <!-- WEBSITE -->
+              <table
+                class="contact-table"
+                width="100%"
+                cellpadding="0"
+                cellspacing="0"
+                border="0"
+              >
+                <tr>
+                  <td
+                    class="single-contact-item website-row"
+                    align="center"
+                  >
+                    <table
+                      cellpadding="0"
+                      cellspacing="0"
+                      border="0"
+                      align="center"
+                    >
+                      <tr>
+                        <td
+                          valign="middle"
+                          style="padding-right:6px;"
+                        >
+                          <img
+                            src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/website.png?v=1788870868"
+                            alt="Website"
+                            width="18"
+                            height="18"
+                            class="contact-icon"
+                          >
+                        </td>
+                        <td valign="middle">
+                          <a
+                            href="${shopUrl}"
+                            class="contact-link"
+                          >
+                            onlynaturalgemstones.com
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- WHATSAPP AND PHONE -->
+              <table
+                class="contact-table"
+                width="100%"
+                cellpadding="0"
+                cellspacing="0"
+                border="0"
+              >
+                <tr>
+                  <!-- WHATSAPP -->
+                  <td
+                    class="contact-item"
+                    align="center"
+                  >
+                    <table
+                      cellpadding="0"
+                      cellspacing="0"
+                      border="0"
+                      align="center"
+                    >
+                      <tr>
+                        <td
+                          valign="middle"
+                          style="padding-right:5px;"
+                        >
+                          <a href="https://wa.me/919310400152">
+                            <img
+                              src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/whatsapp-svg-icon.svg?v=1787318358"
+                              alt="WhatsApp"
+                              width="18"
+                              height="18"
+                              class="contact-icon"
+                            >
+                          </a>
+                        </td>
+                        <td valign="middle">
+                          <a
+                            href="https://wa.me/919310400152"
+                            class="contact-link"
+                          >
+                            +91-9310-400-152
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+
+                  <!-- PHONE -->
+                  <td
+                    class="contact-item"
+                    align="center"
+                  >
+                    <table
+                      cellpadding="0"
+                      cellspacing="0"
+                      border="0"
+                      align="center"
+                    >
+                      <tr>
+                        <td
+                          valign="middle"
+                          style="padding-right:5px;"
+                        >
+                          <img
+                            src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/phone.png?v=1788597346"
+                            alt="Phone"
+                            width="18"
+                            height="18"
+                            class="contact-icon"
+                          >
+                        </td>
+                        <td valign="middle">
+                          <a
+                            href="tel:+918010555111"
+                            class="contact-link"
+                          >
+                            +91-8010-555-111
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- EMAIL -->
+              <table
+                class="contact-table"
+                width="100%"
+                cellpadding="0"
+                cellspacing="0"
+                border="0"
+              >
+                <tr>
+                  <td
+                    class="single-contact-item"
+                    align="center"
+                  >
+                    <table
+                      cellpadding="0"
+                      cellspacing="0"
+                      border="0"
+                      align="center"
+                    >
+                      <tr>
+                        <td
+                          valign="middle"
+                          style="padding-right:6px;"
+                        >
+                          <img
+                            src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/email_icon_24px.png?v=1790236665"
+                            alt="Email"
+                            width="18"
+                            class="contact-icon"
+                          >
+                        </td>
+                        <td valign="middle">
+                          <a
+                            href="mailto:${shopEmail}"
+                            class="contact-link"
+                          >
+                            ${shopEmail}
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+            </td>
+          </tr>
+
         </table>
       </td>
     </tr>
@@ -179,66 +538,7 @@ export async function sendGemAdviceOtpEmail(admin, settings, { email, name, code
     socketTimeout: 30000,
   });
 
-  const htmlContent = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Verification Code</title>
-    </head>
-    <body style="margin:0; padding:0; background-color:#f4f2ed; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color:#312c24;">
-      <table border="0" cellpadding="0" cellspacing="0" width="100%" style="table-layout:fixed; background-color:#f4f2ed; padding: 40px 16px;">
-        <tr>
-          <td align="center">
-            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width:540px; background-color:#ffffff; border:1px solid #e2d9cc; border-radius:8px; overflow:hidden; box-shadow:0 4px 16px rgba(49,44,36,0.06);">
-              <!-- Top Brass Accent Bar -->
-              <tr>
-                <td style="height:5px; background:linear-gradient(90deg, #8c7a4e, #c8944a, #8c7a4e);"></td>
-              </tr>
-              <!-- Inner Content -->
-              <tr>
-                <td style="padding:36px 32px 32px 32px; text-align:center;">
-                  <!-- Logo Header -->
-                  <img src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/ong-logo-house-of-shubh-gems.png?v=1788589827" alt="Only Natural Gemstones - House of Shubh Gems" style="max-width:180px; width:auto; height:auto; margin:0 auto 16px auto; display:block;" />
-                  <h1 style="margin:0 0 4px 0; font-family:Georgia, 'Times New Roman', serif; font-size:20px; font-weight:bold; color:#312c24; text-transform:uppercase; letter-spacing:2px;">ONLY NATURAL GEMSTONES</h1>
-                  <p style="margin:0 0 24px 0; font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:3px; color:#8c7a4e;">AUTHENTIC &amp; VEDIC GEMSTONES</p>
-                  
-                  <hr style="border:none; border-top:1px solid #efeae4; margin:0 0 24px 0;" />
-                  
-                  <!-- Greeting & Instruction -->
-                  <p style="font-size:15px; color:#312c24; line-height:1.6; margin:0 0 12px 0; text-align:left;">Hi <strong>${firstName}</strong>,</p>
-                  <p style="font-size:14px; color:#5c5244; line-height:1.6; margin:0 0 24px 0; text-align:left;">Use the verification code below to validate your request for your <strong>Gemstone Recommendation</strong>:</p>
-                  
-                  <!-- OTP Code Box (4 Individual Digit Cards) -->
-                  <table align="center" border="0" cellpadding="0" cellspacing="0" style="margin:0 auto 24px auto;">
-                    <tr>
-                      ${String(code).split("").map(d => `
-                        <td style="width:48px; height:56px; border:1px solid #c8944a; border-radius:6px; background:#fffcf5; font-family:'Courier New', Courier, monospace; font-size:28px; font-weight:700; color:#312c24; text-align:center; vertical-align:middle; box-shadow:0 2px 4px rgba(200,148,74,0.12);" align="center">${d}</td>
-                      `).join('<td style="width:10px;"></td>')}
-                    </tr>
-                  </table>
-                  
-                  <!-- Expiry / Security Note -->
-                  <p style="font-size:13px; color:#8c7a4e; line-height:1.5; margin:0 0 28px 0; text-align:center;">
-                    ⏱️ This verification code will expire in <strong>10 minutes</strong>.<br />
-                    <span style="font-size:12px; color:#887c69;">Do not share this code with anyone for security purposes.</span>
-                  </p>
-                  
-                  <hr style="border:none; border-top:1px solid #efeae4; margin:0 0 20px 0;" />
-                  
-                  <!-- Footer -->
-                  <p style="font-size:12px; color:#766852; margin:0 0 4px 0; text-align:center;">Warm regards,<br /><strong>Team Only Natural Gemstones</strong></p>
-                  <p style="font-size:11px; color:#a39580; margin:0; text-align:center;"><a href="https://www.shubhgems.com" style="color:#c8944a; text-decoration:none; font-weight:bold;">www.shubhgems.com</a></p>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-      </table>
-    </body>
-    </html>
-  `;
+  const htmlContent = buildOtpEmailHtml({ firstName, code, shopInfo });
 
   await transporter.sendMail({
     from: '"' + shopInfo.name + '" <' + settings.gmailUser + ">",
