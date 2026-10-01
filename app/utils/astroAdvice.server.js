@@ -1424,15 +1424,15 @@ function stoneCard(label, stone, collectionImages, trackingCtx) {
   return (
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">' +
     "<tr>" +
-    '<td width="85" style="padding:0 14px 10px 0;vertical-align:top;">' + imageCell + "</td>" +
-    '<td style="padding:0 0 10px;vertical-align:top;">' +
+    '<td width="85" style="padding:0 14px 10px 0;vertical-align:middle;">' + imageCell + "</td>" +
+    '<td style="padding:0 0 10px;vertical-align:middle;">' +
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>' +
-    '<td style="vertical-align:top;">' +
+    '<td style="vertical-align:middle;">' +
     '<span style="display:inline-block;background:' + accent.bg + ";color:" + accent.text + ';font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:0.5px;padding:3px 9px;border-radius:10px;margin-bottom:4px;">' + esc(label) + " Stone</span><br>" +
     '<span style="font-size:18px;font-weight:bold;color:' + accent.text + ';">' + esc(stone.gem) + "</span>" +
     (tagline ? '<p style="margin:2px 0 0;font-size:12px;color:#5c4a3d;">' + esc(tagline) + "</p>" : "") +
     "</td>" +
-    '<td width="95" style="vertical-align:top;text-align:right;">' +
+    '<td width="95" style="vertical-align:middle;text-align:right;">' +
     '<a href="' + esc(buyUrl) + '" style="display:inline-block;background:#8c7a4e;color:#ffffff;font-size:11px;font-weight:bold;letter-spacing:0.5px;text-decoration:none;padding:9px 16px;border-radius:4px;white-space:nowrap;">BUY NOW</a>' +
     "</td>" +
     "</tr></table>" +
