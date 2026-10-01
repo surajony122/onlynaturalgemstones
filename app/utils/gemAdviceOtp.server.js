@@ -16,6 +16,7 @@
 import crypto from "node:crypto";
 import nodemailer from "nodemailer";
 import prisma from "../db.server";
+import { esc, getShopFooterInfo } from "./astroAdvice.server";
 
 const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
@@ -86,17 +87,90 @@ export async function verifyGemAdviceOtpCode(shop, phone, email, submittedCode) 
   return { ok: true };
 }
 
+/** Builds the OTP email's HTML — same palette/typography/footer as the
+ * gem recommendation email (astroAdvice.server.js's default template)
+ * so this reads as the same brand, not a bare system notice. Built
+ * standalone rather than sharing that template's actual markup since
+ * this one has no stone cards, results link, or Settings-page editing
+ * need — just a code. */
+function buildOtpEmailHtml({ firstName, code, shopInfo }) {
+  const digits = String(code).split("").map((d) =>
+    '<td style="width:46px;height:54px;border:1px solid #e3d9c6;border-radius:6px;background:#fffcf3;' +
+    'font-size:26px;font-weight:700;color:#3a2408;text-align:center;vertical-align:middle;" align="center">' +
+    esc(d) + "</td>"
+  ).join('<td style="width:10px;"></td>');
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verify your details</title>
+<style>
+  body { margin:0; padding:0; width:100%; background-color:#f3f2ef; font-family:Arial, Helvetica, sans-serif; color:#4f5965; }
+  table { border-spacing:0; border-collapse:collapse; }
+  img { border:0; display:block; }
+  a { text-decoration:none; }
+  @media only screen and (max-width:600px) {
+    .email-container { width:100% !important; max-width:100% !important; border-radius:0 !important; }
+    .logo-section img { max-width:120px !important; }
+  }
+</style>
+</head>
+<body>
+  <table class="email-wrapper" width="100%" style="background-color:#f3f2ef;">
+    <tr>
+      <td align="center" style="padding:32px 0;">
+        <table class="email-container" width="500" style="width:500px;max-width:500px;background-color:#ffffff;border-radius:0 0 12px 12px;overflow:hidden;">
+          <tr>
+            <td class="logo-section" style="padding:28px 20px 25px;text-align:center;background-color:#fffcf3;border-top:5px solid #8c7a4e;">
+              <img src="${esc(shopInfo.logoUrl)}" alt="${esc(shopInfo.name)}" style="max-width:140px;width:auto;height:auto;margin:0 auto;">
+            </td>
+          </tr>
+          <tr><td style="height:1px;background-color:#d5d0c8;font-size:1px;line-height:1px;">&nbsp;</td></tr>
+          <tr>
+            <td style="padding:34px 28px 8px;font-size:15px;line-height:1.6;color:#4f5965;background-color:#ffffff;text-align:center;">
+              <p style="margin:0 0 6px;font-size:18px;font-weight:600;color:#3a2408;">Verify your mobile &amp; email</p>
+              <p style="margin:0 0 24px;">Hi ${esc(firstName)}, here's the code to confirm your details and get your personalised gemstone recommendation.</p>
+              <table align="center" style="margin:0 auto 20px;">
+                <tr>${digits}</tr>
+              </table>
+              <p style="margin:0 0 4px;font-size:13px;color:#8c7a4e;font-weight:600;">This code expires in 10 minutes.</p>
+              <p style="margin:0 0 28px;font-size:13px;color:#8a8278;">Didn't request this? You can safely ignore this email.</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="background:#faf6f0;padding:24px 32px;text-align:center;border-top:1px solid #eadfd2;">
+              <p style="margin:0 0 4px;font-size:12px;color:#5c4a3d;"><strong>${esc(shopInfo.name)}</strong>${shopInfo.addressLine ? ", " + esc(shopInfo.addressLine) : ""}</p>
+              <p style="margin:0;font-size:12px;color:#8c7a4e;">
+                <a href="${esc(shopInfo.url)}" style="color:#8c7a4e;">${esc(shopInfo.url.replace(/^https?:\/\//, ""))}</a>
+                &nbsp;&middot;&nbsp;
+                <a href="mailto:${esc(shopInfo.email)}" style="color:#8c7a4e;">${esc(shopInfo.email)}</a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
 /** Emails the 4-digit code via the same Gmail/Nodemailer setup used for
- * the recommendation email itself (astroAdvice.server.js). Returns a
- * short status string, never throws — callers treat a thrown/rejected
- * send as a delivery failure to fall back on, same as every other
- * best-effort send in this app. */
-export async function sendGemAdviceOtpEmail(settings, { email, name, code }) {
+ * the recommendation email itself (astroAdvice.server.js), styled to
+ * match that same brand template instead of being a bare-text notice.
+ * Returns a short status string, never throws — callers treat a
+ * thrown/rejected send as a delivery failure to fall back on, same as
+ * every other best-effort send in this app. */
+export async function sendGemAdviceOtpEmail(admin, settings, { email, name, code }) {
   if (!settings.gmailUser || !settings.gmailAppPassword) {
     return "skipped: Gmail user / app password not set";
   }
 
   const firstName = (name || "").split(" ")[0] || "there";
+  const shopInfo = await getShopFooterInfo(admin);
+
   const transporter = nodemailer.createTransport({
     service: "gmail",
     auth: { user: settings.gmailUser, pass: settings.gmailAppPassword },
@@ -106,19 +180,15 @@ export async function sendGemAdviceOtpEmail(settings, { email, name, code }) {
   });
 
   await transporter.sendMail({
-    from: '"Only Natural Gemstones" <' + settings.gmailUser + ">",
+    from: '"' + shopInfo.name + '" <' + settings.gmailUser + ">",
     to: email,
-    subject: "Your verification code: " + code,
+    subject: "Verify your details to get your gemstone recommendation",
     text:
       "Hi " + firstName + ",\n\n" +
-      "Your Only Natural Gemstones verification code is " + code + ".\n" +
-      "This code expires in 10 minutes. Do not share it with anyone.\n\n" +
-      "Only Natural Gemstones",
-    html:
-      "<p>Hi " + firstName + ",</p>" +
-      "<p>Your Only Natural Gemstones verification code is <strong style=\"font-size:20px;letter-spacing:2px;\">" + code + "</strong>.</p>" +
-      "<p>This code expires in 10 minutes. Do not share it with anyone.</p>" +
-      "<p>Only Natural Gemstones</p>",
+      "Here's your verification code to confirm your mobile number and email for your personalised gemstone recommendation: " + code + "\n\n" +
+      "This code expires in 10 minutes. Didn't request this? You can safely ignore this email.\n\n" +
+      shopInfo.name,
+    html: buildOtpEmailHtml({ firstName, code, shopInfo }),
   });
 
   return "OK: sent to " + email;

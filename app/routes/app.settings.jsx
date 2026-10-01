@@ -27,6 +27,7 @@ import {
   DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME,
   DEFAULT_INTERAKT_WISHLIST_TEMPLATE_NAME,
   DEFAULT_INTERAKT_REFUND_TEMPLATE_NAME,
+  DEFAULT_GEM_ADVICE_OTP_TEMPLATE_NAME,
   DEFAULT_ORDER_PROCESSING_TRIGGER_TAG,
   DEFAULT_WHATSAPP_INTERVAL_VALUE,
   DEFAULT_WHATSAPP_INTERVAL_UNIT,
@@ -100,6 +101,8 @@ export const loader = async ({ request }) => {
     interaktApiKeySet: !!row?.interaktApiKey,
     interaktTemplateName: row?.interaktTemplateName || "",
     defaultInteraktTemplateName: DEFAULT_INTERAKT_TEMPLATE_NAME,
+    gemAdviceOtpTemplateName: row?.gemAdviceOtpTemplateName || "",
+    defaultGemAdviceOtpTemplateName: DEFAULT_GEM_ADVICE_OTP_TEMPLATE_NAME,
     gemRecommendationEmailTemplate: row?.gemRecommendationEmailTemplate || "",
     defaultGemRecommendationEmailTemplate: getGemRecommendationEmailTemplate({}),
     gemRecommendationEmailSubject: row?.gemRecommendationEmailSubject || "",
@@ -363,7 +366,10 @@ export const action = async ({ request }) => {
   }
 
   if (intent === "saveGemRecommendation") {
-    await saveAppSettings(session.shop, { interaktTemplateName: val("interaktTemplateName") });
+    await saveAppSettings(session.shop, {
+      interaktTemplateName: val("interaktTemplateName"),
+      gemAdviceOtpTemplateName: val("gemAdviceOtpTemplateName"),
+    });
     return { intent, ok: true };
   }
 
@@ -977,6 +983,7 @@ export default function SettingsPage() {
   const [wishlistInterval, setWishlistInterval] = useState(data.wishlistEmailIntervalHours);
   const [interaktApiKey, setInteraktApiKey] = useState("");
   const [interaktTemplateName, setInteraktTemplateName] = useState(data.interaktTemplateName);
+  const [gemAdviceOtpTemplateName, setGemAdviceOtpTemplateName] = useState(data.gemAdviceOtpTemplateName);
   const [gemRecommendationEmailTemplate, setGemRecommendationEmailTemplate] = useState(
     data.gemRecommendationEmailTemplate || data.defaultGemRecommendationEmailTemplate
   );
@@ -1142,7 +1149,7 @@ export default function SettingsPage() {
 
   const saveWishlistTiming = () => wishlistTiming.save({ wishlistEmailIntervalHours: wishlistInterval });
   const saveInteraktApiKey = () => interaktApiKeySave.save({ interaktApiKey });
-  const saveGemRecommendation = () => gemRecommendation.save({ interaktTemplateName });
+  const saveGemRecommendation = () => gemRecommendation.save({ interaktTemplateName, gemAdviceOtpTemplateName });
   // Same "don't freeze today's default as a permanent customization"
   // reasoning as saveOrderProcessingEmail.
   const saveGemRecommendationEmail = () =>
@@ -1336,6 +1343,23 @@ export default function SettingsPage() {
               </button>
             </div>
             <TestResult fetcherData={testFetcher.data} intent="sendTestWhatsapp" />
+
+            <div style={{ marginTop: "16px", paddingTop: "14px", borderTop: `1px solid ${brand.border}` }}>
+              <label style={labelStyle} htmlFor="gemAdviceOtpTemplateName">OTP verification template name</label>
+              <p style={{ ...hintStyle, marginTop: 0, marginBottom: "6px" }}>
+                Separate Authentication-category template for the form's mobile/email verification step (Meta locks these to a fixed
+                code-only format, so there's nothing else to customize for it here beyond which approved template to use).
+              </p>
+              <input
+                id="gemAdviceOtpTemplateName"
+                style={fieldStyle}
+                type="text"
+                value={gemAdviceOtpTemplateName}
+                onChange={(e) => setGemAdviceOtpTemplateName(e.target.value)}
+                placeholder={`${data.defaultGemAdviceOtpTemplateName} (default if left blank)`}
+              />
+            </div>
+
             <SaveButton isSaving={gemRecommendation.isSaving} onClick={saveGemRecommendation} />
           </TemplateCard>
 

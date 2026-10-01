@@ -20,6 +20,7 @@ const FIELDS = [
   "currencyCountryConfig",
   "interaktApiKey",
   "interaktTemplateName",
+  "gemAdviceOtpTemplateName",
   "interaktOrderTemplateName",
   "interaktWishlistTemplateName",
   "interaktRefundTemplateName",
@@ -72,6 +73,7 @@ const ENV_FALLBACK = {
   wishlistEmailIntervalHours: "WISHLIST_EMAIL_INTERVAL_HOURS",
   interaktApiKey: "INTERAKT_API_KEY",
   interaktTemplateName: "INTERAKT_GEM_TEMPLATE_NAME",
+  gemAdviceOtpTemplateName: "GEM_ADVICE_OTP_TEMPLATE_NAME",
   interaktOrderTemplateName: "INTERAKT_ORDER_TEMPLATE_NAME",
   interaktWishlistTemplateName: "INTERAKT_WISHLIST_TEMPLATE_NAME",
   interaktRefundTemplateName: "INTERAKT_REFUND_TEMPLATE_NAME",
@@ -123,6 +125,12 @@ export const DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME = "order_inprocess";
 // wishlist email on the same debounced/interval schedule) — used when
 // the Settings page field is left blank.
 export const DEFAULT_INTERAKT_WISHLIST_TEMPLATE_NAME = "wishlist_reminder";
+
+// Fifth, separate WhatsApp template -- the Gem Recommendation form's OTP
+// step (Authentication category, see sendGemAdviceWhatsAppOtp in
+// interakt.server.js) -- used when the Settings page field is left
+// blank.
+export const DEFAULT_GEM_ADVICE_OTP_TEMPLATE_NAME = "ong_gem_advice_otp";
 
 // Fourth WhatsApp template — Refund Processed, sent automatically when
 // staff click Refund on an order in Shopify Admin (the same action that

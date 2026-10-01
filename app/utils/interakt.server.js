@@ -30,6 +30,7 @@ import {
   DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME,
   DEFAULT_INTERAKT_WISHLIST_TEMPLATE_NAME,
   DEFAULT_INTERAKT_REFUND_TEMPLATE_NAME,
+  DEFAULT_GEM_ADVICE_OTP_TEMPLATE_NAME,
   setInteraktCampaign,
 } from "./appSettings.server";
 
@@ -616,8 +617,11 @@ export async function sendWhatsAppLoginOtp(settings, { phone, countryCode, phone
 // WHATSAPP_OTP_TEMPLATE_NAME above since that one's approved copy is
 // specific to the "My Account" login flow; this is its own template so
 // Meta's approval/wording stays scoped to this feature. 4-digit code
-// (vs. that flow's 6), same body/button shape otherwise.
-const GEM_ADVICE_OTP_TEMPLATE_NAME = "ong_gem_advice_otp";
+// (vs. that flow's 6), same body/button shape otherwise. Editable from
+// the Settings page (AppSettings.gemAdviceOtpTemplateName) the same way
+// interaktTemplateName is for the main recommendation message —
+// DEFAULT_GEM_ADVICE_OTP_TEMPLATE_NAME (imported above) is only used
+// when that field is left blank.
 
 /**
  * Sends the Gem Recommendation form's WhatsApp OTP code.
@@ -652,7 +656,7 @@ export async function sendGemAdviceWhatsAppOtp(settings, { phone, code }) {
     type: "Template",
     callbackData: "gem-advice-otp",
     template: {
-      name: GEM_ADVICE_OTP_TEMPLATE_NAME,
+      name: settings.gemAdviceOtpTemplateName || DEFAULT_GEM_ADVICE_OTP_TEMPLATE_NAME,
       languageCode: "en",
       bodyValues: [code],
       buttonValues: { "0": [code] },

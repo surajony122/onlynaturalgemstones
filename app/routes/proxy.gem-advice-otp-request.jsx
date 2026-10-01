@@ -66,7 +66,7 @@ export const action = async ({ request }) => {
         ? sendGemAdviceWhatsAppOtp(settings, { phone: data.phone, code: result.code }).catch((err) => "threw: " + err)
         : Promise.resolve("skipped: no phone"),
       data.email
-        ? sendGemAdviceOtpEmail(settings, { email: data.email, name: data.name, code: result.code }).catch((err) => "threw: " + err)
+        ? sendGemAdviceOtpEmail(admin, settings, { email: data.email, name: data.name, code: result.code }).catch((err) => "threw: " + err)
         : Promise.resolve("skipped: no email"),
     ]);
 

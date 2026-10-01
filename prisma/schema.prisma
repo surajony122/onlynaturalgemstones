@@ -331,6 +331,12 @@ model AppSettings {
   // "gem_recommendation" if left blank, see DEFAULT_INTERAKT_TEMPLATE_NAME.
   interaktApiKey                 String?
   interaktTemplateName           String?
+  // Separate, Authentication-category WhatsApp template for the Gem
+  // Recommendation form's OTP step (see gemAdviceOtp.server.js) --
+  // defaults to "ong_gem_advice_otp" if left blank. Kept distinct from
+  // interaktTemplateName above since that one's an approved marketing-
+  // style template for the final recommendation message, not the OTP.
+  gemAdviceOtpTemplateName        String?
   // Second, separate WhatsApp template — sent when an order's
   // fulfillment order status is first seen as IN_PROGRESS (staff manually
   // marks an item "as in progress" in the order's fulfillment card, a
