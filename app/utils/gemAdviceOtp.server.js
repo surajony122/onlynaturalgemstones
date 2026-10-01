@@ -95,8 +95,8 @@ export async function verifyGemAdviceOtpCode(shop, phone, email, submittedCode) 
  * need — just a code. */
 function buildOtpEmailHtml({ firstName, code, shopInfo }) {
   const digits = String(code).split("").map((d) =>
-    '<td style="width:46px;height:54px;border:1px solid #e3d9c6;border-radius:6px;background:#fffcf3;' +
-    'font-size:26px;font-weight:700;color:#3a2408;text-align:center;vertical-align:middle;" align="center">' +
+    '<td style="width:48px;height:56px;border:1px solid #c8944a;border-radius:6px;background:#fffcf5;' +
+    'font-family:\'Courier New\', Courier, monospace;font-size:28px;font-weight:700;color:#312c24;text-align:center;vertical-align:middle;box-shadow:0 2px 4px rgba(200,148,74,0.12);" align="center">' +
     esc(d) + "</td>"
   ).join('<td style="width:10px;"></td>');
 
@@ -179,6 +179,64 @@ export async function sendGemAdviceOtpEmail(admin, settings, { email, name, code
     socketTimeout: 30000,
   });
 
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Verification Code</title>
+    </head>
+    <body style="margin:0; padding:0; background-color:#f4f2ed; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color:#312c24;">
+      <table border="0" cellpadding="0" cellspacing="0" width="100%" style="table-layout:fixed; background-color:#f4f2ed; padding: 40px 16px;">
+        <tr>
+          <td align="center">
+            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width:540px; background-color:#ffffff; border:1px solid #e2d9cc; border-radius:8px; overflow:hidden; box-shadow:0 4px 16px rgba(49,44,36,0.06);">
+              <!-- Top Brass Accent Bar -->
+              <tr>
+                <td style="height:5px; background:linear-gradient(90deg, #8c7a4e, #c8944a, #8c7a4e);"></td>
+              </tr>
+              <!-- Inner Content -->
+              <tr>
+                <td style="padding:36px 32px 32px 32px; text-align:center;">
+                  <!-- Header Brand Title -->
+                  <h1 style="margin:0 0 4px 0; font-family:Georgia, 'Times New Roman', serif; font-size:22px; font-weight:bold; color:#312c24; text-transform:uppercase; letter-spacing:2.5px;">ONLY NATURAL GEMSTONES</h1>
+                  <p style="margin:0 0 24px 0; font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:3px; color:#8c7a4e;">AUTHENTIC &amp; VEDIC GEMSTONES</p>
+                  
+                  <hr style="border:none; border-top:1px solid #efeae4; margin:0 0 24px 0;" />
+                  
+                  <!-- Greeting & Instruction -->
+                  <p style="font-size:15px; color:#312c24; line-height:1.6; margin:0 0 12px 0; text-align:left;">Hi <strong>${firstName}</strong>,</p>
+                  <p style="font-size:14px; color:#5c5244; line-height:1.6; margin:0 0 24px 0; text-align:left;">Use the verification code below to validate your request for your <strong>Gemstone Recommendation</strong>:</p>
+                  
+                  <!-- OTP Code Box (4 Individual Digit Cards) -->
+                  <table align="center" border="0" cellpadding="0" cellspacing="0" style="margin:0 auto 24px auto;">
+                    <tr>
+                      ${String(code).split("").map(d => `
+                        <td style="width:48px; height:56px; border:1px solid #c8944a; border-radius:6px; background:#fffcf5; font-family:'Courier New', Courier, monospace; font-size:28px; font-weight:700; color:#312c24; text-align:center; vertical-align:middle; box-shadow:0 2px 4px rgba(200,148,74,0.12);" align="center">${d}</td>
+                      `).join('<td style="width:10px;"></td>')}
+                    </tr>
+                  </table>
+                  
+                  <!-- Expiry / Security Note -->
+                  <p style="font-size:13px; color:#8c7a4e; line-height:1.5; margin:0 0 28px 0; text-align:center;">
+                    ⏱️ This verification code will expire in <strong>10 minutes</strong>.<br />
+                    <span style="font-size:12px; color:#887c69;">Do not share this code with anyone for security purposes.</span>
+                  </p>
+                  
+                  <hr style="border:none; border-top:1px solid #efeae4; margin:0 0 20px 0;" />
+                  
+                  <!-- Footer -->
+                  <p style="font-size:12px; color:#766852; margin:0 0 4px 0; text-align:center;">Warm regards,<br /><strong>Team Only Natural Gemstones</strong></p>
+                  <p style="font-size:11px; color:#a39580; margin:0; text-align:center;"><a href="https://www.shubhgems.com" style="color:#c8944a; text-decoration:none; font-weight:bold;">www.shubhgems.com</a></p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
   await transporter.sendMail({
     from: '"' + shopInfo.name + '" <' + settings.gmailUser + ">",
     to: email,
