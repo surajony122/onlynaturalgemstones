@@ -1757,7 +1757,7 @@ function buildWishlistEmailHtml({
                 shopInfo.logoUrl
                   ? `
                     <img
-                      src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/ong-logo-house-of-shubh-gems.png"
+                      src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/ong-logo-house-of-shubh-gems.png?v=1788589827"
                       alt="${esc(
                         shopInfo.name
                       )}"

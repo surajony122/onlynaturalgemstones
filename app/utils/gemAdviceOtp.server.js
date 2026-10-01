@@ -124,7 +124,7 @@ function buildOtpEmailHtml({ firstName, code, shopInfo }) {
         <table class="email-container" width="500" style="width:500px;max-width:500px;background-color:#ffffff;border-radius:0 0 12px 12px;overflow:hidden;">
           <tr>
             <td class="logo-section" style="padding:28px 20px 25px;text-align:center;background-color:#fffcf3;border-top:5px solid #8c7a4e;">
-              <img src="${esc(shopInfo.logoUrl)}" alt="${esc(shopInfo.name)}" style="max-width:140px;width:auto;height:auto;margin:0 auto;">
+              <img src="${esc(shopInfo.logoUrl || "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/ong-logo-house-of-shubh-gems.png?v=1788589827")}" alt="${esc(shopInfo.name || "Only Natural Gemstones")}" style="max-width:180px;width:auto;height:auto;margin:0 auto;display:block;">
             </td>
           </tr>
           <tr><td style="height:1px;background-color:#d5d0c8;font-size:1px;line-height:1px;">&nbsp;</td></tr>
@@ -199,8 +199,9 @@ export async function sendGemAdviceOtpEmail(admin, settings, { email, name, code
               <!-- Inner Content -->
               <tr>
                 <td style="padding:36px 32px 32px 32px; text-align:center;">
-                  <!-- Header Brand Title -->
-                  <h1 style="margin:0 0 4px 0; font-family:Georgia, 'Times New Roman', serif; font-size:22px; font-weight:bold; color:#312c24; text-transform:uppercase; letter-spacing:2.5px;">ONLY NATURAL GEMSTONES</h1>
+                  <!-- Logo Header -->
+                  <img src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/ong-logo-house-of-shubh-gems.png?v=1788589827" alt="Only Natural Gemstones - House of Shubh Gems" style="max-width:180px; width:auto; height:auto; margin:0 auto 16px auto; display:block;" />
+                  <h1 style="margin:0 0 4px 0; font-family:Georgia, 'Times New Roman', serif; font-size:20px; font-weight:bold; color:#312c24; text-transform:uppercase; letter-spacing:2px;">ONLY NATURAL GEMSTONES</h1>
                   <p style="margin:0 0 24px 0; font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:3px; color:#8c7a4e;">AUTHENTIC &amp; VEDIC GEMSTONES</p>
                   
                   <hr style="border:none; border-top:1px solid #efeae4; margin:0 0 24px 0;" />
@@ -237,16 +238,18 @@ export async function sendGemAdviceOtpEmail(admin, settings, { email, name, code
       </table>
     </body>
     </html>
+  `;
+
   await transporter.sendMail({
     from: '"' + shopInfo.name + '" <' + settings.gmailUser + ">",
     to: email,
-    subject: "Verify your details to get your gemstone recommendation",
+    subject: "Your verification code: " + code,
     text:
       "Hi " + firstName + ",\n\n" +
-      "Here's your verification code to confirm your mobile number and email for your personalised gemstone recommendation: " + code + "\n\n" +
-      "This code expires in 10 minutes. Didn't request this? You can safely ignore this email.\n\n" +
+      "Your verification code is " + code + ".\n\n" +
+      "This code expires in 10 minutes. Do not share it with anyone.\n\n" +
       shopInfo.name,
-    html: buildOtpEmailHtml({ firstName, code, shopInfo }),
+    html: htmlContent,
   });
 
   return "OK: sent to " + email;

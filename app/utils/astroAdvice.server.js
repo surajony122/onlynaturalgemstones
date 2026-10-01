@@ -1231,7 +1231,7 @@ async function shopifyAdminGraphQLSimple(admin, query, variables) {
 // operation on any one invalid field, not just that field) — that's why
 // name/address/phone were ALSO coming back empty, not because they were
 // unset in Shopify. Removing the bad field fixes all of it at once.
-export const FALLBACK_LOGO_URL = "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/ONG_whatapp_final.jpg";
+export const FALLBACK_LOGO_URL = "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/ong-logo-house-of-shubh-gems.png?v=1788589827";
 
 export async function getShopFooterInfo(admin) {
   if (shopFooterInfoCache && shopFooterInfoCache.expiresAt > Date.now()) {
