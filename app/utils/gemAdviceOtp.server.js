@@ -303,7 +303,16 @@ function buildOtpEmailHtml({ firstName, code, shopInfo }) {
               <table align="center" style="margin:0 auto 20px;">
                 <tr>${digits}</tr>
               </table>
-              <p style="margin:0 0 4px;font-size:13px;color:#8c7a4e;font-weight:600;">⏱️ This code expires in 10 minutes.</p>
+              <table align="center" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto 8px auto;">
+                <tr>
+                  <td valign="middle" style="padding-right:5px;font-size:14px;line-height:1;">
+                    <span style="font-size:14px;line-height:1;">⏱️</span>
+                  </td>
+                  <td valign="middle" style="font-size:13px;color:#8c7a4e;font-weight:600;line-height:1.4;">
+                    This code expires in 10 minutes.
+                  </td>
+                </tr>
+              </table>
               <p style="margin:0;font-size:13px;color:#8a8278;">Didn't request this? You can safely ignore this email.</p>
             </td>
           </tr>
