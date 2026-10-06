@@ -28,6 +28,7 @@ export const NAV_GROUPS = [
     label: "Leads",
     items: [
       { id: "astro", href: "/app/astro-leads", label: "Astro Leads", icon: "users", badgeKey: "astro" },
+      { id: "gemdetails", href: "/app/gemstone-details", label: "Gemstone details", icon: "diamond" },
       { id: "wishlist", href: "/app/wishlist-leads", label: "Wishlist Leads", icon: "heart", badgeKey: "wishlist" },
     ],
   },

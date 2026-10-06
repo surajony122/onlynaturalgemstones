@@ -29,6 +29,7 @@ import prisma from "../db.server";
 import { mirrorLeadToSheet, mirrorEmailEventToSheet } from "./googleSheets.server";
 import { getAppSettings } from "./appSettings.server";
 import { sendGemRecommendationWhatsApp } from "./interakt.server";
+import { getGemStoneOverrides, normaliseGemKey, mantraForPlanet } from "./gemStoneDetails.server";
 
 // The storefront's real customer-facing domain (not the *.myshopify.com
 // admin domain) — used to build the results-page link embedded in the
@@ -83,30 +84,36 @@ const GEM_CUSTOM_OVERRIDES = {
   opal: { substitute: "White Zircon", wearMetal: "Silver or White Gold" },
 };
 
-function buildGemInfo(entry) {
+// `stoneOverrides` = what the merchant saved on the app's "Gemstone details" page
+// (metal / finger / day / mantra / substitute per stone). A blank field there means
+// "no override", so the API value / built-in default below still applies.
+function buildGemInfo(entry, stoneOverrides) {
   if (!entry || !entry.gem_key) return null;
   const key = String(entry.gem_key).toLowerCase().replace(/[\s'-]+/g, "_");
   const info = GEM_KEY_TO_COLLECTION[key] || GEM_KEY_TO_COLLECTION[entry.gem_key] || { gem: entry.name, collection: null };
   const custom = GEM_CUSTOM_OVERRIDES[key] || GEM_CUSTOM_OVERRIDES[entry.gem_key] || {};
+  const ov = (stoneOverrides && stoneOverrides[normaliseGemKey(key)]) || {};
+  const planet = entry.gem_deity || null;
 
   return {
-    planet: entry.gem_deity || null,
+    planet,
     gem: info.gem || entry.name,
     collection: info.collection,
-    substitute: custom.substitute !== undefined ? custom.substitute : (entry.semi_gem || null),
+    substitute: ov.substitute || (custom.substitute !== undefined ? custom.substitute : (entry.semi_gem || null)),
     weightCarat: entry.weight_caret || null,
-    wearMetal: custom.wearMetal || entry.wear_metal || null,
-    wearFinger: entry.wear_finger || null,
-    wearDay: entry.wear_day || null,
+    wearMetal: ov.metal || custom.wearMetal || entry.wear_metal || null,
+    wearFinger: ov.finger || entry.wear_finger || null,
+    wearDay: ov.day || entry.wear_day || null,
+    mantra: ov.mantra || mantraForPlanet(planet) || null,
   };
 }
 
-function buildRecommendations(gemSuggestion) {
+function buildRecommendations(gemSuggestion, stoneOverrides) {
   if (!gemSuggestion) return null;
   return {
-    life: buildGemInfo(gemSuggestion.LIFE),
-    benefic: buildGemInfo(gemSuggestion.BENEFIC),
-    lucky: buildGemInfo(gemSuggestion.LUCKY),
+    life: buildGemInfo(gemSuggestion.LIFE, stoneOverrides),
+    benefic: buildGemInfo(gemSuggestion.BENEFIC, stoneOverrides),
+    lucky: buildGemInfo(gemSuggestion.LUCKY, stoneOverrides),
   };
 }
 
@@ -138,7 +145,7 @@ export async function handleAstroAdviceSubmission(admin, shop, data) {
   } else if (data.astroBirthDetails) {
     try {
       birthDetails = data.astroBirthDetails;
-      recommendation = buildRecommendations(data.astroGemSuggestion) || {};
+      recommendation = buildRecommendations(data.astroGemSuggestion, await getGemStoneOverrides(shop)) || {};
       chartSvg = data.astroChartSvg || null;
     } catch (procErr) {
       astroError = String(procErr);

@@ -760,3 +760,24 @@ model ArticleView {
   count     Int      @default(0)
   updatedAt DateTime @updatedAt
 }
+
+// Per-stone display details the merchant controls from the app's "Gemstone details"
+// page (app/routes/app.gemstone-details.jsx): metal, finger, day, mantra, substitute.
+// A blank field means "no override" -- the astrology API's value / built-in default is
+// used instead. Applied when a recommendation is built (astroAdvice.server.js), so the
+// form's result page, the emailed result link and the emails/WhatsApp all agree.
+// gemKey is the normalised stone key (ruby, pearl, red_coral, emerald, yellow_sapphire,
+// diamond, blue_sapphire, hessonite, cats_eye, opal).
+model GemStoneDetail {
+  id         String   @id @default(cuid())
+  shop       String
+  gemKey     String
+  metal      String?
+  finger     String?
+  day        String?
+  mantra     String?
+  substitute String?
+  updatedAt  DateTime @updatedAt
+
+  @@unique([shop, gemKey])
+}
