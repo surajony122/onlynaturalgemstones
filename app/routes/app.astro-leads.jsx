@@ -83,8 +83,19 @@ function exportAstroLeadsToCsv(leadsToExport) {
     "Customer Name",
     "Customer Email",
     "Customer Phone",
+    "Gender",
+    "Date of Birth (DOB)",
+    "Time of Birth (TOB)",
+    "Place of Birth (POB)",
+    "Body Weight (kg)",
+    "Purpose",
+    "Ascendant",
+    "Moon Sign",
+    "Sun Sign",
     "Life Stone",
     "Life Stone SKU",
+    "Benefic Stone",
+    "Lucky Stone",
     "Calculation Status",
     "Shopify Sync",
     "Email Status",
@@ -106,8 +117,19 @@ function exportAstroLeadsToCsv(leadsToExport) {
       escapeCsv(lead.name || ""),
       escapeCsv(lead.email || ""),
       escapeCsv(lead.phone || ""),
+      escapeCsv(lead.gender || ""),
+      escapeCsv(lead.dob || ""),
+      escapeCsv(lead.tob || ""),
+      escapeCsv(lead.placeOfBirth || ""),
+      escapeCsv(lead.bodyWeightKg || ""),
+      escapeCsv(lead.purpose || ""),
+      escapeCsv(lead.ascendant || ""),
+      escapeCsv(lead.moonsign || ""),
+      escapeCsv(lead.sunsign || ""),
       escapeCsv(lead.lifeStoneGem || ""),
       escapeCsv(lead.lifeStoneSku || "N/A"),
+      escapeCsv(lead.beneficStoneGem || ""),
+      escapeCsv(lead.luckyStoneGem || ""),
       escapeCsv(lead.calculationOk ? "OK" : "Error"),
       escapeCsv(lead.shopifySyncStatus || "N/A"),
       escapeCsv(lead.emailStatus.sent > 0 ? (lead.emailStatus.clicked > 0 ? "Clicked" : lead.emailStatus.opened > 0 ? "Opened" : "Sent") : "Pending"),
@@ -334,24 +356,6 @@ function WhatsAppQueueSection({ whatsappQueue }) {
             {whatsappQueue.dueCount > 0 ? ` ${whatsappQueue.dueCount} lead(s) are waiting for follow-up.` : " All caught up."}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={processQueue}
-          disabled={isRunning || whatsappQueue.dueCount === 0}
-          style={{
-            padding: "8px 15px",
-            borderRadius: "8px",
-            border: "none",
-            background: brand.accent,
-            color: "#fff",
-            fontSize: "12.5px",
-            fontWeight: 600,
-            cursor: isRunning || whatsappQueue.dueCount === 0 ? "default" : "pointer",
-            opacity: isRunning || whatsappQueue.dueCount === 0 ? 0.6 : 1,
-          }}
-        >
-          {isRunning ? "Processing…" : "Process Follow-Ups Now"}
-        </button>
       </div>
     </Card>
   );
@@ -401,6 +405,48 @@ function LeadRow({ lead, selected, onToggleSelect }) {
       <td style={{ ...tdStyle, fontWeight: 600, color: brand.ink }}>{lead.name || "—"}</td>
       <td style={tdStyle}>{lead.email || "—"}</td>
       <td style={tdStyle}>{lead.phone || "—"}</td>
+      <td style={{ ...tdStyle, minWidth: "190px" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "2px", fontSize: "11.5px" }}>
+          {lead.dob && (
+            <div>
+              <span style={{ color: brand.muted, fontWeight: 600 }}>DOB:</span>{" "}
+              <span style={{ color: brand.ink }}>{lead.dob}</span>
+            </div>
+          )}
+          {lead.tob && (
+            <div>
+              <span style={{ color: brand.muted, fontWeight: 600 }}>TOB:</span>{" "}
+              <span style={{ color: brand.ink }}>{lead.tob}</span>
+            </div>
+          )}
+          {lead.placeOfBirth && (
+            <div>
+              <span style={{ color: brand.muted, fontWeight: 600 }}>POB:</span>{" "}
+              <span style={{ color: brand.ink }}>{lead.placeOfBirth}</span>
+            </div>
+          )}
+          {(lead.gender || lead.bodyWeightKg) && (
+            <div style={{ color: brand.muted }}>
+              {lead.gender && <span style={{ textTransform: "capitalize", fontWeight: 600 }}>{lead.gender}</span>}
+              {lead.gender && lead.bodyWeightKg && " · "}
+              {lead.bodyWeightKg && <span>{lead.bodyWeightKg} kg</span>}
+            </div>
+          )}
+          {lead.purpose && (
+            <div style={{ fontSize: "11px", color: "#6b5b43", background: "#faf5ee", padding: "1px 5px", borderRadius: "4px", border: `1px solid ${brand.border}`, marginTop: "2px", display: "inline-block" }}>
+              Purpose: {lead.purpose}
+            </div>
+          )}
+          {(lead.ascendant || lead.moonsign || lead.sunsign) && (
+            <div style={{ fontSize: "10.5px", color: brand.muted, marginTop: "2px" }}>
+              {lead.ascendant && <span>Asc: {lead.ascendant} </span>}
+              {lead.moonsign && <span>Moon: {lead.moonsign} </span>}
+              {lead.sunsign && <span>Sun: {lead.sunsign}</span>}
+            </div>
+          )}
+          {!lead.dob && !lead.tob && !lead.placeOfBirth && !lead.gender && !lead.purpose && "—"}
+        </div>
+      </td>
       <td style={{ ...tdStyle, minWidth: "170px" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
           {lead.lifeStoneGem && (
@@ -745,6 +791,7 @@ export default function AstroLeadsPage() {
                   <SortTh label="Name" sortKey="name" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
                   <SortTh label="Email" sortKey="email" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
                   <th style={thStyle}>Phone</th>
+                  <th style={thStyle}>Birth Details</th>
                   <SortTh label="Stones & SKU" sortKey="lifeStoneGem" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
                   <th style={thStyle}>Lead Status</th>
                   <th style={thStyle}>Calculation</th>

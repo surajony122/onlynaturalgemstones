@@ -700,14 +700,6 @@ export default function WishlistLeadsPage() {
             >
               <Icon name="sheets" size={15} color={brand.success} /> Export to Sheet (CSV)
             </button>
-            <button
-              type="button"
-              onClick={sendDueNow}
-              disabled={isSending}
-              style={{ padding: "9px 16px", borderRadius: "9px", border: "none", background: brand.accent, color: "#fff", fontSize: "13px", fontWeight: 600, cursor: isSending ? "default" : "pointer", opacity: isSending ? 0.7 : 1 }}
-            >
-              {isSending ? "Sending…" : "Send Due Emails Now"}
-            </button>
           </div>
         }
       />
