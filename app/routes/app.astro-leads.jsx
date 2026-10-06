@@ -342,7 +342,8 @@ function WhatsAppQueueSection({ whatsappQueue }) {
 
   const processQueue = () => fetcher.submit({ intent: "processQueue" }, { method: "POST" });
 
-  if (!whatsappQueue || whatsappQueue.intervalMs === 0) return null;
+  // Follow-up reminder banner intentionally hidden on the Astro Leads page.
+  if (true || !whatsappQueue || whatsappQueue.intervalMs === 0) return null;
 
   return (
     <Card style={{ marginBottom: "16px", background: brand.accentTint, borderColor: brand.accentLine }}>
@@ -360,6 +361,15 @@ function WhatsAppQueueSection({ whatsappQueue }) {
     </Card>
   );
 }
+
+const BEST_SUITED_BY_PURPOSE = {
+  General: "life",
+  "Wealth & Fortune": "lucky",
+  "Business & Career": "life",
+  "Personal Relationships": "benefic",
+  Health: "life",
+  Education: "benefic",
+};
 
 function LeadRow({ lead, selected, onToggleSelect }) {
   const fetcher = useFetcher();
@@ -474,6 +484,20 @@ function LeadRow({ lead, selected, onToggleSelect }) {
             SKU: {lead.lifeStoneSku}
           </div>
         ) : null}
+      </td>
+      <td style={{ ...tdStyle, minWidth: "130px" }}>
+        {(() => {
+          // Same "Best Suited" marks as the result page's "Life, Benefic or Lucky Stone?" table.
+          const kind = BEST_SUITED_BY_PURPOSE[lead.purpose] || "life";
+          const gem = kind === "benefic" ? lead.beneficStoneGem : kind === "lucky" ? lead.luckyStoneGem : lead.lifeStoneGem;
+          if (!gem) return "—";
+          return (
+            <div style={{ fontSize: "12px", color: brand.ink }}>
+              <span style={{ fontWeight: 600 }}>{gem}</span>
+              <div style={{ fontSize: "10px", color: brand.muted, textTransform: "capitalize" }}>{kind} stone{lead.purpose ? ` · ${lead.purpose}` : ""}</div>
+            </div>
+          );
+        })()}
       </td>
       <td style={{ ...tdStyle, minWidth: "160px" }}>
         {(() => {
@@ -793,6 +817,7 @@ export default function AstroLeadsPage() {
                   <th style={thStyle}>Phone</th>
                   <th style={thStyle}>Birth Details</th>
                   <SortTh label="Stones & SKU" sortKey="lifeStoneGem" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                  <th style={thStyle}>Best Suited Stone</th>
                   <th style={thStyle}>Lead Status</th>
                   <th style={thStyle}>Calculation</th>
                   <th style={thStyle}>Shopify Sync</th>

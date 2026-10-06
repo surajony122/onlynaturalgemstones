@@ -70,26 +70,47 @@ export async function getGemStoneOverrides(shop) {
   }
 }
 
-/** Rows for the admin page: every stone, with its saved values (blank if none). */
+
+/** Rows for the admin page: built-in stones (unless removed) plus custom ones, with saved values. */
 export async function getGemStoneRows(shop) {
   const saved = await prisma.gemStoneDetail.findMany({ where: { shop } });
   const byKey = Object.fromEntries(saved.map((r) => [r.gemKey, r]));
-  return GEM_STONES.map((s) => {
-    const r = byKey[s.key] || {};
-    return {
-      key: s.key,
-      name: s.name,
-      hindi: s.hindi,
-      planet: s.planet,
-      defaults: { ...s.defaults, mantra: mantraForPlanet(s.planet) },
-      values: Object.fromEntries(FIELDS.map((f) => [f, r[f] || ""])),
-    };
-  });
+  const vals = (r) => Object.fromEntries(FIELDS.map((f) => [f, (r && r[f]) || ""]));
+  const rows = GEM_STONES.filter((s) => !(byKey[s.key] && byKey[s.key].hidden)).map((s) => ({
+    key: s.key,
+    name: s.name,
+    hindi: s.hindi,
+    planet: s.planet,
+    custom: false,
+    defaults: { ...s.defaults, mantra: mantraForPlanet(s.planet) },
+    values: vals(byKey[s.key]),
+  }));
+  for (const r of saved) {
+    if (!r.isCustom) continue;
+    rows.push({
+      key: r.gemKey,
+      name: r.label || r.gemKey,
+      hindi: r.hindi || "",
+      planet: r.planet || "",
+      custom: true,
+      defaults: { mantra: mantraForPlanet(r.planet) },
+      values: vals(r),
+    });
+  }
+  return rows;
+}
+
+/** Built-in stones the merchant removed (so they can be added back). */
+export async function getHiddenStones(shop) {
+  const saved = await prisma.gemStoneDetail.findMany({ where: { shop, hidden: true, isCustom: false } });
+  const names = Object.fromEntries(GEM_STONES.map((s) => [s.key, s.name]));
+  return saved.filter((r) => names[r.gemKey]).map((r) => ({ key: r.gemKey, name: names[r.gemKey] }));
 }
 
 /** rows: { [gemKey]: { metal, finger, day, mantra, substitute } } */
 export async function saveGemStoneDetails(shop, rows) {
-  const valid = new Set(GEM_STONES.map((s) => s.key));
+  const saved = await prisma.gemStoneDetail.findMany({ where: { shop } });
+  const valid = new Set([...GEM_STONES.map((s) => s.key), ...saved.filter((r) => r.isCustom).map((r) => r.gemKey)]);
   for (const [gemKey, vals] of Object.entries(rows || {})) {
     if (!valid.has(gemKey)) continue;
     const data = Object.fromEntries(FIELDS.map((f) => [f, clean(vals && vals[f]) || null]));
@@ -98,5 +119,37 @@ export async function saveGemStoneDetails(shop, rows) {
       update: data,
       create: { shop, gemKey, ...data },
     });
+  }
+}
+
+/** Add a custom stone, or restore a removed built-in one when only restoreKey is given. */
+export async function addGemStone(shop, { name, hindi, planet, restoreKey }) {
+  if (restoreKey) {
+    if (!GEM_STONES.some((s) => s.key === restoreKey)) throw new Error("Unknown stone");
+    await prisma.gemStoneDetail.updateMany({ where: { shop, gemKey: restoreKey }, data: { hidden: false } });
+    return;
+  }
+  const label = clean(name);
+  if (!label) throw new Error("Enter the stone name");
+  const gemKey = normaliseGemKey(label);
+  if (GEM_STONES.some((s) => s.key === gemKey)) throw new Error(label + " is already in the list");
+  const meta = { label, hindi: clean(hindi) || null, planet: clean(planet) || null, isCustom: true, hidden: false };
+  await prisma.gemStoneDetail.upsert({
+    where: { shop_gemKey: { shop, gemKey } },
+    update: meta,
+    create: { shop, gemKey, ...meta },
+  });
+}
+
+/** Custom stones are deleted; built-in ones are hidden and their saved details cleared. */
+export async function removeGemStone(shop, gemKey) {
+  if (GEM_STONES.some((s) => s.key === gemKey)) {
+    await prisma.gemStoneDetail.upsert({
+      where: { shop_gemKey: { shop, gemKey } },
+      update: { hidden: true, metal: null, finger: null, day: null, mantra: null, substitute: null },
+      create: { shop, gemKey, hidden: true },
+    });
+  } else {
+    await prisma.gemStoneDetail.deleteMany({ where: { shop, gemKey, isCustom: true } });
   }
 }

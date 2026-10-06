@@ -777,6 +777,11 @@ model GemStoneDetail {
   day        String?
   mantra     String?
   substitute String?
+  label      String?
+  hindi      String?
+  planet     String?
+  isCustom   Boolean  @default(false)
+  hidden     Boolean  @default(false)
   updatedAt  DateTime @updatedAt
 
   @@unique([shop, gemKey])
