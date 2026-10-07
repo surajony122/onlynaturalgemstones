@@ -401,6 +401,14 @@ function LeadRow({ lead, selected, onToggleSelect }) {
     return null;
   }
 
+  // Same "Best Suited" marks as the result page's "Life, Benefic or Lucky Stone?" table.
+  const bestKind = BEST_SUITED_BY_PURPOSE[lead.purpose] || "life";
+  const stoneLineStyle = (kind) =>
+    kind === bestKind
+      ? { fontSize: "12px", color: brand.ink, background: "#fff6e3", border: "1px solid #e8c98a", borderRadius: "6px", padding: "3px 6px" }
+      : { fontSize: "12px", color: brand.ink, padding: "4px 7px", border: "1px solid transparent" };
+  const bestBadgeStyle = { marginLeft: "6px", fontSize: "9.5px", fontWeight: 700, color: "#9a6a12", background: "#fde9b8", padding: "1px 6px", borderRadius: "999px", whiteSpace: "nowrap" };
+
   const lastActionResult =
     fetcher.data && ["sendNow", "resendWhatsapp"].includes(fetcher.data.intent) && fetcher.data.leadId === lead.id
       ? fetcher.data
@@ -412,9 +420,13 @@ function LeadRow({ lead, selected, onToggleSelect }) {
         <input type="checkbox" checked={selected} onChange={onToggleSelect} style={{ cursor: "pointer" }} />
       </td>
       <td style={tdStyle}>{new Date(lead.createdAt).toLocaleString()}</td>
-      <td style={{ ...tdStyle, fontWeight: 600, color: brand.ink }}>{lead.name || "—"}</td>
-      <td style={tdStyle}>{lead.email || "—"}</td>
-      <td style={tdStyle}>{lead.phone || "—"}</td>
+      <td style={{ ...tdStyle, minWidth: "190px" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+          <span style={{ fontWeight: 600, color: brand.ink }}>{lead.name || "—"}</span>
+          <span style={{ fontSize: "12px", color: brand.body, wordBreak: "break-all" }}>{lead.email || "—"}</span>
+          <span style={{ fontSize: "12px", color: brand.body }}>{lead.phone || "—"}</span>
+        </div>
+      </td>
       <td style={{ ...tdStyle, minWidth: "190px" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: "2px", fontSize: "11.5px" }}>
           {lead.dob && (
@@ -460,21 +472,24 @@ function LeadRow({ lead, selected, onToggleSelect }) {
       <td style={{ ...tdStyle, minWidth: "170px" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
           {lead.lifeStoneGem && (
-            <div style={{ fontSize: "12px", color: brand.ink }}>
+            <div style={stoneLineStyle("life")}>
               <span style={{ fontSize: "9px", fontWeight: 700, textTransform: "uppercase", color: "#c8712f", background: "#fdf1e7", padding: "1px 5px", borderRadius: "4px", marginRight: "5px" }}>Life</span>
               <span style={{ fontWeight: 600 }}>{lead.lifeStoneGem}</span>
+              {bestKind === "life" && <span title={"Best suited for: " + (lead.purpose || "General")} style={bestBadgeStyle}>★ Best suited</span>}
             </div>
           )}
           {lead.beneficStoneGem && (
-            <div style={{ fontSize: "12px", color: brand.ink }}>
+            <div style={stoneLineStyle("benefic")}>
               <span style={{ fontSize: "9px", fontWeight: 700, textTransform: "uppercase", color: "#5c8c5c", background: "#eef4ec", padding: "1px 5px", borderRadius: "4px", marginRight: "5px" }}>Benefic</span>
               <span style={{ fontWeight: 600 }}>{lead.beneficStoneGem}</span>
+              {bestKind === "benefic" && <span title={"Best suited for: " + (lead.purpose || "General")} style={bestBadgeStyle}>★ Best suited</span>}
             </div>
           )}
           {lead.luckyStoneGem && (
-            <div style={{ fontSize: "12px", color: brand.ink }}>
+            <div style={stoneLineStyle("lucky")}>
               <span style={{ fontSize: "9px", fontWeight: 700, textTransform: "uppercase", color: "#4a6fa5", background: "#eaf1f8", padding: "1px 5px", borderRadius: "4px", marginRight: "5px" }}>Lucky</span>
               <span style={{ fontWeight: 600 }}>{lead.luckyStoneGem}</span>
+              {bestKind === "lucky" && <span title={"Best suited for: " + (lead.purpose || "General")} style={bestBadgeStyle}>★ Best suited</span>}
             </div>
           )}
           {!lead.lifeStoneGem && !lead.beneficStoneGem && !lead.luckyStoneGem && "—"}
@@ -484,20 +499,6 @@ function LeadRow({ lead, selected, onToggleSelect }) {
             SKU: {lead.lifeStoneSku}
           </div>
         ) : null}
-      </td>
-      <td style={{ ...tdStyle, minWidth: "130px" }}>
-        {(() => {
-          // Same "Best Suited" marks as the result page's "Life, Benefic or Lucky Stone?" table.
-          const kind = BEST_SUITED_BY_PURPOSE[lead.purpose] || "life";
-          const gem = kind === "benefic" ? lead.beneficStoneGem : kind === "lucky" ? lead.luckyStoneGem : lead.lifeStoneGem;
-          if (!gem) return "—";
-          return (
-            <div style={{ fontSize: "12px", color: brand.ink }}>
-              <span style={{ fontWeight: 600 }}>{gem}</span>
-              <div style={{ fontSize: "10px", color: brand.muted, textTransform: "capitalize" }}>{kind} stone{lead.purpose ? ` · ${lead.purpose}` : ""}</div>
-            </div>
-          );
-        })()}
       </td>
       <td style={{ ...tdStyle, minWidth: "160px" }}>
         {(() => {
@@ -528,22 +529,6 @@ function LeadRow({ lead, selected, onToggleSelect }) {
             </select>
           );
         })()}
-      </td>
-      <td style={tdStyle}>
-        {lead.calculationOk ? (
-          <Pill label="OK" color={brand.success} />
-        ) : (
-          <Pill label="Error" active color={brand.danger} title={lead.astroError || "Calculation failed"} />
-        )}
-      </td>
-      <td style={tdStyle}>
-        {lead.shopifySyncStatus?.startsWith("OK") ? (
-          <Pill label="Synced" color={brand.success} />
-        ) : lead.shopifySyncStatus ? (
-          <Pill label="Failed" active color={brand.danger} title={lead.shopifySyncStatus} />
-        ) : (
-          <Pill label="—" color={brand.muted} />
-        )}
       </td>
       <td style={tdStyle} title={lead.emailSendStatus || "pending"}>
         <Pill label="Sent" active={lead.emailStatus.sent > 0} color={brand.success} />
@@ -592,6 +577,34 @@ function LeadRow({ lead, selected, onToggleSelect }) {
         ) : (
           <>
             <RowMenu
+              header={
+                <div style={{ display: "flex", flexDirection: "column", gap: "7px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+                    <span style={{ fontSize: "11.5px", color: brand.muted, fontWeight: 600 }}>Calculation</span>
+                    {lead.calculationOk ? (
+                      <Pill label="OK" color={brand.success} />
+                    ) : (
+                      <Pill label="Error" active color={brand.danger} title={lead.astroError || "Calculation failed"} />
+                    )}
+                  </div>
+                  {!lead.calculationOk && lead.astroError && (
+                    <div style={{ fontSize: "11px", color: brand.danger, whiteSpace: "normal" }}>{String(lead.astroError).slice(0, 140)}</div>
+                  )}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+                    <span style={{ fontSize: "11.5px", color: brand.muted, fontWeight: 600 }}>Shopify sync</span>
+                    {lead.shopifySyncStatus?.startsWith("OK") ? (
+                      <Pill label="Synced" color={brand.success} />
+                    ) : lead.shopifySyncStatus ? (
+                      <Pill label="Failed" active color={brand.danger} title={lead.shopifySyncStatus} />
+                    ) : (
+                      <Pill label="—" color={brand.muted} />
+                    )}
+                  </div>
+                  {lead.shopifySyncStatus && !lead.shopifySyncStatus.startsWith("OK") && (
+                    <div style={{ fontSize: "11px", color: brand.danger, whiteSpace: "normal" }}>{String(lead.shopifySyncStatus).slice(0, 140)}</div>
+                  )}
+                </div>
+              }
               items={[
                 { label: "Send Now (Email)", onClick: sendNow, disabled: busy },
                 { label: "Retry WhatsApp", onClick: retryWhatsapp, disabled: busy },
@@ -812,15 +825,10 @@ export default function AstroLeadsPage() {
                 <tr>
                   <SelectAllTh checked={bulk.allSelected} indeterminate={bulk.count > 0 && !bulk.allSelected} onChange={bulk.toggleAll} />
                   <SortTh label="When" sortKey="createdAt" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
-                  <SortTh label="Name" sortKey="name" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
-                  <SortTh label="Email" sortKey="email" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
-                  <th style={thStyle}>Phone</th>
+                  <SortTh label="Contact" sortKey="name" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
                   <th style={thStyle}>Birth Details</th>
                   <SortTh label="Stones & SKU" sortKey="lifeStoneGem" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
-                  <th style={thStyle}>Best Suited Stone</th>
                   <th style={thStyle}>Lead Status</th>
-                  <th style={thStyle}>Calculation</th>
-                  <th style={thStyle}>Shopify Sync</th>
                   <th style={thStyle}>Email</th>
                   <th style={thStyle}>WhatsApp</th>
                   <th style={thStyle}>Clicked Links</th>

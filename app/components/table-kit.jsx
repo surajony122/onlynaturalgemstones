@@ -403,7 +403,7 @@ export function Pill({ label, active, color }) {
 // items: [{ label, onClick, tone?: "danger", disabled? }]. Closes on
 // outside click. Renders nothing (well, a bare dash) if every item was
 // filtered out by the caller — keeps the column from looking broken.
-export function RowMenu({ items }) {
+export function RowMenu({ items, header }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -417,7 +417,7 @@ export function RowMenu({ items }) {
   }, [open]);
 
   const visible = (items || []).filter(Boolean);
-  if (!visible.length) return <span style={{ color: "#D1D5DB" }}>—</span>;
+  if (!visible.length && !header) return <span style={{ color: "#D1D5DB" }}>—</span>;
 
   return (
     <div ref={ref} style={{ position: "relative", display: "inline-block" }}>
@@ -452,10 +452,13 @@ export function RowMenu({ items }) {
             border: `1px solid ${brand.border}`,
             borderRadius: "10px",
             boxShadow: "0 4px 14px rgba(16,24,40,0.12)",
-            minWidth: "170px",
+            minWidth: "210px",
             overflow: "hidden",
           }}
         >
+          {header && (
+            <div style={{ padding: "10px 12px", borderBottom: visible.length ? `1px solid ${brand.divider}` : "none", textAlign: "left" }}>{header}</div>
+          )}
           {visible.map((item, i) => (
             <button
               key={i}
