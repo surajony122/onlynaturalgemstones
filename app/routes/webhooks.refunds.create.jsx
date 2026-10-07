@@ -58,6 +58,14 @@ function formatRefundAmount(transactions) {
   }
 }
 
+// Cancelling an order in Shopify Admin (with "refund" ticked) creates a refund too, which fires this same
+// webhook. That is not a customer return/refund request, so no "Refund Processed" message is sent for it.
+// Shopify marks the refund's line items with restock_type "cancel" in that case.
+function isCancellationRefund(payload) {
+  const items = Array.isArray(payload?.refund_line_items) ? payload.refund_line_items : [];
+  return items.some((li) => String(li?.restock_type || "").toLowerCase() === "cancel");
+}
+
 async function fetchOrderForRefundWhatsapp(admin, orderGid) {
   const res = await admin.graphql(
     `#graphql
@@ -65,6 +73,7 @@ async function fetchOrderForRefundWhatsapp(admin, orderGid) {
       order(id: $id) {
         name
         statusPageUrl
+        cancelledAt
         customer { firstName phone }
         shippingAddress { phone }
         billingAddress { phone }
@@ -115,6 +124,11 @@ export const action = async ({ request }) => {
     return new Response();
   }
 
+  if (isCancellationRefund(payload)) {
+    await setDetail("skipped: refund was created by cancelling the order (not a return/refund request)");
+    return new Response();
+  }
+
   // Atomic claim on this refund id -- whichever delivery's create()
   // succeeds owns sending; a redelivery hits the unique constraint and
   // is treated as already handled.
@@ -144,6 +158,12 @@ export const action = async ({ request }) => {
     if (!order) {
       await setDetail("skipped: order not found");
       await prisma.orderReturnEmailNotification.update({ where: { id: claim.id }, data: { status: "skipped: order not found" } });
+      return new Response();
+    }
+
+    if (order.cancelledAt) {
+      await setDetail("skipped: order is cancelled (refund came from the cancellation)");
+      await prisma.orderReturnEmailNotification.update({ where: { id: claim.id }, data: { status: "skipped: order cancelled" } });
       return new Response();
     }
 
