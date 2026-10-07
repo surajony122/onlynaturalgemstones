@@ -147,6 +147,33 @@ export async function fetchCustomisationStatus(admin) {
   }
 }
 
+/** Every variant of the Gemstone Customisation product (Shopify caps one page at 250). */
+async function fetchAllCustomisationVariantNodes(admin, productId, nodeFields) {
+  const all = [];
+  let after = null;
+  for (let page = 0; page < 20; page++) {
+    const res = await admin.graphql(
+      `#graphql
+      query FetchCustomisationVariantsPage($id: ID!, $after: String) {
+        product(id: $id) {
+          variants(first: 250, after: $after) {
+            nodes { ${nodeFields} }
+            pageInfo { hasNextPage endCursor }
+          }
+        }
+      }`,
+      { variables: { id: productId, after } },
+    );
+    const json = await res.json();
+    const conn = json.data?.product?.variants;
+    if (!conn) break;
+    all.push(...(conn.nodes || []));
+    if (!conn.pageInfo?.hasNextPage) break;
+    after = conn.pageInfo.endCursor;
+  }
+  return all;
+}
+
 export function generateAllCustomisationVariants(rates) {
   const variants = [];
   const typeMap = {
@@ -363,26 +390,11 @@ export async function buildGemstoneCustomisationMatrix(admin, rates = {}) {
   // Ensure handle is explicitly gemstone-customisation and publish across all sales channels
   let variantsNodes = [];
   try {
-    const fetchRes = await admin.graphql(
-      `#graphql
-      query FetchAllCustomisationVariants($id: ID!) {
-        product(id: $id) {
-          id
-          handle
-          variants(first: 250) {
-            nodes {
-              id
-              title
-              price
-              selectedOptions { name value }
-            }
-          }
-        }
-      }`,
-      { variables: { id: product.id } },
-    );
-    const fetchJson = await fetchRes.json();
-    variantsNodes = fetchJson.data?.product?.variants?.nodes || [];
+    // The matrix has more than 250 variants (default + pearl catalogs: ~290). A single
+    // variants(first: 250) call silently dropped the rest -- every Bracelet design and
+    // part of Pendant -- so the theme could not find them and fell back to the Rs 1 "Unit"
+    // line with quantity = the surcharge ("Quantity: 3000" at checkout). Page through all.
+    variantsNodes = await fetchAllCustomisationVariantNodes(admin, product.id, "id title price selectedOptions { name value }");
 
     const pubRes = await admin.graphql(`#graphql
       query AllPubs { publications(first: 25) { nodes { id name } } }`);
@@ -507,19 +519,7 @@ export async function buildGemstoneCustomisationMatrix(admin, rates = {}) {
 export async function fetchCustomisationVariantsPreview(admin) {
   const product = await findOrCreateGemstoneCustomisationProduct(admin);
   if (!product) return [];
-  const res = await admin.graphql(
-    `#graphql
-    query FetchCustomisationPreview($id: ID!) {
-      product(id: $id) {
-        variants(first: 250) {
-          nodes { price selectedOptions { name value } }
-        }
-      }
-    }`,
-    { variables: { id: product.id } },
-  );
-  const json = await res.json();
-  const nodes = json.data?.product?.variants?.nodes || [];
+  const nodes = await fetchAllCustomisationVariantNodes(admin, product.id, "price selectedOptions { name value }");
   return nodes
     .map((n) => {
       const optMap = {};
