@@ -87,7 +87,18 @@ const GEM_CUSTOM_OVERRIDES = {
 // `stoneOverrides` = what the merchant saved on the app's "Gemstone details" page
 // (metal / finger / day / mantra / substitute per stone). A blank field there means
 // "no override", so the API value / built-in default below still applies.
-function buildGemInfo(entry, stoneOverrides) {
+// Carat range from the customer's body weight (kg): max = weight/10 rounded UP to the next 0.25,
+// min = weight/12 rounded DOWN to 0.1. Diamond uses /100 and /120 (so 73 kg -> 0.6 - 0.75).
+function caratRangeFromBodyWeight(gemName, kg) {
+  if (!(typeof kg === "number" && kg > 0)) return null;
+  const dia = String(gemName || "").toLowerCase() === "diamond";
+  const max = Math.ceil(kg / (dia ? 100 : 10) / 0.25 - 1e-9) * 0.25;
+  const min = Math.floor((kg / (dia ? 120 : 12)) * 10 + 1e-9) / 10;
+  const f = (n) => String(Math.round(n * 100) / 100);
+  return f(min) + " - " + f(max);
+}
+
+function buildGemInfo(entry, stoneOverrides, bodyWeightKg) {
   if (!entry || !entry.gem_key) return null;
   const key = String(entry.gem_key).toLowerCase().replace(/[\s'-]+/g, "_");
   const info = GEM_KEY_TO_COLLECTION[key] || GEM_KEY_TO_COLLECTION[entry.gem_key] || { gem: entry.name, collection: null };
@@ -100,7 +111,7 @@ function buildGemInfo(entry, stoneOverrides) {
     gem: info.gem || entry.name,
     collection: info.collection,
     substitute: ov.substitute || (custom.substitute !== undefined ? custom.substitute : (entry.semi_gem || null)),
-    weightCarat: entry.weight_caret || null,
+    weightCarat: caratRangeFromBodyWeight(info.gem || entry.name, bodyWeightKg) || entry.weight_caret || null,
     wearMetal: ov.metal || custom.wearMetal || entry.wear_metal || null,
     wearFinger: ov.finger || entry.wear_finger || null,
     wearDay: ov.day || entry.wear_day || null,
@@ -109,12 +120,12 @@ function buildGemInfo(entry, stoneOverrides) {
   };
 }
 
-function buildRecommendations(gemSuggestion, stoneOverrides) {
+function buildRecommendations(gemSuggestion, stoneOverrides, bodyWeightKg) {
   if (!gemSuggestion) return null;
   return {
-    life: buildGemInfo(gemSuggestion.LIFE, stoneOverrides),
-    benefic: buildGemInfo(gemSuggestion.BENEFIC, stoneOverrides),
-    lucky: buildGemInfo(gemSuggestion.LUCKY, stoneOverrides),
+    life: buildGemInfo(gemSuggestion.LIFE, stoneOverrides, bodyWeightKg),
+    benefic: buildGemInfo(gemSuggestion.BENEFIC, stoneOverrides, bodyWeightKg),
+    lucky: buildGemInfo(gemSuggestion.LUCKY, stoneOverrides, bodyWeightKg),
   };
 }
 
@@ -146,7 +157,7 @@ export async function handleAstroAdviceSubmission(admin, shop, data) {
   } else if (data.astroBirthDetails) {
     try {
       birthDetails = data.astroBirthDetails;
-      recommendation = buildRecommendations(data.astroGemSuggestion, await getGemStoneOverrides(shop)) || {};
+      recommendation = buildRecommendations(data.astroGemSuggestion, await getGemStoneOverrides(shop), data.bodyWeightKg) || {};
       chartSvg = data.astroChartSvg || null;
     } catch (procErr) {
       astroError = String(procErr);
@@ -443,6 +454,7 @@ async function syncLeadToShopify(admin, data, birthDetails, recommendation, astr
     placeOfBirth: data.placeOfBirth || "",
     purpose: data.purpose || "",
     ascendant: (birthDetails && birthDetails.ascendant) || "",
+    moonsign: (birthDetails && birthDetails.moonsign) || "",
     recommendations: recommendation || {},
     timestamp: new Date().toISOString(),
   };
@@ -1183,6 +1195,7 @@ export function buildResultsPageUrl(data, birthDetails, recommendation) {
     placeOfBirth: data.placeOfBirth || "",
     bodyWeightKg: typeof data.bodyWeightKg === "number" ? data.bodyWeightKg : "",
     ascendant: (birthDetails && birthDetails.ascendant) || "",
+    moonsign: (birthDetails && birthDetails.moonsign) || "",
     recommendations: recommendation || {},
   };
   const encoded = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");

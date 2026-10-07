@@ -149,7 +149,7 @@ export async function buildWishlistAndRecommendation(admin, shop, { email, phone
   if (astroLead && astroLead.recommendation) {
     const resultsUrl = buildResultsPageUrl(
       { name: astroLead.name, dob: astroLead.dob, tob: astroLead.tob, placeOfBirth: astroLead.placeOfBirth, bodyWeightKg: astroLead.bodyWeightKg },
-      { ascendant: astroLead.ascendant },
+      { ascendant: astroLead.ascendant, moonsign: astroLead.moonsign },
       astroLead.recommendation
     );
     const life = astroLead.recommendation.life || null;

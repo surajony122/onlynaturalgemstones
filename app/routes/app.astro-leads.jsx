@@ -362,6 +362,16 @@ function WhatsAppQueueSection({ whatsappQueue }) {
   );
 }
 
+// Hindi names + ruling planets shown next to each stone in the Stones & SKU column.
+const HINDI_NAMES = {
+  Ruby: "Manik", Pearl: "Moti", "Red Coral": "Moonga", Emerald: "Panna", "Yellow Sapphire": "Pukhraj",
+  Diamond: "Heera", "Blue Sapphire": "Neelam", Hessonite: "Gomed", "Cat's Eye": "Lehsunia", Opal: "Upal",
+};
+const GEM_PLANETS = {
+  Ruby: "Sun", Pearl: "Moon", "Red Coral": "Mars", Emerald: "Mercury", "Yellow Sapphire": "Jupiter",
+  Diamond: "Venus", "Blue Sapphire": "Saturn", Hessonite: "Rahu", "Cat's Eye": "Ketu", Opal: "Venus",
+};
+
 const BEST_SUITED_BY_PURPOSE = {
   General: "life",
   "Wealth & Fortune": "lucky",
@@ -407,6 +417,17 @@ function LeadRow({ lead, selected, onToggleSelect }) {
     kind === bestKind
       ? { fontSize: "12px", color: brand.ink, background: "#fff6e3", border: "1px solid #e8c98a", borderRadius: "6px", padding: "3px 6px" }
       : { fontSize: "12px", color: brand.ink, padding: "4px 7px", border: "1px solid transparent" };
+  const stoneName = (kind, gem) => {
+    const hindi = HINDI_NAMES[gem];
+    const planet = (lead.recommendation && lead.recommendation[kind] && lead.recommendation[kind].planet) || GEM_PLANETS[gem];
+    return (
+      <>
+        <span style={{ fontWeight: 600 }}>{gem}</span>
+        {hindi && <span style={{ fontStyle: "italic", color: brand.muted }}> ({hindi})</span>}
+        {planet && <span style={{ color: brand.muted, fontSize: "11px" }}> · {planet}</span>}
+      </>
+    );
+  };
   const bestBadgeStyle = { marginLeft: "6px", fontSize: "9.5px", fontWeight: 700, color: "#9a6a12", background: "#fde9b8", padding: "1px 6px", borderRadius: "999px", whiteSpace: "nowrap" };
 
   const lastActionResult =
@@ -469,26 +490,26 @@ function LeadRow({ lead, selected, onToggleSelect }) {
           {!lead.dob && !lead.tob && !lead.placeOfBirth && !lead.gender && !lead.purpose && "—"}
         </div>
       </td>
-      <td style={{ ...tdStyle, minWidth: "170px" }}>
+      <td style={{ ...tdStyle, minWidth: "230px" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
           {lead.lifeStoneGem && (
             <div style={stoneLineStyle("life")}>
               <span style={{ fontSize: "9px", fontWeight: 700, textTransform: "uppercase", color: "#c8712f", background: "#fdf1e7", padding: "1px 5px", borderRadius: "4px", marginRight: "5px" }}>Life</span>
-              <span style={{ fontWeight: 600 }}>{lead.lifeStoneGem}</span>
+              {stoneName("life", lead.lifeStoneGem)}
               {bestKind === "life" && <span title={"Best suited for: " + (lead.purpose || "General")} style={bestBadgeStyle}>★ Best suited</span>}
             </div>
           )}
           {lead.beneficStoneGem && (
             <div style={stoneLineStyle("benefic")}>
               <span style={{ fontSize: "9px", fontWeight: 700, textTransform: "uppercase", color: "#5c8c5c", background: "#eef4ec", padding: "1px 5px", borderRadius: "4px", marginRight: "5px" }}>Benefic</span>
-              <span style={{ fontWeight: 600 }}>{lead.beneficStoneGem}</span>
+              {stoneName("benefic", lead.beneficStoneGem)}
               {bestKind === "benefic" && <span title={"Best suited for: " + (lead.purpose || "General")} style={bestBadgeStyle}>★ Best suited</span>}
             </div>
           )}
           {lead.luckyStoneGem && (
             <div style={stoneLineStyle("lucky")}>
               <span style={{ fontSize: "9px", fontWeight: 700, textTransform: "uppercase", color: "#4a6fa5", background: "#eaf1f8", padding: "1px 5px", borderRadius: "4px", marginRight: "5px" }}>Lucky</span>
-              <span style={{ fontWeight: 600 }}>{lead.luckyStoneGem}</span>
+              {stoneName("lucky", lead.luckyStoneGem)}
               {bestKind === "lucky" && <span title={"Best suited for: " + (lead.purpose || "General")} style={bestBadgeStyle}>★ Best suited</span>}
             </div>
           )}
