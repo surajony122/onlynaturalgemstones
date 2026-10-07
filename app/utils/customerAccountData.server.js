@@ -148,7 +148,7 @@ export async function buildWishlistAndRecommendation(admin, shop, { email, phone
   let recommendation = null;
   if (astroLead && astroLead.recommendation) {
     const resultsUrl = buildResultsPageUrl(
-      { name: astroLead.name, dob: astroLead.dob, tob: astroLead.tob, placeOfBirth: astroLead.placeOfBirth },
+      { name: astroLead.name, dob: astroLead.dob, tob: astroLead.tob, placeOfBirth: astroLead.placeOfBirth, bodyWeightKg: astroLead.bodyWeightKg },
       { ascendant: astroLead.ascendant },
       astroLead.recommendation
     );

@@ -1180,6 +1180,7 @@ export function buildResultsPageUrl(data, birthDetails, recommendation) {
     dob: data.dob || "",
     tob: data.tob || "",
     placeOfBirth: data.placeOfBirth || "",
+    bodyWeightKg: typeof data.bodyWeightKg === "number" ? data.bodyWeightKg : "",
     ascendant: (birthDetails && birthDetails.ascendant) || "",
     recommendations: recommendation || {},
   };
