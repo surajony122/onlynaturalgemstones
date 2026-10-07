@@ -207,6 +207,7 @@ export default function OverviewPage() {
           links={[
             { href: "/app/astro-leads", label: "Gem recommendation leads" },
             { href: "/app/wishlist-leads", label: "Wishlist leads" },
+            { href: "/app/gemstone-details", label: "Gemstone details (per-stone metal, finger, day, mantra)" },
           ]}
         />
         <SectionCard
@@ -222,6 +223,16 @@ export default function OverviewPage() {
           title="Orders"
           description="GST tax invoices."
           links={[{ href: "/app/invoices", label: "GST Invoices" }]}
+        />
+        <SectionCard
+          icon="tag"
+          iconColor={brand.accent}
+          title="Store tools"
+          description="Prices shown by country, and the additional page."
+          links={[
+            { href: "/app/currency-countries", label: "Currency by country" },
+            { href: "/app/additional", label: "Additional page" },
+          ]}
         />
         <SectionCard
           icon="gear"
