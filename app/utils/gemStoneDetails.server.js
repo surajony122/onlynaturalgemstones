@@ -23,6 +23,21 @@ export const GEM_STONES = [
   { key: "opal", name: "Opal", hindi: "Upal", planet: "Venus", defaults: { metal: "Silver or White Gold", substitute: "White Zircon" } },
 ];
 
+// Built-in taglines (shown as the grey hint on the Gemstone details page). The email / WhatsApp
+// code keeps its own copy as the fallback -- see GEM_TAGLINE in astroAdvice.server.js.
+export const DEFAULT_TAGLINES = {
+  ruby: "for Leadership, Vitality & Success",
+  pearl: "for Peace, Emotional Balance & Calm",
+  red_coral: "for Courage, Strength & Vitality",
+  emerald: "for Health, Success & Growth",
+  yellow_sapphire: "for Wealth, Wisdom & Prosperity",
+  diamond: "for Luxury, Love & Elegance",
+  blue_sapphire: "for Good Fortune, Wealth & Success",
+  hessonite: "for Protection & Stability",
+  cats_eye: "for Protection & Spiritual Insight",
+  opal: "for Marital Bliss, Luxury & Pleasure",
+};
+
 export const PLANET_MANTRAS = {
   sun: "Om Suryaya Namah",
   moon: "Om Chandraya Namah",
@@ -49,7 +64,7 @@ export function normaliseGemKey(raw) {
   return k;
 }
 
-const FIELDS = ["metal", "finger", "day", "mantra", "substitute"];
+const FIELDS = ["metal", "finger", "day", "mantra", "substitute", "tagline"];
 const clean = (v) => String(v == null ? "" : v).trim().slice(0, 200);
 
 /** { gemKey: { metal, finger, day, mantra, substitute } } -- only non-blank values.
@@ -82,7 +97,7 @@ export async function getGemStoneRows(shop) {
     hindi: s.hindi,
     planet: s.planet,
     custom: false,
-    defaults: { ...s.defaults, mantra: mantraForPlanet(s.planet) },
+    defaults: { ...s.defaults, mantra: mantraForPlanet(s.planet), tagline: DEFAULT_TAGLINES[s.key] || "" },
     values: vals(byKey[s.key]),
   }));
   for (const r of saved) {
@@ -146,7 +161,7 @@ export async function removeGemStone(shop, gemKey) {
   if (GEM_STONES.some((s) => s.key === gemKey)) {
     await prisma.gemStoneDetail.upsert({
       where: { shop_gemKey: { shop, gemKey } },
-      update: { hidden: true, metal: null, finger: null, day: null, mantra: null, substitute: null },
+      update: { hidden: true, metal: null, finger: null, day: null, mantra: null, substitute: null, tagline: null },
       create: { shop, gemKey, hidden: true },
     });
   } else {

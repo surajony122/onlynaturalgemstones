@@ -59,6 +59,7 @@ const FIELDS = [
   { id: "day", label: "Day", list: "gd-days" },
   { id: "mantra", label: "Mantra", list: null },
   { id: "substitute", label: "Substitute", list: null },
+  { id: "tagline", label: "Tagline (email & WhatsApp)", list: null },
 ];
 const FINGERS = ["Index", "Middle", "Ring", "Little"];
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -117,7 +118,7 @@ export default function GemstoneDetailsPage() {
     <PageIn>
       <PageHeader
         title="Gemstone details"
-        description="Set the metal, finger, day, mantra and substitute shown for each stone on the recommendation result page, in the emailed result link, and in the email and WhatsApp messages."
+        description="Set the metal, finger, day, mantra, substitute and tagline shown for each stone on the recommendation result page, in the emailed result link, and in the email and WhatsApp messages."
       />
 
       <Card style={{ marginBottom: "14px" }}>
@@ -156,7 +157,7 @@ export default function GemstoneDetailsPage() {
 
       <Card>
         <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "980px" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "1240px" }}>
             <thead>
               <tr>
                 <th style={{ textAlign: "left", padding: "8px 10px", fontSize: "11px", letterSpacing: ".08em", textTransform: "uppercase", color: brand.muted }}>Stone</th>

@@ -310,7 +310,7 @@ export function buildGemRecommendationTemplatePayload({ countryCode, phoneNumber
   // can't be combined into this same variable anymore. Falls back to the
   // gem's benefit tagline as plain text ONLY when there's no collection
   // link to give (better than an empty line).
-  const linkOrTagline = (stone) => collectionUrl(stone) || GEM_TAGLINE[gemName(stone)] || "";
+  const linkOrTagline = (stone) => collectionUrl(stone) || (stone && stone.tagline) || GEM_TAGLINE[gemName(stone)] || "";
 
   return {
     countryCode,

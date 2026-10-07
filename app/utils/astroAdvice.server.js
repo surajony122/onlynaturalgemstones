@@ -105,6 +105,7 @@ function buildGemInfo(entry, stoneOverrides) {
     wearFinger: ov.finger || entry.wear_finger || null,
     wearDay: ov.day || entry.wear_day || null,
     mantra: ov.mantra || mantraForPlanet(planet) || null,
+    tagline: ov.tagline || null,
   };
 }
 
@@ -1417,17 +1418,12 @@ function stoneCard(label, stone, collectionImages, trackingCtx) {
   const imgUrl = (stone.collection && collectionImages[stone.collection]) || "";
   const rawBuyUrl = stone.collection ? "https://" + STORE_DOMAIN + "/collections/" + stone.collection : "https://" + STORE_DOMAIN;
   const buyUrl = trackedClickUrl(trackingCtx.appUrl, trackingCtx.trackingId, rawBuyUrl, label.toLowerCase() + "_buy_now");
-  const tagline = GEM_TAGLINE[stone.gem] || "";
+  const tagline = stone.tagline || GEM_TAGLINE[stone.gem] || "";
   const accent = TYPE_ACCENT[label] || TYPE_ACCENT.Life;
 
   const imageCell = imgUrl
     ? `<img src="${esc(imgUrl)}" width="85" height="85" alt="${esc(stone.gem)}" style="display:block;width:85px;height:85px;object-fit:cover;border-radius:10px;">`
     : `<div style="width:85px;height:85px;border-radius:10px;background:${accent.bg};"></div>`;
-
-  const chips =
-    detailChip(PLANET_SYMBOL[stone.planet] || "✦", stone.planet) +
-    detailChip("💍", stone.wearMetal) +
-    detailChip("↺", stone.substitute ? "Alt: " + stone.substitute : "");
 
   return (
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">' +
@@ -1446,7 +1442,6 @@ function stoneCard(label, stone, collectionImages, trackingCtx) {
     "</tr></table>" +
     "</td>" +
     "</tr>" +
-    (chips ? '<tr><td colspan="2" style="padding:0 0 10px;"><div style="margin:0;">' + chips + "</div></td></tr>" : "") +
     "</table>"
   );
 }

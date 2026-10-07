@@ -777,6 +777,7 @@ model GemStoneDetail {
   day        String?
   mantra     String?
   substitute String?
+  tagline    String?
   label      String?
   hindi      String?
   planet     String?
