@@ -87,7 +87,7 @@ function newest(a, b) {
 export async function getAttentionSummary() {
   const since = new Date(Date.now() - SINCE_DAYS * 24 * 60 * 60 * 1000);
 
-  const [astroLeads, wishlistLeads, waNotifications, emailNotifications, returnRefundNotifications, invoices] = await Promise.all([
+  const [astroLeads, wishlistLeads, waNotifications, emailNotifications, returnRefundNotifications, invoices, abandonedEmails] = await Promise.all([
     prisma.astroLead.findMany({
       where: { createdAt: { gte: since } },
       orderBy: { createdAt: "desc" },
@@ -117,6 +117,11 @@ export async function getAttentionSummary() {
       where: { lastSentAt: { gte: since } },
       orderBy: { lastSentAt: "desc" },
       select: { id: true, orderName: true, orderId: true, status: true, lastSentAt: true },
+    }),
+    prisma.abandonedCheckoutEmail.findMany({
+      where: { notifiedAt: { gte: since } },
+      orderBy: { notifiedAt: "desc" },
+      select: { id: true, checkoutName: true, email: true, status: true, notifiedAt: true },
     }),
   ]);
 
@@ -159,6 +164,11 @@ export async function getAttentionSummary() {
   const invoiceIssues = invoices.filter((n) => hasFailure(n.status));
   const invoiceDetails = invoiceIssues
     .map((n) => detail(SERVICES.invoice, `Order ${n.orderName || n.orderId}`, n.status, n.lastSentAt, "invoice", n.id))
+    .slice(0, MAX_DETAILS);
+
+  const abandonedIssues = abandonedEmails.filter((n) => hasFailure(n.status));
+  const abandonedDetails = abandonedIssues
+    .map((n) => detail(SERVICES.email, `Abandoned checkout ${n.checkoutName || ""} (${n.email || "no email"})`.replace("  ", " "), n.status, n.notifiedAt, "abandoned-email", n.id))
     .slice(0, MAX_DETAILS);
 
   const items = [];
@@ -215,6 +225,18 @@ export async function getAttentionSummary() {
       details: invoiceDetails,
       href: "/app/invoices",
       action: "Open GST Invoices",
+      severity: "warn",
+    });
+  }
+
+  if (abandonedIssues.length) {
+    items.push({
+      id: "abandoned-issues",
+      title: `${abandonedIssues.length} abandoned checkout email${abandonedIssues.length === 1 ? "" : "s"} failed to send`,
+      detail: summarise(abandonedDetails),
+      details: abandonedDetails,
+      href: "/app/settings",
+      action: "Open Settings → Emails",
       severity: "warn",
     });
   }

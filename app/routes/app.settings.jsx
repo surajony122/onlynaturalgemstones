@@ -48,6 +48,14 @@ import {
 import { sendTestEmail } from "../utils/testEmails.server";
 import { checkGmail, checkGoogleSheets, checkInterakt, checkGooglePlaces } from "../utils/serviceHealth.server";
 import { getOrderProcessingEmailTemplate, ORDER_PROCESSING_EMAIL_PLACEHOLDERS, getOrderProcessingEmailSubject } from "../utils/orderProcessingEmail.server";
+import {
+  ABANDONED_CHECKOUT_EMAIL_PLACEHOLDERS,
+  DEFAULT_ABANDONED_SUBJECT,
+  DEFAULT_ABANDONED_TEMPLATE,
+  DEFAULT_DELAY_MINUTES,
+  runAbandonedCheckoutSweep,
+} from "../utils/abandonedCheckoutEmail.server";
+import prisma from "../db.server";
 import { getOrderInvoiceTemplate, ORDER_INVOICE_PLACEHOLDERS, DEFAULT_INVOICE_NUMBER_PREFIX, DEFAULT_INVOICE_CUSTOMISATION_LINK_LABEL, getInvoiceEmailTemplate, ORDER_INVOICE_EMAIL_PLACEHOLDERS, fetchShopSellerInfo } from "../utils/orderInvoice.server";
 import { brand, Icon, Card, PageHeader, PageIn } from "../components/table-kit";
 import { useToast } from "../components/toast";
@@ -128,6 +136,20 @@ export const loader = async ({ request }) => {
     orderProcessingEmailTemplate: row?.orderProcessingEmailTemplate || "",
     defaultOrderProcessingEmailTemplate: getOrderProcessingEmailTemplate({}),
     orderProcessingEmailPlaceholders: ORDER_PROCESSING_EMAIL_PLACEHOLDERS,
+    // Abandoned checkout reminder email. Switched off until "true". Blank subject/template mean "use the
+    // built-in default", and the editor starts from the real default text, same as the other emails.
+    abandonedCheckoutEnabled: row?.abandonedCheckoutEnabled || "",
+    abandonedCheckoutDelayMinutes: row?.abandonedCheckoutDelayMinutes || "",
+    abandonedDefaultDelay: DEFAULT_DELAY_MINUTES,
+    abandonedCheckoutEmailSubject: row?.abandonedCheckoutEmailSubject || "",
+    abandonedCheckoutEmailTemplate: row?.abandonedCheckoutEmailTemplate || "",
+    defaultAbandonedSubject: DEFAULT_ABANDONED_SUBJECT,
+    defaultAbandonedTemplate: DEFAULT_ABANDONED_TEMPLATE,
+    abandonedPlaceholders: ABANDONED_CHECKOUT_EMAIL_PLACEHOLDERS,
+    abandonedRecent: await prisma.abandonedCheckoutEmail
+      .findMany({ where: { shop: session.shop }, orderBy: { notifiedAt: "desc" }, take: 5, select: { id: true, checkoutName: true, email: true, status: true, notifiedAt: true } })
+      .then((rows) => rows.map((r) => ({ ...r, notifiedAt: r.notifiedAt.toISOString() })))
+      .catch(() => []),
     // Same "blank means use the default" convention as the template
     // itself -- see getOrderProcessingEmailSubject's own comment.
     orderProcessingEmailSubject: row?.orderProcessingEmailSubject || "",
@@ -402,6 +424,32 @@ export const action = async ({ request }) => {
       orderProcessingEmailSubject: val("orderProcessingEmailSubject"),
     });
     return { intent, ok: true };
+  }
+
+  if (intent === "saveAbandonedCheckoutEmail") {
+    const previous = await getAppSettings(session.shop);
+    const turningOn = val("abandonedCheckoutEnabled") === "true";
+    const wasOn = String(previous.abandonedCheckoutEnabled || "") === "true";
+    await saveAppSettings(session.shop, {
+      abandonedCheckoutEnabled: turningOn ? "true" : "false",
+      // Remember WHEN it was switched on: only checkouts created after this moment are ever emailed,
+      // so turning it on never sends a backlog.
+      ...(turningOn && !wasOn ? { abandonedCheckoutEnabledSince: new Date().toISOString() } : {}),
+      abandonedCheckoutDelayMinutes: val("abandonedCheckoutDelayMinutes"),
+      abandonedCheckoutEmailSubject: val("abandonedCheckoutEmailSubject"),
+      abandonedCheckoutEmailTemplate: val("abandonedCheckoutEmailTemplate"),
+    });
+    return { intent, ok: true };
+  }
+
+  // "Check who would get one now": decides for every recent abandoned checkout but sends and saves nothing.
+  if (intent === "abandonedDryRun") {
+    try {
+      const result = await runAbandonedCheckoutSweep({ admin, shop: session.shop, dryRun: true });
+      return { intent, ok: !result.error, result, error: result.error };
+    } catch (err) {
+      return { intent, ok: false, error: String((err && err.message) || err) };
+    }
   }
 
   if (intent === "saveGstInvoice") {
@@ -822,6 +870,17 @@ const EMAIL_PREVIEW_SAMPLE_VALUES = {
   shop_name: "Only Natural Gemstones",
   shop_url: "https://onlynaturalgemstones.com",
   shop_email: "info@onlynaturalgemstones.com",
+  // Abandoned checkout email
+  item_count: "2 items",
+  total: "₹27,300.00",
+  checkout_url: "https://onlynaturalgemstones.com",
+  unsubscribe_url: "#",
+  items_html:
+    '<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#fffcf3;border:1px solid #ebe3cf;border-radius:8px;">' +
+    '<tr><td width="72" style="padding:14px 0 14px 14px;border-bottom:1px solid #ebe3cf;"><div style="width:72px;height:72px;border-radius:6px;background:#dfe8f5;"></div></td>' +
+    '<td style="padding:14px;border-bottom:1px solid #ebe3cf;"><p style="margin:0 0 3px;font-size:15px;font-weight:bold;color:#3d4652;">Blue Sapphire (Neelam) - 5.25 Carat</p><p style="margin:0;font-size:13px;color:#7b8590;">Qty: 1</p></td></tr>' +
+    '<tr><td width="72" style="padding:14px 0 14px 14px;"><div style="width:72px;height:72px;border-radius:6px;background:#f3e6d0;"></div></td>' +
+    '<td style="padding:14px;"><p style="margin:0 0 3px;font-size:15px;font-weight:bold;color:#3d4652;">Gemstone Customisation</p><p style="margin:0;font-size:13px;color:#7b8590;">Pendant / Panchdhatu / PD02</p><p style="margin:0;font-size:13px;color:#7b8590;">Qty: 1</p></td></tr></table>',
   // Literal, not the imported FALLBACK_LOGO_URL constant -- that's
   // exported from a .server.js file, and this constant sits at module
   // scope where the client bundle can see it (not inside loader/action,
@@ -1054,6 +1113,13 @@ export default function SettingsPage() {
     data.orderProcessingEmailSubject || data.defaultOrderProcessingEmailSubject
   );
   const [showEmailPreview, setShowEmailPreview] = useState(false);
+  // Abandoned checkout reminder email: same "show the real default, not a blank box" approach as above.
+  const [abEnabled, setAbEnabled] = useState(data.abandonedCheckoutEnabled === "true");
+  const [abDelay, setAbDelay] = useState(data.abandonedCheckoutDelayMinutes || String(data.abandonedDefaultDelay));
+  const [abSubject, setAbSubject] = useState(data.abandonedCheckoutEmailSubject || data.defaultAbandonedSubject);
+  const [abTemplate, setAbTemplate] = useState(data.abandonedCheckoutEmailTemplate || data.defaultAbandonedTemplate);
+  const [showAbPreview, setShowAbPreview] = useState(false);
+  const abDryRunFetcher = useFetcher();
   const [interaktWishlistTemplateName, setInteraktWishlistTemplateName] = useState(data.interaktWishlistTemplateName);
   const [interaktRefundTemplateName, setInteraktRefundTemplateName] = useState(data.interaktRefundTemplateName);
   const [testPhone, setTestPhone] = useState("");
@@ -1106,6 +1172,7 @@ export default function SettingsPage() {
   const gemRecommendationEmail = useSectionSave("saveGemRecommendationEmail", toast);
   const orderProcessingWhatsapp = useSectionSave("saveOrderProcessingWhatsapp", toast);
   const orderProcessingEmail = useSectionSave("saveOrderProcessingEmail", toast);
+  const abandonedEmail = useSectionSave("saveAbandonedCheckoutEmail", toast);
   const refundWhatsapp = useSectionSave("saveRefundWhatsapp", toast);
   const gstInvoice = useSectionSave("saveGstInvoice", toast);
   const wishlistReminder = useSectionSave("saveWishlistReminder", toast);
@@ -1228,6 +1295,14 @@ export default function SettingsPage() {
           ? ""
           : orderProcessingEmailTemplate,
       orderProcessingEmailSubject: orderProcessingEmailSubject === data.defaultOrderProcessingEmailSubject ? "" : orderProcessingEmailSubject,
+    });
+  const saveAbandonedCheckoutEmail = () =>
+    abandonedEmail.save({
+      abandonedCheckoutEnabled: abEnabled ? "true" : "false",
+      abandonedCheckoutDelayMinutes: abDelay,
+      abandonedCheckoutEmailSubject: abSubject === data.defaultAbandonedSubject ? "" : abSubject,
+      abandonedCheckoutEmailTemplate:
+        abTemplate.replace(/\r\n/g, "\n") === data.defaultAbandonedTemplate.replace(/\r\n/g, "\n") ? "" : abTemplate,
     });
   const saveGstInvoice = () =>
     gstInvoice.save({
@@ -1615,7 +1690,7 @@ export default function SettingsPage() {
           <label style={labelStyle} htmlFor="testEmailTo">Send to</label>
           <input id="testEmailTo" style={{ ...fieldStyle, maxWidth: "320px" }} type="email" placeholder="you@example.com" value={testEmailTo} onChange={(e) => setTestEmailTo(e.target.value)} />
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-            {[["wishlist", "Wishlist email"], ["processing", "Order processing email"], ["astro", "Astro advice email"]].map(([kind, label]) => (
+            {[["wishlist", "Wishlist email"], ["processing", "Order processing email"], ["astro", "Astro advice email"], ["abandoned", "Abandoned checkout email"]].map(([kind, label]) => (
               <button
                 key={kind}
                 type="button"
@@ -1786,6 +1861,138 @@ export default function SettingsPage() {
               </div>
             )}
             <SaveButton isSaving={orderProcessingEmail.isSaving} onClick={saveOrderProcessingEmail} />
+          </TemplateCard>
+
+          <TemplateCard icon={<Icon name="cart" size={15} color={brand.accent} />} title="Abandoned Checkout — Email">
+            <p style={{ ...hintStyle, marginTop: 0 }}>
+              Emails a customer once when they leave a checkout without paying. It sends from your Gmail, the same as the other emails, and only to
+              customers who agreed to email marketing. It never emails someone who has ordered since, has unsubscribed, or was already emailed in the
+              last 24 hours.
+            </p>
+
+            <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: "9px", cursor: "pointer" }}>
+              <input type="checkbox" checked={abEnabled} onChange={(e) => setAbEnabled(e.target.checked)} style={{ width: "16px", height: "16px" }} />
+              Send abandoned checkout emails
+            </label>
+            <p style={hintStyle}>
+              Off until you switch it on and press Save. Once on, only checkouts started <strong>after</strong> that moment are emailed, so nothing
+              goes to older checkouts.
+            </p>
+
+            <label style={labelStyle} htmlFor="abDelay">Send the email after the checkout has been idle for</label>
+            <select id="abDelay" style={{ ...fieldStyle, maxWidth: "240px" }} value={abDelay} onChange={(e) => setAbDelay(e.target.value)}>
+              {[["30", "30 minutes"], ["60", "1 hour"], ["120", "2 hours"], ["240", "4 hours"], ["720", "12 hours"], ["1440", "24 hours"]].map(([v, l]) => (
+                <option key={v} value={v}>{l}</option>
+              ))}
+              {!["30", "60", "120", "240", "720", "1440"].includes(String(abDelay)) && <option value={abDelay}>Current custom value ({abDelay} min)</option>}
+            </select>
+
+            <label style={labelStyle} htmlFor="abSubject">Email subject</label>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "6px" }}>
+              <input id="abSubject" style={{ ...fieldStyle, marginBottom: 0 }} type="text" value={abSubject} onChange={(e) => setAbSubject(e.target.value)} placeholder={data.defaultAbandonedSubject} />
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm("Reset the subject to the built-in default? This discards your current edit (not saved until you click Save below).")) setAbSubject(data.defaultAbandonedSubject);
+                }}
+                style={{ ...secondaryBtn, padding: "9px 14px", fontSize: "12.5px", whiteSpace: "nowrap" }}
+              >
+                Reset
+              </button>
+            </div>
+
+            <Explain summary="Available placeholders (filled in automatically when the email sends)">
+              <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "12px", color: brand.muted, lineHeight: 1.8 }}>
+                {data.abandonedPlaceholders.map((p) => (
+                  <li key={p.token}>
+                    <code style={{ background: brand.panel, padding: "1px 5px", borderRadius: "4px" }}>{`{{${p.token}}}`}</code> — {p.description}
+                  </li>
+                ))}
+              </ul>
+            </Explain>
+            <textarea
+              id="abTemplate"
+              value={abTemplate}
+              onChange={(e) => setAbTemplate(e.target.value)}
+              spellCheck={false}
+              style={{ ...fieldStyle, fontFamily: brand.mono, fontSize: "11.5px", lineHeight: 1.5, height: "260px", resize: "vertical", whiteSpace: "pre" }}
+            />
+            <div style={{ display: "flex", gap: "8px", marginTop: "6px", flexWrap: "wrap" }}>
+              <button type="button" onClick={() => setShowAbPreview((v) => !v)} style={{ ...primaryBtn, padding: "8px 16px", fontSize: "12.5px" }}>
+                {showAbPreview ? "Hide preview" : "Preview"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm("Reset to the built-in default template? This discards your current edits (not saved until you click Save below).")) setAbTemplate(data.defaultAbandonedTemplate);
+                }}
+                style={{ ...secondaryBtn, padding: "8px 16px", fontSize: "12.5px" }}
+              >
+                Reset to default
+              </button>
+            </div>
+            {showAbPreview && (
+              <div style={{ marginTop: "10px", border: `1px solid ${brand.border}`, borderRadius: "10px", overflow: "hidden" }}>
+                <div style={{ padding: "6px 10px", background: brand.panel, borderBottom: `1px solid ${brand.divider}`, fontSize: "11px", color: brand.muted }}>
+                  Preview with a sample cart. It reflects what is in the boxes above right now, even if unsaved.
+                </div>
+                <div style={{ padding: "8px 10px", borderBottom: `1px solid ${brand.divider}`, fontSize: "12.5px" }}>
+                  <strong>Subject:</strong> {renderEmailPreview(abSubject)}
+                </div>
+                <iframe title="Abandoned checkout email preview" srcDoc={renderEmailPreview(abTemplate)} style={{ width: "100%", height: "520px", border: "none", display: "block" }} />
+              </div>
+            )}
+            <SaveButton isSaving={abandonedEmail.isSaving} onClick={saveAbandonedCheckoutEmail} />
+
+            <div style={{ marginTop: "18px", paddingTop: "14px", borderTop: `1px solid ${brand.divider}` }}>
+              <div style={{ fontSize: "13px", fontWeight: 600, color: brand.ink, marginBottom: "4px" }}>Check who would get an email right now</div>
+              <p style={hintStyle}>Looks at your recent abandoned checkouts and shows what would happen to each one. It sends nothing and works even while this is switched off.</p>
+              <button
+                type="button"
+                disabled={abDryRunFetcher.state !== "idle"}
+                onClick={() => abDryRunFetcher.submit({ intent: "abandonedDryRun" }, { method: "POST" })}
+                style={{ ...secondaryBtn, padding: "8px 16px", fontSize: "12.5px", opacity: abDryRunFetcher.state !== "idle" ? 0.6 : 1 }}
+              >
+                {abDryRunFetcher.state !== "idle" ? "Checking…" : "Check now"}
+              </button>
+              {abDryRunFetcher.data?.intent === "abandonedDryRun" && abDryRunFetcher.state === "idle" && (
+                <div style={{ marginTop: "10px", fontSize: "12.5px" }}>
+                  {abDryRunFetcher.data.error ? (
+                    <p style={{ ...hintStyle, color: brand.danger }}>Could not check: {abDryRunFetcher.data.error}</p>
+                  ) : (
+                    <>
+                      <p style={hintStyle}>
+                        Looked at {abDryRunFetcher.data.result.checked} recent checkout{abDryRunFetcher.data.result.checked === 1 ? "" : "s"}:{" "}
+                        <strong>{abDryRunFetcher.data.result.items.filter((i) => i.decision === "send").length} would be emailed now</strong>,{" "}
+                        {abDryRunFetcher.data.result.waiting} still waiting, {abDryRunFetcher.data.result.skipped} skipped.
+                      </p>
+                      {abDryRunFetcher.data.result.items.slice(0, 15).map((i, idx) => (
+                        <div key={idx} style={{ display: "flex", gap: "10px", padding: "6px 0", borderTop: `1px solid ${brand.divider}`, flexWrap: "wrap" }}>
+                          <span style={{ minWidth: "130px", fontWeight: 600 }}>{i.name || "Checkout"}</span>
+                          <span style={{ minWidth: "190px", color: brand.body }}>{i.email || "no email"}</span>
+                          <span style={{ color: i.decision === "send" ? brand.success : brand.muted }}>{i.reason}</span>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {data.abandonedRecent.length > 0 && (
+              <div style={{ marginTop: "18px", paddingTop: "14px", borderTop: `1px solid ${brand.divider}` }}>
+                <div style={{ fontSize: "13px", fontWeight: 600, color: brand.ink, marginBottom: "6px" }}>Latest checkouts handled</div>
+                {data.abandonedRecent.map((r) => (
+                  <div key={r.id} style={{ display: "flex", gap: "10px", padding: "5px 0", fontSize: "12.5px", flexWrap: "wrap" }}>
+                    <span style={{ minWidth: "130px", fontWeight: 600 }}>{r.checkoutName || "Checkout"}</span>
+                    <span style={{ minWidth: "190px", color: brand.body }}>{r.email || "no email"}</span>
+                    <span style={{ color: /^OK/.test(r.status || "") ? brand.success : /^(FAILED|threw)/.test(r.status || "") ? brand.danger : brand.muted }} title={r.status || ""}>
+                      {(r.status || "").slice(0, 70)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </TemplateCard>
           </div>
 

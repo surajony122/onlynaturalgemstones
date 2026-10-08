@@ -10,6 +10,7 @@ import { getAppSettings } from "./appSettings.server";
 import { sendWishlistEmail } from "./wishlist.server";
 import { sendOrderProcessingEmail } from "./orderProcessingEmail.server";
 import { sendGemRecommendationEmail } from "./astroAdvice.server";
+import { sendAbandonedCheckoutEmail, sampleCheckout } from "./abandonedCheckoutEmail.server";
 
 async function sampleProducts(admin) {
   const res = await admin.graphql(`#graphql
@@ -61,6 +62,11 @@ export async function sendTestEmail(admin, shop, kind, to) {
       lead.recommendation,
       trackingId
     );
+  }
+
+  if (kind === "abandoned") {
+    // A made-up cart: nothing is read from, or written to, any real checkout.
+    return sendAbandonedCheckoutEmail(admin, settings, sampleCheckout(email));
   }
 
   return "error: unknown email type";

@@ -25,6 +25,7 @@ import { resendWishlistLeadEmail, resendWishlistWhatsapp } from "./wishlist.serv
 import { sendOrderProcessingWhatsApp, sendRefundProcessedWhatsApp } from "./interakt.server";
 import { sendOrderProcessingEmail } from "./orderProcessingEmail.server";
 import { sendOrderInvoiceEmail } from "./orderInvoice.server";
+import { sendAbandonedCheckoutEmail } from "./abandonedCheckoutEmail.server";
 
 const ok = (status) => String(status || "").startsWith("OK");
 
@@ -134,6 +135,21 @@ const RETRY = {
     return status;
   },
 
+  // Resends from the snapshot saved when the email was first attempted, so nothing is asked of Shopify again.
+  async "abandoned-email"({ admin, id, shop }) {
+    const row = await prisma.abandonedCheckoutEmail.findUnique({ where: { id } });
+    if (!row) return "error: record not found";
+    if (!row.snapshot) return "skipped: no saved cart details to resend from";
+    // Never resend to someone who has unsubscribed since.
+    if (row.email && (await prisma.abandonedCheckoutOptOut.findUnique({ where: { email: row.email } }))) {
+      return "skipped: this address has unsubscribed from cart reminders";
+    }
+    const settings = await getAppSettings(row.shop || shop);
+    const status = await sendAbandonedCheckoutEmail(admin, settings, row.snapshot);
+    await prisma.abandonedCheckoutEmail.update({ where: { id }, data: { status, notifiedAt: new Date() } });
+    return status;
+  },
+
   async invoice({ admin, id, shop }) {
     const row = await prisma.orderInvoice.findUnique({ where: { id } });
     if (!row) return "error: invoice record not found";
@@ -154,6 +170,7 @@ const STATUS_COLUMN = {
   "order-email": { model: "orderProcessingEmailNotification", field: "status" },
   refund: { model: "orderReturnEmailNotification", field: "status" },
   invoice: { model: "orderInvoice", field: "status" },
+  "abandoned-email": { model: "abandonedCheckoutEmail", field: "status" },
 };
 
 /** Which kinds offer which buttons (used by attention.server.js to decide what to show). */

@@ -37,6 +37,7 @@
 import shopify from "../shopify.server";
 import db from "../db.server";
 import { checkAndNotifyOrderProcessing } from "../utils/orderProcessingTrigger.server";
+import { runAbandonedCheckoutSweep } from "../utils/abandonedCheckoutEmail.server";
 
 // Orders older than this are very unlikely to still be waiting on a
 // "mark as in progress" click, and skipping them keeps each run's
@@ -154,7 +155,18 @@ export const loader = async ({ request }) => {
       }
     }
 
-    return Response.json({ ok: true, ordersChecked: orders.length, results });
+    // Also run the abandoned checkout reminder sweep on this same 5-minute schedule. It does nothing
+    // (returns immediately) unless switched on in Settings, and a failure here must never break the
+    // order catch-up above, so it is isolated.
+    let abandoned = null;
+    try {
+      abandoned = await runAbandonedCheckoutSweep({ admin, shop });
+    } catch (err) {
+      console.error("[cron.order-processing-catchup] abandoned checkout sweep failed:", err);
+      abandoned = { error: String((err && err.message) || err) };
+    }
+
+    return Response.json({ ok: true, ordersChecked: orders.length, results, abandoned });
   } catch (err) {
     console.error("[cron.order-processing-catchup] failed:", err);
     return Response.json({ error: "Catch-up check failed", detail: String((err && err.message) || err) }, { status: 500 });

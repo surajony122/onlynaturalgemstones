@@ -475,6 +475,15 @@ model AppSettings {
   // orderProcessingEmail.server.js). Supports the same {{order_number}}
   // placeholder the template does, substituted the same way.
   orderProcessingEmailSubject    String?
+  // Abandoned checkout reminder email (see app/utils/abandonedCheckoutEmail.server.js).
+  // Enabled is "true"/"false" (off unless "true"); Since is the ISO time it was last
+  // switched on -- only checkouts created after it are ever emailed, so turning it on
+  // never mails a backlog. Blank subject/template mean "use the built-in default".
+  abandonedCheckoutEnabled       String?
+  abandonedCheckoutEnabledSince  String?
+  abandonedCheckoutDelayMinutes  String?
+  abandonedCheckoutEmailSubject  String?
+  abandonedCheckoutEmailTemplate String?
   // "Return Received" and "Refund Processed" emails -- the manual
   // counterpart to orderProcessingEmailTemplate above, sent one at a
   // time by staff from the Returns & Refunds page (app.returns-
@@ -786,4 +795,32 @@ model GemStoneDetail {
   updatedAt  DateTime @updatedAt
 
   @@unique([shop, gemKey])
+}
+
+// One row per Shopify abandoned checkout the reminder email has looked at.
+// The unique checkoutId is what guarantees a checkout is only ever emailed
+// once (the row is created as an atomic claim before sending). `snapshot`
+// keeps the exact customer/items/link used, so a failed send can be retried
+// from the Overview without asking Shopify again.
+model AbandonedCheckoutEmail {
+  id                String    @id @default(cuid())
+  shop              String?
+  checkoutId        String    @unique
+  checkoutName      String?
+  email             String?
+  customerName      String?
+  status            String?   // "OK: sent to ..." / "FAILED: ..." / "skipped: ..." / "sending..."
+  snapshot          Json?
+  checkoutCreatedAt DateTime?
+  notifiedAt        DateTime  @default(now())
+
+  @@index([notifiedAt])
+  @@index([email, notifiedAt])
+}
+
+// Addresses that clicked "unsubscribe" in an abandoned checkout email.
+model AbandonedCheckoutOptOut {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  createdAt DateTime @default(now())
 }

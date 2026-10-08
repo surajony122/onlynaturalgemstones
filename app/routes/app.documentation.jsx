@@ -217,7 +217,7 @@ function StartTab() {
           {[
             "Prices the Gemstone Customisation add-on (rings, pendants, bracelets) from the metal rates you set.",
             "Follows every customer who used the gem recommendation form or saved a wishlist, and sends them WhatsApp and email messages.",
-            "Sends order, refund and wishlist messages automatically, and creates GST tax invoices when you ask.",
+            "Sends order, refund, wishlist and abandoned-cart messages automatically, and creates GST tax invoices when you ask.",
             "Shows you, in one place, what worked, what failed and why.",
           ].map((t) => (
             <li key={t} style={{ fontSize: "13.5px", color: brand.body, lineHeight: 1.7, marginBottom: "3px" }}>
@@ -442,6 +442,7 @@ const SETTINGS_TAB_DOCS = [
       ["Send a test email", "Sends a real sample (wishlist, order processing or astro advice) to an address you type.", "Email"],
       ["Gem Recommendation — Email", "Subject and layout of the recommendation email.", "Email"],
       ["Order Processing — Email", "Subject and layout of the “order being prepared” email.", "Email"],
+      ["Abandoned Checkout — Email", "Switch cart reminders on or off, choose how long a checkout must be idle, edit the subject and layout, preview it, and see who would get an email right now.", "Email"],
     ],
   },
   {
@@ -496,6 +497,7 @@ const AUTOMATIONS = [
   ["Wishlist reminder", "WhatsApp + email", "After a customer has been quiet for the set interval (default 2 hours).", "Interval: Settings → Emails. WhatsApp template: Settings → WhatsApp messages.", "Wishlist Leads"],
   ["Order is being prepared", "WhatsApp + email", "When an order gets the trigger tag set in Settings → WhatsApp messages. A catch-up check also runs on a schedule, so a missed order is picked up.", "Email: Settings → Emails. WhatsApp: Settings → WhatsApp messages.", "Messages & Orders"],
   ["Refund processed", "WhatsApp", "Automatically when a refund is processed in Shopify. Refunds that come from cancelling an order are skipped.", "Template name: Settings → WhatsApp messages.", "Messages & Orders"],
+  ["Abandoned checkout reminder", "Email", "Once per checkout, after it has been idle for the wait time you set (default 1 hour). Only for customers who agreed to email marketing, who have not ordered since, have not unsubscribed, and were not already emailed in the last 24 hours. Switched OFF until you turn it on, and then only for checkouts started after that moment.", "Settings → Emails (switch, wait time, subject, layout, test email).", "Settings → Emails (Latest checkouts handled)"],
   ["GST tax invoice", "Email with PDF", "Only when someone clicks Send. Never automatic.", "Settings → Invoices.", "GST Invoices"],
 ];
 
@@ -621,6 +623,19 @@ function FaqTab() {
         (roughly a few hundred), so on a very busy day later emails may be refused. If failures appear on the Overview, check Gmail first.
       </FaqItem>
 
+      <FaqItem q="Why didn't an abandoned checkout email go out?">
+        The reminder is skipped, on purpose, when any of these is true: it is switched off in Settings → Emails; the checkout was started
+        before you switched it on; the customer did not agree to email marketing; they placed an order after that checkout; they unsubscribed;
+        they were already emailed in the last 24 hours; or the checkout has not been idle for the wait time yet. Open Settings → Emails →
+        Abandoned Checkout and press <strong>Check now</strong>. It lists each recent checkout and the exact reason for its decision, and
+        sends nothing. If an email failed to send, it appears under “Needs attention” on the Overview with the real error and a Retry button.
+      </FaqItem>
+
+      <FaqItem q="How does a customer unsubscribe from cart reminders?">
+        Every abandoned checkout email has an “Unsubscribe from cart reminders” link (and the standard unsubscribe option in the mail app). One
+        click stops further cart reminders to that address. It does not change their Shopify marketing subscription.
+      </FaqItem>
+
       <FaqItem q="What is the “i” button at the top of a page?">
         It opens a longer explanation for that page, so the page itself stays clean. Click it again, click elsewhere, or press Escape to close it.
       </FaqItem>
@@ -640,7 +655,7 @@ export default function DocumentationPage() {
         stats={[
           { label: "Pages", value: 11 },
           { label: "Settings sections", value: 14 },
-          { label: "Automatic messages", value: 4 },
+          { label: "Automatic messages", value: 5 },
         ]}
       />
 
