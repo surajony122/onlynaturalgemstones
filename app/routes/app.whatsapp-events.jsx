@@ -765,7 +765,7 @@ export default function WhatsAppEventsPage() {
           <>
             <p style={{ margin: "0 0 8px" }}>Delivered and read status comes straight from Interakt's webhook.</p>
             <p style={{ margin: "0 0 8px" }}>
-              Nothing shows here until the webhook is set up (see <a href="/app/settings" style={{ color: brand.accent }}>Settings → Delivery/read tracking</a>).
+              Nothing shows here until the webhook is set up (see <a href="/app/settings" style={{ color: brand.accent }}>Settings → Connections → WhatsApp — advanced</a>).
             </p>
             <p style={{ margin: 0 }}>A row's "…" menu can retry the message or delete its log entry.</p>
           </>

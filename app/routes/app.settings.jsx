@@ -1422,8 +1422,7 @@ export default function SettingsPage() {
           <Explain summary="How the follow-up reminder works">
             The first message always sends <strong>instantly</strong> on submission — this adds an optional SECOND
             message (same template, resent) after this much time. <strong>0</strong> turns follow-ups off. Needs an
-            external scheduler hitting <code>/cron/whatsapp-queue?secret=…</code>, or use{" "}
-            <a href="/app/astro-leads" style={{ color: brand.accent }}>Astro Leads</a>' "Process Follow-ups Now" button manually.
+            external scheduler hitting <code>/cron/whatsapp-queue?secret=…</code>.
           </Explain>
 
           <label style={labelStyle}>Delivery/read tracking (webhook)</label>

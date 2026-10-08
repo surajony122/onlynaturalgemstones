@@ -23,7 +23,7 @@ export const NAV_GROUPS = [
   {
     label: "Store setup",
     items: [
-      { id: "pricing", href: "/app", label: "Jewelry Pricing", icon: "rupee", end: true },
+      { id: "pricing", href: "/app/pricing", label: "Jewelry Pricing", icon: "rupee" },
       { id: "gemdetails", href: "/app/gemstone-details", label: "Gemstone details", icon: "diamond" },
       { id: "currency", href: "/app/currency-countries", label: "Currency by country", icon: "globe" },
     ],

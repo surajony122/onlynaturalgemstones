@@ -2,10 +2,10 @@
  * Cheap, DB-only "does anything need attention right now" signal, shared
  * by the app shell's sidebar (badge counts) and the Overview page's
  * "Needs attention" panel. Deliberately does NOT run the live external
- * checks the Server page does (Gmail SMTP handshake, Shopify Admin API,
- * Interakt key validation, etc.) — those are real network round trips,
- * and this function runs on every single page navigation (it lives in
- * the app.jsx layout loader), so doing that here would slow down every
+ * checks the System Health page does (Gmail SMTP handshake, Shopify Admin
+ * API, Interakt key validation, etc.) — those are real network round
+ * trips, and this function runs on every single page navigation (it lives
+ * in the app.jsx layout loader), so doing that here would slow down every
  * page load and hammer those services on every click through the app.
  *
  * Instead this looks at the last 7 days of DB rows this app already
@@ -13,16 +13,62 @@
  * OrderProcessingNotification/OrderProcessingEmailNotification rows) —
  * a recent run of "threw"/"FAILED" entries there is real evidence
  * something's wrong (most often exactly the same Gmail/Interakt issues
- * the Server page's live checks would also catch), without needing to
- * re-probe those services here too.
+ * the System Health page's live checks would also catch), without needing
+ * to re-probe those services here too.
+ *
+ * Every item carries `details`: the actual failures behind it (which order
+ * or lead, which service failed, and the error that service returned), so
+ * the Overview can say what went wrong and where instead of a generic line.
  */
 import prisma from "../db.server";
 
 const SINCE_DAYS = 7;
+const MAX_DETAILS = 3;
 
 function hasFailure(status) {
   if (!status) return false;
   return status.startsWith("FAILED") || status.startsWith("threw");
+}
+
+/** "FAILED: Interakt HTTP 400 ..." -> "Interakt HTTP 400 ..." (short, single line). */
+function cleanReason(status) {
+  const text = String(status || "")
+    .replace(/^(FAILED|threw)\s*:?\s*/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return "No error text was recorded.";
+  return text.length > 220 ? text.slice(0, 217) + "…" : text;
+}
+
+const SERVICES = {
+  whatsapp: "WhatsApp (Interakt)",
+  email: "Email (Gmail)",
+  astrology: "Birth-chart calculation (AstrologyAPI)",
+  shopify: "Shopify customer sync",
+  invoice: "Invoice email (Gmail) / PDF",
+};
+
+// Where to go to fix each kind of source, shown beside the failure.
+const FIXES = {
+  [SERVICES.whatsapp]: { href: "/app/settings", label: "Check Settings → Connections and WhatsApp messages" },
+  [SERVICES.email]: { href: "/app/settings", label: "Check Settings → Connections (Gmail address and app password)" },
+  [SERVICES.astrology]: { href: "/app/server-health", label: "Open System Health" },
+  [SERVICES.shopify]: { href: "/app/server-health", label: "Open System Health" },
+  [SERVICES.invoice]: { href: "/app/settings", label: "Check Settings → Invoices and Connections" },
+};
+
+function detail(source, subject, status, when) {
+  return { source, subject, reason: cleanReason(status), when: when ? new Date(when).toISOString() : null, fix: FIXES[source] || null };
+}
+
+function summarise(details) {
+  const d = details[0];
+  if (!d) return "";
+  return `Most recent: ${d.subject} — ${d.source}: ${d.reason}`;
+}
+
+function newest(a, b) {
+  return new Date(b.when || 0) - new Date(a.when || 0);
 }
 
 export async function getAttentionSummary() {
@@ -31,47 +77,85 @@ export async function getAttentionSummary() {
   const [astroLeads, wishlistLeads, waNotifications, emailNotifications, returnRefundNotifications, invoices] = await Promise.all([
     prisma.astroLead.findMany({
       where: { createdAt: { gte: since } },
-      select: { id: true, name: true, email: true, calculationOk: true, shopifySyncStatus: true, emailSendStatus: true, whatsappSendStatus: true },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, name: true, email: true, createdAt: true, calculationOk: true, astroError: true, shopifySyncStatus: true, emailSendStatus: true, whatsappSendStatus: true },
     }),
     prisma.wishlistLead.findMany({
       where: { createdAt: { gte: since } },
-      select: { id: true, email: true, emailSendStatus: true, whatsappSendStatus: true },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, email: true, createdAt: true, emailSendStatus: true, whatsappSendStatus: true },
     }),
     prisma.orderProcessingNotification.findMany({
       where: { notifiedAt: { gte: since } },
-      select: { id: true, status: true },
+      orderBy: { notifiedAt: "desc" },
+      select: { id: true, orderName: true, orderId: true, status: true, notifiedAt: true },
     }),
     prisma.orderProcessingEmailNotification.findMany({
       where: { notifiedAt: { gte: since } },
-      select: { id: true, status: true },
+      orderBy: { notifiedAt: "desc" },
+      select: { id: true, orderName: true, orderId: true, status: true, notifiedAt: true },
     }),
     prisma.orderReturnEmailNotification.findMany({
       where: { notifiedAt: { gte: since } },
-      select: { id: true, orderName: true, status: true },
+      orderBy: { notifiedAt: "desc" },
+      select: { id: true, orderName: true, orderId: true, status: true, notifiedAt: true },
     }),
     prisma.orderInvoice.findMany({
       where: { lastSentAt: { gte: since } },
-      select: { id: true, orderName: true, status: true },
+      orderBy: { lastSentAt: "desc" },
+      select: { id: true, orderName: true, orderId: true, status: true, lastSentAt: true },
     }),
   ]);
 
+  // ---- Astro leads: say WHICH stage failed (calculation, Shopify sync, email or WhatsApp)
   const astroIssues = astroLeads.filter(
     (l) => !l.calculationOk || hasFailure(l.shopifySyncStatus) || hasFailure(l.emailSendStatus) || hasFailure(l.whatsappSendStatus)
   );
+  const astroDetails = astroIssues
+    .map((l) => {
+      const who = l.name || l.email || "a lead";
+      if (!l.calculationOk) return detail(SERVICES.astrology, who, l.astroError || "The birth-chart calculation did not complete.", l.createdAt);
+      if (hasFailure(l.shopifySyncStatus)) return detail(SERVICES.shopify, who, l.shopifySyncStatus, l.createdAt);
+      if (hasFailure(l.emailSendStatus)) return detail(SERVICES.email, who, l.emailSendStatus, l.createdAt);
+      return detail(SERVICES.whatsapp, who, l.whatsappSendStatus, l.createdAt);
+    })
+    .slice(0, MAX_DETAILS);
+
+  // ---- Wishlist leads
   const wishlistIssues = wishlistLeads.filter((l) => hasFailure(l.emailSendStatus) || hasFailure(l.whatsappSendStatus));
-  const orderFailures = [
-    ...waNotifications.filter((n) => hasFailure(n.status)),
-    ...emailNotifications.filter((n) => hasFailure(n.status)),
-  ];
+  const wishlistDetails = wishlistIssues
+    .map((l) =>
+      hasFailure(l.emailSendStatus)
+        ? detail(SERVICES.email, l.email || "a lead", l.emailSendStatus, l.createdAt)
+        : detail(SERVICES.whatsapp, l.email || "a lead", l.whatsappSendStatus, l.createdAt)
+    )
+    .slice(0, MAX_DETAILS);
+
+  // ---- Order notifications: WhatsApp and email are separate tables; merge, newest first
+  const orderFailureRows = [
+    ...waNotifications.filter((n) => hasFailure(n.status)).map((n) => detail(SERVICES.whatsapp, `Order ${n.orderName || n.orderId}`, n.status, n.notifiedAt)),
+    ...emailNotifications.filter((n) => hasFailure(n.status)).map((n) => detail(SERVICES.email, `Order ${n.orderName || n.orderId}`, n.status, n.notifiedAt)),
+  ].sort(newest);
+  const orderFailures = orderFailureRows;
+
   const returnRefundIssues = returnRefundNotifications.filter((n) => hasFailure(n.status));
+  const returnDetails = returnRefundIssues
+    .map((n) => detail(SERVICES.whatsapp, `Order ${n.orderName || n.orderId}`, n.status, n.notifiedAt))
+    .slice(0, MAX_DETAILS);
+
   const invoiceIssues = invoices.filter((n) => hasFailure(n.status));
+  const invoiceDetails = invoiceIssues
+    .map((n) => detail(SERVICES.invoice, `Order ${n.orderName || n.orderId}`, n.status, n.lastSentAt))
+    .slice(0, MAX_DETAILS);
 
   const items = [];
   if (orderFailures.length) {
+    const details = orderFailureRows.slice(0, MAX_DETAILS);
     items.push({
       id: "order-failures",
       title: `${orderFailures.length} order notification${orderFailures.length === 1 ? "" : "s"} failed recently`,
-      detail: `WhatsApp or email send threw an error in the last ${SINCE_DAYS} days — often a Gmail or Interakt configuration issue.`,
+      detail: summarise(details),
+      details,
       href: "/app/whatsapp-events",
       action: "Open Messages & Orders",
       severity: "danger",
@@ -81,9 +165,8 @@ export async function getAttentionSummary() {
     items.push({
       id: "astro-issues",
       title: `${astroIssues.length} astro lead${astroIssues.length === 1 ? "" : "s"} had a problem`,
-      detail: astroIssues[0]
-        ? `Most recent: ${astroIssues[0].name || astroIssues[0].email || "a lead"} — calculation, sync, email, or WhatsApp failed.`
-        : "",
+      detail: summarise(astroDetails),
+      details: astroDetails,
       href: "/app/astro-leads",
       action: "Open Astro Leads",
       severity: "danger",
@@ -93,7 +176,8 @@ export async function getAttentionSummary() {
     items.push({
       id: "wishlist-issues",
       title: `${wishlistIssues.length} wishlist lead${wishlistIssues.length === 1 ? "" : "s"} had a problem`,
-      detail: wishlistIssues[0] ? `Most recent: ${wishlistIssues[0].email || "a lead"} — email or WhatsApp send failed.` : "",
+      detail: summarise(wishlistDetails),
+      details: wishlistDetails,
       href: "/app/wishlist-leads",
       action: "Open Wishlist Leads",
       severity: "warn",
@@ -103,7 +187,8 @@ export async function getAttentionSummary() {
     items.push({
       id: "returns-refunds-issues",
       title: `${returnRefundIssues.length} refund WhatsApp message${returnRefundIssues.length === 1 ? "" : "s"} failed recently`,
-      detail: returnRefundIssues[0] ? `Most recent: order ${returnRefundIssues[0].orderName || returnRefundIssues[0].id} — send failed.` : "",
+      detail: summarise(returnDetails),
+      details: returnDetails,
       href: "/app/whatsapp-events",
       action: "Open Messages & Orders",
       severity: "danger",
@@ -113,7 +198,8 @@ export async function getAttentionSummary() {
     items.push({
       id: "invoice-issues",
       title: `${invoiceIssues.length} GST invoice${invoiceIssues.length === 1 ? "" : "s"} failed to send recently`,
-      detail: invoiceIssues[0] ? `Most recent: order ${invoiceIssues[0].orderName || invoiceIssues[0].id} — send failed.` : "",
+      detail: summarise(invoiceDetails),
+      details: invoiceDetails,
       href: "/app/invoices",
       action: "Open GST Invoices",
       severity: "warn",
