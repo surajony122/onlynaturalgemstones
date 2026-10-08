@@ -61,7 +61,10 @@ export const action = async ({ request }) => {
       // Primary source: the customer's own Shopify record (wishlist tags /
       // custom.astro_advice metafield), so the page matches what the
       // merchant sees on that customer in Shopify admin.
-      fromShopify = await buildWishlistAndRecommendationFromShopify(lightAdmin, customerGid, shop);
+      fromShopify = await buildWishlistAndRecommendationFromShopify(lightAdmin, customerGid, shop, {
+        wishlist: wantWishlist,
+        recommendation: !wantWishlist,
+      });
     } catch (err) {
       console.error("[public.customer-account-data] failed to read customer from Shopify:", err);
     }
@@ -71,7 +74,7 @@ export const action = async ({ request }) => {
     // matched by the customer's email -- used only when Shopify has nothing.
     if (!hasData && fromShopify?.email) {
       try {
-        const db = await buildWishlistAndRecommendation(lightAdmin, shop, { email: fromShopify.email });
+        const db = await buildWishlistAndRecommendation(lightAdmin, shop, { email: fromShopify.email, only: part });
         result = wantWishlist ? db.wishlist : db.recommendation;
       } catch (err) {
         console.error("[public.customer-account-data] database fallback failed:", err);

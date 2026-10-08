@@ -119,7 +119,7 @@ export async function buildCustomerAdminData(admin, customerGid) {
  * that customer in Shopify admin. Returns { email, wishlist, recommendation }
  * where an empty wishlist is { items: [] } and a missing recommendation is
  * null -- callers fall back to the app database in those cases. */
-export async function buildWishlistAndRecommendationFromShopify(admin, customerGid, shop) {
+export async function buildWishlistAndRecommendationFromShopify(admin, customerGid, shop, { wishlist: wantWishlist = true, recommendation: wantRecommendation = true } = {}) {
   const res = await admin.graphql(
     `#graphql
     query CustomerWishlistAndAdvice($id: ID!) {
@@ -140,11 +140,14 @@ export async function buildWishlistAndRecommendationFromShopify(admin, customerG
     .filter((t) => typeof t === "string" && t.startsWith("wishlist:"))
     .map((t) => t.slice("wishlist:".length).trim())
     .filter(Boolean);
-  const wishlist = { items: await getProductsForHandles(admin, handles) };
+  // Each account page only needs its own half, so skip the other half's
+  // product lookups entirely (the wishlist page used to also resolve
+  // recommendation products it never showed).
+  const wishlist = { items: wantWishlist ? await getProductsForHandles(admin, handles) : [] };
 
   // --- Recommendation: metafield JSON -> same shape the database path returns ---
   let recommendation = null;
-  const raw = customer.metafield && customer.metafield.value;
+  const raw = wantRecommendation && customer.metafield && customer.metafield.value;
   if (raw) {
     try {
       const meta = JSON.parse(raw);
@@ -230,7 +233,7 @@ async function getProductsForHandles(admin, handles) {
  * email first (more leads are keyed by email historically), falling back
  * to phone — either match is equally valid, a lead just needs ONE of the
  * two matching fields to be found. */
-export async function buildWishlistAndRecommendation(admin, shop, { email, phone }) {
+export async function buildWishlistAndRecommendation(admin, shop, { email, phone, only } = {}) {
   const emailWhere = email ? { shop, email } : null;
   const phoneWhere = phone ? { shop, phone } : null;
 
@@ -262,7 +265,7 @@ export async function buildWishlistAndRecommendation(admin, shop, { email, phone
   };
 
   let recommendation = null;
-  if (astroLead && astroLead.recommendation) {
+  if (only !== "wishlist" && astroLead && astroLead.recommendation) {
     const resultsUrl = buildResultsPageUrl(
       { name: astroLead.name, dob: astroLead.dob, tob: astroLead.tob, placeOfBirth: astroLead.placeOfBirth, bodyWeightKg: astroLead.bodyWeightKg },
       { ascendant: astroLead.ascendant, moonsign: astroLead.moonsign },
