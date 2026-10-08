@@ -6,7 +6,8 @@
  * each page hand-rolling its own table chrome. Not a route — lives
  * outside app/routes so React Router's fs-routes scan skips it.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 // ---- Layout tokens -------------------------------------------------
 
@@ -159,7 +160,7 @@ export function Card({ children, hover, padding = "18px 20px", style }) {
 // A small "i" button that opens a short explanation. Anything a page used to
 // explain in grey paragraphs under its title goes in here instead, so the page
 // header stays one tidy row.
-export function InfoTip({ children, label = "More info" }) {
+export function InfoTip({ children, label = "More info", align = "left" }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -211,7 +212,7 @@ export function InfoTip({ children, label = "More info" }) {
           style={{
             position: "absolute",
             top: "calc(100% + 8px)",
-            left: 0,
+            ...(align === "right" ? { right: 0 } : { left: 0 }),
             zIndex: 40,
             width: "min(380px, 80vw)",
             background: "#fff",
@@ -232,13 +233,89 @@ export function InfoTip({ children, label = "More info" }) {
   );
 }
 
-// One consistent page header: title (+ an "i" button for any explanation),
-// a one-line description, real counts as small chips, and every page action
-// together in a single bar on the right. `action` is kept for older callers.
+// The app shell's top bar exposes two empty slots (one for a page's one-line
+// description, one for its count chips and buttons). A page's PageHeader fills
+// them, so each page's header lives in the same bar as the breadcrumb and the
+// Refresh button instead of taking its own block above the content.
+export const HeaderSlotsContext = createContext(null);
+
+const srOnly = { position: "absolute", width: "1px", height: "1px", overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap" };
+
+// One consistent page header. Inside the app shell it renders into the top bar:
+// the description next to the breadcrumb, then real counts as small chips, the
+// page's buttons, and an "i" button for any longer explanation, all beside
+// Refresh. The page title isn't repeated (the breadcrumb already names the
+// page) but stays in the page as a hidden heading for screen readers.
+// `action` is kept for older callers.
 export function PageHeader({ title, description, action, actions, stats, info }) {
+  const slots = useContext(HeaderSlotsContext);
   const bar = actions || action;
   const toneColor = (tone) =>
     tone === "success" ? brand.success : tone === "danger" ? brand.danger : tone === "accent" ? brand.accent : brand.ink;
+  const chips =
+    stats && stats.length > 0
+      ? stats.map((st) => (
+          <span
+            key={st.label}
+            style={{
+              display: "inline-flex",
+              alignItems: "baseline",
+              gap: "6px",
+              padding: "4px 11px",
+              borderRadius: "999px",
+              border: `1px solid ${brand.border}`,
+              background: "#fff",
+              fontSize: "12px",
+              color: brand.muted,
+              fontVariantNumeric: "tabular-nums",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {st.label}
+            <strong style={{ fontSize: "13px", color: toneColor(st.tone) }}>{st.value}</strong>
+          </span>
+        ))
+      : null;
+
+  if (slots) {
+    const hasTools = !!(chips || bar || info);
+    return (
+      <>
+        <h1 style={srOnly}>{title}</h1>
+        {description && slots.desc
+          ? createPortal(
+              <span
+                title={description}
+                style={{
+                  display: "block",
+                  fontSize: "12px",
+                  color: brand.muted,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  minWidth: 0,
+                }}
+              >
+                {description}
+              </span>,
+              slots.desc
+            )
+          : null}
+        {hasTools && slots.tools
+          ? createPortal(
+              <>
+                {chips}
+                {bar}
+                {info && <InfoTip align="right">{info}</InfoTip>}
+              </>,
+              slots.tools
+            )
+          : null}
+      </>
+    );
+  }
+
+  // No app shell around (not expected in this app): the original stacked layout.
   return (
     <div style={{ marginBottom: "22px" }}>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "20px", flexWrap: "wrap" }}>
@@ -251,30 +328,7 @@ export function PageHeader({ title, description, action, actions, stats, info })
         </div>
         {bar && <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>{bar}</div>}
       </div>
-      {stats && stats.length > 0 && (
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "14px" }}>
-          {stats.map((st) => (
-            <span
-              key={st.label}
-              style={{
-                display: "inline-flex",
-                alignItems: "baseline",
-                gap: "6px",
-                padding: "5px 12px",
-                borderRadius: "999px",
-                border: `1px solid ${brand.border}`,
-                background: "#fff",
-                fontSize: "12.5px",
-                color: brand.muted,
-                fontVariantNumeric: "tabular-nums",
-              }}
-            >
-              {st.label}
-              <strong style={{ fontSize: "13.5px", color: toneColor(st.tone) }}>{st.value}</strong>
-            </span>
-          ))}
-        </div>
-      )}
+      {chips && <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "14px" }}>{chips}</div>}
     </div>
   );
 }

@@ -9,7 +9,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link, NavLink, useLocation, useRevalidator } from "react-router";
-import { Icon, brand } from "./table-kit";
+import { Icon, brand, HeaderSlotsContext } from "./table-kit";
 
 // Every real destination in the app, grouped by what the person is doing:
 // setting the store up, following customers, following orders and messages,
@@ -349,7 +349,7 @@ function Sidebar({ pathname, badges }) {
 
 // ---- Header ---------------------------------------------------------------
 
-function Header({ pathname, healthy, attentionCount }) {
+function Header({ pathname, healthy, attentionCount, setDescEl, setToolsEl }) {
   const revalidator = useRevalidator();
   const page = currentPageInfo(pathname);
   const refreshing = revalidator.state === "loading";
@@ -361,8 +361,9 @@ function Header({ pathname, healthy, attentionCount }) {
         alignItems: "center",
         justifyContent: "space-between",
         gap: "16px",
-        padding: "0 28px",
-        height: "60px",
+        padding: "8px 28px",
+        minHeight: "60px",
+        flexWrap: "wrap",
         flexShrink: 0,
         background: "rgba(255,255,255,0.86)",
         backdropFilter: "blur(8px)",
@@ -372,12 +373,20 @@ function Header({ pathname, healthy, attentionCount }) {
         zIndex: 5,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
-        {page.group && <span style={{ fontSize: "12.5px", color: brand.faint }}>{page.group}</span>}
+      <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", gap: "2px", minWidth: 0, flex: "1 1 260px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+        {page.group && <span style={{ fontSize: "12.5px", color: brand.faint, flexShrink: 0 }}>{page.group}</span>}
         {page.group && <Icon name="chevron-right" size={13} color={brand.faint} style={{ flexShrink: 0 }} />}
-        <span style={{ fontSize: "13.5px", fontWeight: 600, color: brand.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{page.label}</span>
+        <span style={{ fontSize: "13.5px", fontWeight: 600, color: brand.ink, whiteSpace: "nowrap", flexShrink: 0 }}>{page.label}</span>
+        </div>
+        {/* the page's one-line description is placed here by its PageHeader */}
+        <div style={{ minWidth: 0 }}>
+          <span ref={setDescEl} style={{ display: "contents" }} />
+        </div>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", justifyContent: "flex-end", flex: "0 0 auto" }}>
+        {/* the page's count chips, buttons and "i" button are placed here by its PageHeader */}
+        <span ref={setToolsEl} style={{ display: "contents" }} />
         {!healthy && (
           <Link
             to="/app/overview"
@@ -431,14 +440,19 @@ export function AppShell({ attention, children }) {
   const { pathname } = useLocation();
   const healthy = attention?.healthy ?? true;
   const attentionCount = attention?.items?.length || 0;
+  const [descEl, setDescEl] = useState(null);
+  const [toolsEl, setToolsEl] = useState(null);
+  const slots = useMemo(() => ({ desc: descEl, tools: toolsEl }), [descEl, toolsEl]);
 
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: brand.page, fontSize: "14px" }}>
       <Sidebar pathname={pathname} badges={attention?.badges} />
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-        <Header pathname={pathname} healthy={healthy} attentionCount={attentionCount} />
+        <Header pathname={pathname} healthy={healthy} attentionCount={attentionCount} setDescEl={setDescEl} setToolsEl={setToolsEl} />
         <main style={{ flex: 1, overflowY: "auto", padding: "28px 28px 72px" }}>
-          <div style={{ maxWidth: "1180px", margin: "0 auto" }}>{children}</div>
+          <HeaderSlotsContext.Provider value={slots}>
+            <div style={{ maxWidth: "1180px", margin: "0 auto" }}>{children}</div>
+          </HeaderSlotsContext.Provider>
         </main>
       </div>
     </div>
