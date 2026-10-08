@@ -715,6 +715,7 @@ export async function sendAbandonedCheckoutEmail(admin, settings, checkout) {
     name: info.name || "Only Natural Gemstones",
     url: info.url || "https://onlynaturalgemstones.com",
     logoUrl: info.logoUrl || FALLBACK_LOGO_URL,
+    email: info.email || "info@onlynaturalgemstones.com",
   };
 
   const { raw, html: htmlVars } = buildEmailVars(checkout, shopInfo);
