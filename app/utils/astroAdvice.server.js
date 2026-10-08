@@ -87,13 +87,14 @@ const GEM_CUSTOM_OVERRIDES = {
 // `stoneOverrides` = what the merchant saved on the app's "Gemstone details" page
 // (metal / finger / day / mantra / substitute per stone). A blank field there means
 // "no override", so the API value / built-in default below still applies.
-// Carat range from the customer's body weight (kg): max = weight/10 rounded UP to the next 0.25,
-// min = weight/12 rounded DOWN to 0.1. Diamond uses /100 and /120 (so 73 kg -> 0.6 - 0.75).
+// Carat range from the customer's body weight (kg): max = weight/10 rounded UP to the next 0.5,
+// min = weight/12 rounded DOWN to the nearest 0.5 (so 76 kg -> 6 - 8). Diamond uses /100 and /120
+// with finer steps (0.25 up, 0.1 down), so 73 kg -> 0.6 - 0.75.
 function caratRangeFromBodyWeight(gemName, kg) {
   if (!(typeof kg === "number" && kg > 0)) return null;
   const dia = String(gemName || "").toLowerCase() === "diamond";
-  const max = Math.ceil(kg / (dia ? 100 : 10) / 0.25 - 1e-9) * 0.25;
-  const min = Math.floor((kg / (dia ? 120 : 12)) * 10 + 1e-9) / 10;
+  const max = dia ? Math.ceil(kg / 100 / 0.25 - 1e-9) * 0.25 : Math.ceil(kg / 10 / 0.5 - 1e-9) * 0.5;
+  const min = dia ? Math.floor((kg / 120) * 10 + 1e-9) / 10 : Math.floor(kg / 12 / 0.5 + 1e-9) * 0.5;
   const f = (n) => String(Math.round(n * 100) / 100);
   return f(min) + " - " + f(max);
 }
