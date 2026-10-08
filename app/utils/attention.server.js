@@ -21,6 +21,7 @@
  * the Overview can say what went wrong and where instead of a generic line.
  */
 import prisma from "../db.server";
+import { CAN_RETRY, CAN_DISMISS } from "./attentionActions.server";
 
 const SINCE_DAYS = 7;
 const MAX_DETAILS = 3;
@@ -57,8 +58,20 @@ const FIXES = {
   [SERVICES.invoice]: { href: "/app/settings", label: "Check Settings → Invoices and Connections" },
 };
 
-function detail(source, subject, status, when) {
-  return { source, subject, reason: cleanReason(status), when: when ? new Date(when).toISOString() : null, fix: FIXES[source] || null };
+// `kind` + `id` identify the exact record, so the Overview's Retry / Mark-as-resolved
+// buttons (see attentionActions.server.js) know what to act on.
+function detail(source, subject, status, when, kind, id) {
+  return {
+    source,
+    subject,
+    reason: cleanReason(status),
+    when: when ? new Date(when).toISOString() : null,
+    fix: FIXES[source] || null,
+    kind: kind || null,
+    id: id || null,
+    canRetry: !!(kind && id && CAN_RETRY.has(kind)),
+    canDismiss: !!(kind && id && CAN_DISMISS.has(kind)),
+  };
 }
 
 function summarise(details) {
@@ -114,10 +127,10 @@ export async function getAttentionSummary() {
   const astroDetails = astroIssues
     .map((l) => {
       const who = l.name || l.email || "a lead";
-      if (!l.calculationOk) return detail(SERVICES.astrology, who, l.astroError || "The birth-chart calculation did not complete.", l.createdAt);
-      if (hasFailure(l.shopifySyncStatus)) return detail(SERVICES.shopify, who, l.shopifySyncStatus, l.createdAt);
-      if (hasFailure(l.emailSendStatus)) return detail(SERVICES.email, who, l.emailSendStatus, l.createdAt);
-      return detail(SERVICES.whatsapp, who, l.whatsappSendStatus, l.createdAt);
+      if (!l.calculationOk) return detail(SERVICES.astrology, who, l.astroError || "The birth-chart calculation did not complete.", l.createdAt, "astro-calc", l.id);
+      if (hasFailure(l.shopifySyncStatus)) return detail(SERVICES.shopify, who, l.shopifySyncStatus, l.createdAt, "astro-shopify", l.id);
+      if (hasFailure(l.emailSendStatus)) return detail(SERVICES.email, who, l.emailSendStatus, l.createdAt, "astro-email", l.id);
+      return detail(SERVICES.whatsapp, who, l.whatsappSendStatus, l.createdAt, "astro-whatsapp", l.id);
     })
     .slice(0, MAX_DETAILS);
 
@@ -126,26 +139,26 @@ export async function getAttentionSummary() {
   const wishlistDetails = wishlistIssues
     .map((l) =>
       hasFailure(l.emailSendStatus)
-        ? detail(SERVICES.email, l.email || "a lead", l.emailSendStatus, l.createdAt)
-        : detail(SERVICES.whatsapp, l.email || "a lead", l.whatsappSendStatus, l.createdAt)
+        ? detail(SERVICES.email, l.email || "a lead", l.emailSendStatus, l.createdAt, "wishlist-email", l.id)
+        : detail(SERVICES.whatsapp, l.email || "a lead", l.whatsappSendStatus, l.createdAt, "wishlist-whatsapp", l.id)
     )
     .slice(0, MAX_DETAILS);
 
   // ---- Order notifications: WhatsApp and email are separate tables; merge, newest first
   const orderFailureRows = [
-    ...waNotifications.filter((n) => hasFailure(n.status)).map((n) => detail(SERVICES.whatsapp, `Order ${n.orderName || n.orderId}`, n.status, n.notifiedAt)),
-    ...emailNotifications.filter((n) => hasFailure(n.status)).map((n) => detail(SERVICES.email, `Order ${n.orderName || n.orderId}`, n.status, n.notifiedAt)),
+    ...waNotifications.filter((n) => hasFailure(n.status)).map((n) => detail(SERVICES.whatsapp, `Order ${n.orderName || n.orderId}`, n.status, n.notifiedAt, "order-whatsapp", n.id)),
+    ...emailNotifications.filter((n) => hasFailure(n.status)).map((n) => detail(SERVICES.email, `Order ${n.orderName || n.orderId}`, n.status, n.notifiedAt, "order-email", n.id)),
   ].sort(newest);
   const orderFailures = orderFailureRows;
 
   const returnRefundIssues = returnRefundNotifications.filter((n) => hasFailure(n.status));
   const returnDetails = returnRefundIssues
-    .map((n) => detail(SERVICES.whatsapp, `Order ${n.orderName || n.orderId}`, n.status, n.notifiedAt))
+    .map((n) => detail(SERVICES.whatsapp, `Order ${n.orderName || n.orderId}`, n.status, n.notifiedAt, "refund", n.id))
     .slice(0, MAX_DETAILS);
 
   const invoiceIssues = invoices.filter((n) => hasFailure(n.status));
   const invoiceDetails = invoiceIssues
-    .map((n) => detail(SERVICES.invoice, `Order ${n.orderName || n.orderId}`, n.status, n.lastSentAt))
+    .map((n) => detail(SERVICES.invoice, `Order ${n.orderName || n.orderId}`, n.status, n.lastSentAt, "invoice", n.id))
     .slice(0, MAX_DETAILS);
 
   const items = [];

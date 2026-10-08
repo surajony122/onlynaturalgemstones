@@ -13,10 +13,13 @@
  * either, so this stays consistent with that rather than introducing a
  * new timezone concept just for this page).
  */
-import { Link, useLoaderData } from "react-router";
+import { useEffect } from "react";
+import { Link, useFetcher, useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { getAttentionSummary } from "../utils/attention.server";
+import { runAttentionAction } from "../utils/attentionActions.server";
+import { useToast } from "../components/toast";
 import { getAppSettings, ratesFromAppSettings } from "../utils/appSettings.server";
 import { getCurrencyCountryConfig } from "../utils/currencyCountries.server";
 import { getGemStoneRows } from "../utils/gemStoneDetails.server";
@@ -184,6 +187,19 @@ export const loader = async ({ request }) => {
       places: !!settings.googlePlacesApiKey,
     },
   };
+};
+
+// Retry / Mark-as-resolved buttons on the "Needs attention" panel.
+export const action = async ({ request }) => {
+  const { admin, session } = await authenticate.admin(request);
+  const form = await request.formData();
+  return runAttentionAction({
+    admin,
+    shop: session.shop,
+    intent: String(form.get("intent") || ""),
+    kind: String(form.get("kind") || ""),
+    id: String(form.get("id") || ""),
+  });
 };
 
 // ---------------------------------------------------------------- helpers
@@ -379,6 +395,78 @@ function Dot({ tone }) {
 
 // ---------------------------------------------------------------- attention
 
+const smallButton = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "6px",
+  padding: "6px 12px",
+  borderRadius: "8px",
+  fontSize: "12px",
+  fontWeight: 600,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+};
+
+// The buttons under one failure. Retry re-sends just that message and writes
+// the new result back, so a successful retry clears the failure from this
+// panel; "Mark as resolved" clears it without sending anything.
+function FailureActions({ d }) {
+  const fetcher = useFetcher();
+  const toast = useToast();
+  const busy = fetcher.state !== "idle";
+  const running = busy ? fetcher.formData?.get("intent") : null;
+  const result = fetcher.state === "idle" ? fetcher.data : null;
+
+  useEffect(() => {
+    if (!result) return;
+    if (result.intent === "retry") {
+      if (result.ok) toast.show("Sent again: " + d.subject);
+      else toast.show("Still failing: " + (result.status || result.error || "unknown error"), { isError: true });
+    } else if (result.intent === "dismiss") {
+      if (result.ok) toast.show("Marked as resolved");
+      else toast.show(result.error || "Could not mark as resolved", { isError: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result]);
+
+  if (!d.canRetry && !d.canDismiss) return null;
+  const run = (intent) => fetcher.submit({ intent, kind: d.kind, id: d.id }, { method: "post" });
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+      {d.canRetry && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            if (window.confirm("Send this message again?\n\n" + d.subject + " (" + d.source + ")")) run("retry");
+          }}
+          style={{ ...smallButton, border: "1px solid " + brand.accent, background: brand.accent, color: "#fff", opacity: busy ? 0.7 : 1 }}
+        >
+          <Icon name="refresh" size={12} color="currentColor" style={{ animation: running === "retry" ? "ongSpin 0.8s linear infinite" : "none" }} />
+          {running === "retry" ? "Retrying…" : "Retry now"}
+        </button>
+      )}
+      {d.canDismiss && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            if (window.confirm("Mark this as resolved without sending anything?\n\nThe original error stays on record. Use this when the cause is already fixed and sending again would only confuse the customer.")) run("dismiss");
+          }}
+          style={{ ...smallButton, border: "1px solid " + brand.border, background: "#fff", color: brand.body, opacity: busy ? 0.7 : 1 }}
+        >
+          <Icon name="check" size={12} color="currentColor" />
+          {running === "dismiss" ? "Saving…" : "Mark as resolved"}
+        </button>
+      )}
+      {result && result.intent === "retry" && !result.ok && (
+        <span style={{ fontSize: "11.5px", color: brand.danger }}>Still failing. See the updated error above.</span>
+      )}
+    </div>
+  );
+}
+
 function AttentionPanel({ attention }) {
   if (attention.healthy) {
     return (
@@ -446,11 +534,16 @@ function AttentionPanel({ attention }) {
                     {d.when && <span style={{ fontSize: "11.5px", color: brand.faint }}>{timeAgo(d.when)}</span>}
                   </div>
                   <div style={{ fontFamily: brand.mono, fontSize: "11.5px", color: brand.body, lineHeight: 1.55, wordBreak: "break-word" }}>{d.reason}</div>
-                  {d.fix && (
-                    <Link to={d.fix.href} style={{ display: "inline-block", marginTop: "7px", fontSize: "12px", fontWeight: 600, color: brand.accent, textDecoration: "none" }}>
-                      {d.fix.label} →
-                    </Link>
-                  )}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap", marginTop: "9px" }}>
+                    {d.fix ? (
+                      <Link to={d.fix.href} style={{ fontSize: "12px", fontWeight: 600, color: brand.accent, textDecoration: "none" }}>
+                        {d.fix.label} →
+                      </Link>
+                    ) : (
+                      <span />
+                    )}
+                    <FailureActions d={d} />
+                  </div>
                 </div>
               ))}
             </div>
