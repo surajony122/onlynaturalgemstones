@@ -3,14 +3,18 @@
  * page inside Shopify's hosted customer accounts (target
  * customer-account.page.render).
  *
- * Split out of the old combined "My Gemstone Hub" extension
- * (customer-account-hub, now wishlist-only). Shows the customer's latest saved
- * gem recommendation -- Life, Benefic and Lucky stone cards plus a link to the
- * full reading -- read from this app's own backend
- * (public.customer-account-data.jsx, called with ?part=recommendation so it
- * skips the orders/addresses lookup). The backend verifies Shopify's signed
- * session token, then finds the latest recommendation by the signed-in
- * customer's email.
+ * Laid out like the storefront's own gemstone recommendation result page:
+ * one card per stone (Life / Benefic / Lucky) with the collection's category
+ * photo, the stone's English + Hindi name, its planet, the spec rows (weight,
+ * metal, finger, day, mantra, substitute) and a "Buy <stone>" button, then a
+ * link to the full reading. Customer account extensions can only use Shopify's
+ * own components, so this matches the results page's structure and content,
+ * not its exact fonts and colours.
+ *
+ * Data comes from this app's backend (public.customer-account-data.jsx,
+ * called with ?part=recommendation), which verifies Shopify's signed session
+ * token and reads the customer's custom.astro_advice metafield (falling back
+ * to the app database).
  *
  * Needs "Protected customer data access" approved for this app in the Partner
  * Dashboard -- without it the session token's `sub` can come back empty.
@@ -20,6 +24,30 @@ import {render} from 'preact';
 import {useEffect, useState} from 'preact/hooks';
 
 const BACKEND_URL = 'https://shubh-gems-customizer-app.onrender.com/public/customer-account-data?part=recommendation';
+const STORE_URL = 'https://onlynaturalgemstones.com';
+
+// Same English -> Hindi names the storefront result page shows next to a stone.
+const HINDI_NAMES = {
+  ruby: 'Manik',
+  pearl: 'Moti',
+  'red coral': 'Moonga',
+  emerald: 'Panna',
+  'yellow sapphire': 'Pukhraj',
+  diamond: 'Heera',
+  'blue sapphire': 'Neelam',
+  hessonite: 'Gomed',
+  "cat's eye": 'Lehsunia',
+  'cats eye': 'Lehsunia',
+  opal: 'Upal',
+};
+
+// Colour-coding that mirrors the recommendation email: Life amber, Benefic
+// blue, Lucky green (badge tones are the closest the component set offers).
+const CARDS = [
+  {key: 'life', label: 'Life Stone', tone: 'warning'},
+  {key: 'benefic', label: 'Benefic Stone', tone: 'info'},
+  {key: 'lucky', label: 'Lucky Stone', tone: 'success'},
+];
 
 export default async () => {
   render(<Extension />, document.body);
@@ -82,72 +110,114 @@ function Extension() {
 
   const {recommendation} = state.data || {};
 
+  if (!recommendation) {
+    return (
+      <s-page heading="My Gemstone Recommendation">
+        <s-section>
+          <s-stack direction="block" gap="base">
+            <s-text>You haven't received a personalised gemstone recommendation yet.</s-text>
+            <s-text color="subdued">
+              Share your birth details and we'll match the Life, Benefic and Lucky stones to your birth chart.
+            </s-text>
+            <s-button variant="primary" href={`${STORE_URL}/pages/gemstone-recommendation`} target="_blank">
+              Get my recommendation
+            </s-button>
+          </s-stack>
+        </s-section>
+      </s-page>
+    );
+  }
+
+  const meta = recommendation.meta || {};
+  const facts = [
+    meta.moonsign ? `Moon sign: ${meta.moonsign}` : null,
+    meta.ascendant ? `Ascendant: ${meta.ascendant}` : null,
+    meta.bodyWeightKg ? `Body weight: ${meta.bodyWeightKg} kg` : null,
+  ].filter(Boolean);
+
   return (
-    <s-page heading="My Gemstone Recommendation">
-      <RecommendationSection recommendation={recommendation} />
+    <s-page
+      heading="My Gemstone Recommendation"
+      subheading={meta.name ? `Prepared for ${meta.name}` : 'Based on your birth chart'}
+    >
+      {facts.length ? (
+        <s-section>
+          <s-stack direction="inline" gap="base" alignItems="center">
+            {facts.map((fact) => (
+              <s-badge key={fact} tone="neutral">
+                {fact}
+              </s-badge>
+            ))}
+          </s-stack>
+        </s-section>
+      ) : null}
+
+      <s-section>
+        <s-grid gridTemplateColumns="repeat(auto-fit, minmax(240px, 1fr))" gap="base">
+          {CARDS.map((card) =>
+            recommendation[card.key] && recommendation[card.key].gem ? (
+              <StoneCard key={card.key} label={card.label} tone={card.tone} stone={recommendation[card.key]} />
+            ) : null
+          )}
+        </s-grid>
+      </s-section>
+
+      {recommendation.resultsUrl ? (
+        <s-section>
+          <s-stack direction="inline" gap="base" alignItems="center">
+            <s-button variant="secondary" href={recommendation.resultsUrl} target="_blank">
+              View my full reading
+            </s-button>
+          </s-stack>
+        </s-section>
+      ) : null}
     </s-page>
   );
 }
 
-function RecommendationSection({recommendation}) {
-  return (
-    <s-section>
-      {!recommendation ? (
-        <s-text>You haven't submitted your birth details for a personalised gemstone recommendation yet.</s-text>
-      ) : (
-        <s-stack direction="block" gap="base">
-          <s-grid gridTemplateColumns="repeat(auto-fill, minmax(160px, 1fr))" gap="base">
-            <StoneRow label="Life Stone" stone={recommendation.life} />
-            <StoneRow label="Benefic Stone" stone={recommendation.benefic} />
-            <StoneRow label="Lucky Stone" stone={recommendation.lucky} />
-          </s-grid>
-          {recommendation.resultsUrl ? (
-            <s-link href={recommendation.resultsUrl} target="_blank">
-              View my full reading
-            </s-link>
-          ) : null}
-        </s-stack>
-      )}
-    </s-section>
-  );
-}
+function StoneCard({label, tone, stone}) {
+  const hindi = HINDI_NAMES[String(stone.gem || '').toLowerCase().trim()] || '';
+  const image = stone.image || (stone.product && stone.product.image) || '';
+  const specs = [
+    ['Weight', stone.weightCarat ? `${stone.weightCarat} Carat` : null],
+    ['Metal', stone.wearMetal],
+    ['Finger', stone.wearFinger],
+    ['Day', stone.wearDay],
+    ['Mantra', stone.mantra],
+    ['Substitute', stone.substitute],
+  ].filter(([, value]) => value);
 
-function StoneRow({label, stone}) {
-  if (!stone || !stone.gem) return null;
-  const product = stone.product;
   return (
-    <s-grid-item border="base" borderRadius="none" background="base" padding="base">
-      <s-stack direction="block" gap="small-100">
-        <s-text type="strong">{label}</s-text>
-        <s-text color="subdued">{stone.gem}</s-text>
-        {product && product.image ? (
-          <s-image
-            src={product.image}
-            alt={product.title || stone.gem}
-            inlineSize="fill"
-            aspectRatio="1"
-            objectFit="cover"
-            borderRadius="none"
-          />
+    <s-box border="base" borderRadius="base" background="base" padding="base">
+      <s-stack direction="block" gap="base">
+        <s-stack direction="inline" gap="small-100" alignItems="center" justifyContent="space-between">
+          <s-badge tone={tone}>{label}</s-badge>
+          {stone.planet ? <s-text color="subdued">for {stone.planet}</s-text> : null}
+        </s-stack>
+
+        {image ? (
+          <s-image src={image} alt={stone.gem} inlineSize="fill" aspectRatio="1" objectFit="cover" borderRadius="base" />
         ) : null}
-        {product ? <s-text type="strong">{product.title}</s-text> : null}
-        {product && product.price ? <s-text color="subdued">{product.price}</s-text> : null}
-        {product ? (
-          <s-button
-            href={`https://onlynaturalgemstones.com/products/${product.handle}`}
-            target="_blank"
-            variant="primary"
-            inlineSize="fill"
-          >
-            View product
+
+        <s-stack direction="block" gap="none">
+          <s-heading>{hindi ? `${stone.gem} (${hindi})` : stone.gem}</s-heading>
+        </s-stack>
+
+        <s-stack direction="block" gap="small-200">
+          {specs.map(([name, value]) => (
+            <s-stack key={name} direction="inline" gap="base" justifyContent="space-between">
+              <s-text color="subdued">{name}</s-text>
+              <s-text type="strong">{value}</s-text>
+            </s-stack>
+          ))}
+        </s-stack>
+
+        {stone.collection ? (
+          <s-button variant="primary" inlineSize="fill" href={`${STORE_URL}/collections/${stone.collection}`} target="_blank">
+            Buy {stone.gem}
           </s-button>
         ) : null}
-        {stone.collection ? (
-          <s-link href={`https://onlynaturalgemstones.com/collections/${stone.collection}`} target="_blank">
-            Browse collection
-          </s-link>
-        ) : null}
       </s-stack>
-    </s-grid-item>
+    </s-box>
   );
 }

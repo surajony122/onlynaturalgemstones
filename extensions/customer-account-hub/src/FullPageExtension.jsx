@@ -22,6 +22,7 @@ import {render} from 'preact';
 import {useEffect, useState} from 'preact/hooks';
 
 const BACKEND_URL = 'https://shubh-gems-customizer-app.onrender.com/public/customer-account-data?part=wishlist';
+const STORE_URL = 'https://onlynaturalgemstones.com';
 
 export default async () => {
   render(<Extension />, document.body);
@@ -83,51 +84,58 @@ function Extension() {
   }
 
   const {wishlist} = state.data || {};
+  const items = (wishlist && wishlist.items) || [];
 
   return (
-    <s-page heading="My Wishlist">
-      <WishlistSection wishlist={wishlist} />
+    <s-page
+      heading={items.length ? `My Wishlist (${items.length})` : 'My Wishlist'}
+      subheading={items.length ? 'Gemstones you saved to come back to' : undefined}
+    >
+      <s-section>
+        {items.length === 0 ? (
+          <s-stack direction="block" gap="base">
+            <s-text>Your wishlist is empty.</s-text>
+            <s-text color="subdued">Tap the heart on any gemstone to save it here.</s-text>
+            <s-button variant="primary" href={`${STORE_URL}/collections/all`} target="_blank">
+              Browse gemstones
+            </s-button>
+          </s-stack>
+        ) : (
+          <s-grid gridTemplateColumns="repeat(auto-fit, minmax(200px, 1fr))" gap="base">
+            {items.map((item, i) => (
+              <WishlistCard key={item.handle || i} item={item} />
+            ))}
+          </s-grid>
+        )}
+      </s-section>
     </s-page>
   );
 }
 
-function WishlistSection({wishlist}) {
+function WishlistCard({item}) {
   return (
-    <s-section>
-      {!wishlist || !wishlist.items || wishlist.items.length === 0 ? (
-        <s-text>You haven't saved any items to your wishlist yet.</s-text>
-      ) : (
-        <s-grid gridTemplateColumns="repeat(auto-fill, minmax(160px, 1fr))" gap="base">
-          {wishlist.items.map((item, i) => (
-            <s-grid-item key={item.handle || i} border="base" borderRadius="none" background="base" padding="base">
-              <s-stack direction="block" gap="small-100">
-                {item.image ? (
-                  <s-image
-                    src={item.image}
-                    alt={item.title || 'Product'}
-                    inlineSize="fill"
-                    aspectRatio="1"
-                    objectFit="cover"
-                    borderRadius="none"
-                  />
-                ) : null}
-                <s-text type="strong">{item.title || 'Untitled product'}</s-text>
-                {item.price ? <s-text color="subdued">{item.price}</s-text> : null}
-                {item.handle ? (
-                  <s-button
-                    href={`https://onlynaturalgemstones.com/products/${item.handle}`}
-                    target="_blank"
-                    variant="primary"
-                    inlineSize="fill"
-                  >
-                    View product
-                  </s-button>
-                ) : null}
-              </s-stack>
-            </s-grid-item>
-          ))}
-        </s-grid>
-      )}
-    </s-section>
+    <s-box border="base" borderRadius="base" background="base" padding="base">
+      <s-stack direction="block" gap="base">
+        {item.image ? (
+          <s-image
+            src={item.image}
+            alt={item.title || 'Gemstone'}
+            inlineSize="fill"
+            aspectRatio="1"
+            objectFit="cover"
+            borderRadius="base"
+          />
+        ) : null}
+        <s-stack direction="block" gap="small-200">
+          <s-text type="strong">{item.title || 'Gemstone'}</s-text>
+          {item.price ? <s-text color="subdued">{item.price}</s-text> : null}
+        </s-stack>
+        {item.handle ? (
+          <s-button variant="primary" inlineSize="fill" href={`${STORE_URL}/products/${item.handle}`} target="_blank">
+            View product
+          </s-button>
+        ) : null}
+      </s-stack>
+    </s-box>
   );
 }

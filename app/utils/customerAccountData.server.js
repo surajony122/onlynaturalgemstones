@@ -18,7 +18,7 @@
  * into this module.
  */
 import prisma from "../db.server";
-import { buildResultsPageUrl } from "./astroAdvice.server";
+import { buildResultsPageUrl, getCollectionImages } from "./astroAdvice.server";
 
 /** Reads a customer's profile/addresses/orders (with bundle regrouping)
  * straight from the Admin API. `customerGid` is a full
@@ -179,12 +179,22 @@ export async function buildWishlistAndRecommendationFromShopify(admin, customerG
         const lucky = recs.lucky || null;
         let productByCollection = {};
         try {
-          productByCollection = await getFirstProductForCollections(admin, [life, benefic, lucky].map((st) => st && st.collection));
+          productByCollection = await getStoneVisuals(admin, [life, benefic, lucky].map((st) => st && st.collection));
         } catch (err) {
           console.error("[customerAccountData] failed to resolve recommendation products:", err);
         }
-        const withProduct = (stone) => (stone ? { ...stone, product: productByCollection[stone.collection] || null } : null);
-        recommendation = { life: withProduct(life), benefic: withProduct(benefic), lucky: withProduct(lucky), resultsUrl };
+        const withProduct = (stone) => {
+      if (!stone) return null;
+      const v = productByCollection[stone.collection] || {};
+      return { ...stone, image: v.image || "", product: v.product || null };
+    };
+        recommendation = {
+          life: withProduct(life),
+          benefic: withProduct(benefic),
+          lucky: withProduct(lucky),
+          resultsUrl,
+          meta: { name: meta.name || "", moonsign: meta.moonsign || "", ascendant: meta.ascendant || "", bodyWeightKg: typeof bodyWeightKg === "number" ? bodyWeightKg : null },
+        };
       }
     } catch (err) {
       console.error("[customerAccountData] could not parse custom.astro_advice metafield:", err);
@@ -192,6 +202,35 @@ export async function buildWishlistAndRecommendationFromShopify(admin, customerG
   }
 
   return { email: customer.email || null, wishlist, recommendation };
+}
+
+/** The photo for each recommended stone: the collection's own (category) image,
+ * the same one the results page and the email use, falling back to the first
+ * product in the collection only when a collection has no image of its own.
+ * Returns { [collectionHandle]: { image, product } }. */
+async function getStoneVisuals(admin, handles) {
+  const hs = [...new Set((handles || []).filter(Boolean))];
+  const out = {};
+  if (!hs.length) return out;
+  let images = {};
+  try {
+    images = (await getCollectionImages(admin, hs)) || {};
+  } catch (err) {
+    console.error("[customerAccountData] getCollectionImages failed:", err);
+  }
+  const missing = hs.filter((h) => !images[h]);
+  let products = {};
+  if (missing.length) {
+    try {
+      products = (await getFirstProductForCollections(admin, missing)) || {};
+    } catch (err) {
+      console.error("[customerAccountData] getFirstProductForCollections failed:", err);
+    }
+  }
+  hs.forEach((h) => {
+    out[h] = { image: images[h] || (products[h] && products[h].image) || "", product: products[h] || null };
+  });
+  return out;
 }
 
 /** Title / image / price for a list of product handles (deleted or missing
@@ -278,18 +317,23 @@ export async function buildWishlistAndRecommendation(admin, shop, { email, phone
     let productByCollection = {};
     try {
       const handles = [life, benefic, lucky].map((s) => s && s.collection);
-      productByCollection = await getFirstProductForCollections(admin, handles);
+      productByCollection = await getStoneVisuals(admin, handles);
     } catch (err) {
       console.error("[customerAccountData] failed to resolve recommendation products:", err);
     }
 
-    const withProduct = (stone) => (stone ? { ...stone, product: productByCollection[stone.collection] || null } : null);
+    const withProduct = (stone) => {
+      if (!stone) return null;
+      const v = productByCollection[stone.collection] || {};
+      return { ...stone, image: v.image || "", product: v.product || null };
+    };
 
     recommendation = {
       life: withProduct(life),
       benefic: withProduct(benefic),
       lucky: withProduct(lucky),
       resultsUrl,
+      meta: { name: astroLead.name || "", moonsign: astroLead.moonsign || "", ascendant: astroLead.ascendant || "", bodyWeightKg: typeof astroLead.bodyWeightKg === "number" ? astroLead.bodyWeightKg : null },
     };
   }
 
