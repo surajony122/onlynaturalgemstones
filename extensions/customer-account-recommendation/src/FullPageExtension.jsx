@@ -129,29 +129,11 @@ function Extension() {
   }
 
   const meta = recommendation.meta || {};
-  const facts = [
-    meta.moonsign ? `Moon sign: ${meta.moonsign}` : null,
-    meta.ascendant ? `Ascendant: ${meta.ascendant}` : null,
-    meta.bodyWeightKg ? `Body weight: ${meta.bodyWeightKg} kg` : null,
-  ].filter(Boolean);
-
   return (
     <s-page
       heading="My Gemstone Recommendation"
       subheading={meta.name ? `Prepared for ${meta.name}` : 'Based on your birth chart'}
     >
-      {facts.length ? (
-        <s-section>
-          <s-stack direction="inline" gap="base" alignItems="center">
-            {facts.map((fact) => (
-              <s-badge key={fact} tone="neutral">
-                {fact}
-              </s-badge>
-            ))}
-          </s-stack>
-        </s-section>
-      ) : null}
-
       <s-section>
         <s-grid gridTemplateColumns="repeat(auto-fit, minmax(240px, 1fr))" gap="base">
           {CARDS.map((card) =>
