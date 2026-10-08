@@ -710,7 +710,6 @@ export default function AstroLeadsPage() {
   const { leads, whatsappQueue } = useLoaderData();
   const revalidator = useRevalidator();
   const toast = useToast();
-  const isRefreshing = revalidator.state === "loading";
 
   const [searchText, setSearchText] = useState("");
   const [calcFilter, setCalcFilter] = useState([]);
@@ -798,20 +797,10 @@ export default function AstroLeadsPage() {
 
       <WhatsAppQueueSection whatsappQueue={whatsappQueue} />
 
-      <button
-        type="button"
-        onClick={() => revalidator.revalidate()}
-        disabled={isRefreshing}
-        style={{ ...smallBtn, display: "inline-flex", alignItems: "center", gap: "6px", marginBottom: "12px" }}
-      >
-        {isRefreshing ? "Refreshing…" : (<><Icon name="refresh" size={13} color="currentColor" /> Refresh</>)}
-      </button>
       <p style={{ margin: "0 0 14px", fontSize: "12.5px", color: brand.muted }}>
-        Showing 50 leads per page · "Opened" is best-effort (some mail clients pre-fetch/block tracking images)
-        · "Clicked" is reliable and shows which link on hover · No real "delivered" signal exists · Flow's own run
-        history isn't readable via API —{" "}
+        "Opened" is approximate (some mail clients block tracking images); "Clicked" is exact — hover it to see which link.{" "}
         <a href="https://admin.shopify.com/store/0f9yd0-jr/apps/flow" target="_blank" rel="noreferrer" style={{ color: brand.accent }}>
-          open Shopify Flow directly
+          Open Shopify Flow
         </a>
         .
       </p>
@@ -827,9 +816,6 @@ export default function AstroLeadsPage() {
             Clear filters
           </button>
         )}
-        <span style={{ fontSize: "12.5px", color: brand.muted, marginLeft: "auto" }}>
-          Showing {sortedLeads.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, sortedLeads.length)} of {sortedLeads.length} leads
-        </span>
       </div>
 
       <BulkActionsBar count={bulk.count} onDelete={handleBulkDelete} busy={bulkBusy} noun="lead" />

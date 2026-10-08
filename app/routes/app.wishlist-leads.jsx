@@ -583,7 +583,6 @@ export default function WishlistLeadsPage() {
   const toast = useToast();
   const revalidator = useRevalidator();
   const isSending = fetcher.state !== "idle" && fetcher.formData?.get("intent") === "sendDueNow";
-  const isRefreshing = revalidator.state === "loading";
 
   const [searchText, setSearchText] = useState("");
   const [emailFilter, setEmailFilter] = useState([]);
@@ -704,17 +703,13 @@ export default function WishlistLeadsPage() {
         }
       />
 
-      <button type="button" onClick={() => revalidator.revalidate()} disabled={isRefreshing} style={{ ...smallBtn, display: "inline-flex", alignItems: "center", gap: "6px", marginBottom: "12px" }}>
-        {isRefreshing ? "Refreshing…" : (<><Icon name="refresh" size={13} color="currentColor" /> Refresh</>)}
-      </button>
       <p style={{ margin: "0 0 8px", fontSize: "12.5px", color: brand.ink, fontVariantNumeric: "tabular-nums" }}>
         Reminders are checked every minute · next check in{" "}
         <strong>{formatCountdown(Math.ceil(now / cronEveryMs) * cronEveryMs - now)}</strong>
       </p>
       <p style={{ margin: "0 0 14px", fontSize: "12.5px", color: brand.muted }}>
-        Showing 50 leads per page · emails don't send immediately — a customer gets one email once
-        they've gone quiet for the interval set on the Settings page (default 2h), using their latest wishlist
-        snapshot · each row's "..." menu has Send Now (email) / Retry WhatsApp / Delete.
+        A customer gets one reminder after they've been quiet for the interval set in Settings (default 2h). Use a row's
+        "…" menu to send now, retry WhatsApp, or delete.
       </p>
 
       <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center", marginBottom: "14px" }}>
@@ -745,9 +740,6 @@ export default function WishlistLeadsPage() {
             Clear filters
           </button>
         )}
-        <span style={{ fontSize: "12.5px", color: brand.muted, marginLeft: "auto" }}>
-          Showing {sortedLeads.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, sortedLeads.length)} of {sortedLeads.length} {uniqueOnly ? "unique customers" : "syncs"}
-        </span>
       </div>
 
       <BulkActionsBar count={bulk.count} onDelete={handleBulkDelete} busy={bulkBusy} noun="lead" />

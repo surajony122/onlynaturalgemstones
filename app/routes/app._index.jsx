@@ -461,9 +461,6 @@ export default function Index() {
               <h2 style={{ fontSize: "15px", fontWeight: 700, margin: 0, color: brand.ink, display: "flex", alignItems: "center", gap: "8px" }}>
                 <Icon name="activity" size={16} color={brand.ink} /> Active Issues Right Now
               </h2>
-              <button onClick={handleRunDiagnostics} disabled={isChecking} style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "7px 12px", borderRadius: "8px", border: `1px solid ${brand.border}`, background: brand.panel, fontWeight: 600, fontSize: "12px", cursor: "pointer", color: brand.body }}>
-                {isChecking ? "Scanning…" : (<><Icon name="refresh" size={12} color="currentColor" /> Re-check</>)}
-              </button>
             </div>
             <p style={{ margin: "4px 0 20px", color: brand.muted, fontSize: "13px" }}>Pulled live from the same {checks.length} checks as the Diagnostics tab — not a fixed list.</p>
 

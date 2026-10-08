@@ -708,7 +708,6 @@ export default function WhatsAppEventsPage() {
   const { messages, summary, orderGroups } = useLoaderData();
   const revalidator = useRevalidator();
   const toast = useToast();
-  const isRefreshing = revalidator.state === "loading";
 
   const [searchText, setSearchText] = useState("");
   const [kindFilter, setKindFilter] = useState([]);
@@ -755,15 +754,10 @@ export default function WhatsAppEventsPage() {
     <PageIn>
       <PageHeader title={`Messages & order notifications`} description="Delivered and read status comes straight from Interakt's webhook." />
 
-      <button type="button" onClick={() => revalidator.revalidate()} disabled={isRefreshing} style={{ ...smallBtn, display: "inline-flex", alignItems: "center", gap: "6px", marginBottom: "12px" }}>
-        {isRefreshing ? "Refreshing…" : (<><Icon name="refresh" size={13} color="currentColor" /> Refresh</>)}
-      </button>
       <p style={{ margin: "0 0 14px", fontSize: "12.5px", color: brand.muted }}>
-        Real delivered/read status from Interakt's own webhook — Interakt has no API to fetch this, so nothing
-        shows here until the webhook is registered (see{" "}
-        <a href="/app/settings" style={{ color: brand.accent }}>Settings → Delivery/read tracking</a>) and a message
-        has actually gone through end to end. Each row's "..." menu has Retry (resend) and Delete (removes this log
-        entry only).
+        Nothing shows here until the Interakt webhook is set up (see{" "}
+        <a href="/app/settings" style={{ color: brand.accent }}>Settings → Delivery/read tracking</a>). A row's "…" menu can
+        retry the message or delete its log entry.
       </p>
 
       <div style={{ display: "flex", gap: "12px", marginBottom: "20px", flexWrap: "wrap" }}>
