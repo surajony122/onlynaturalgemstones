@@ -249,6 +249,7 @@ export async function getAttentionSummary() {
       whatsapp: orderFailures.length,
       returnsRefunds: returnRefundIssues.length,
       invoices: invoiceIssues.length,
+      abandoned: abandonedIssues.length,
     },
     healthy: items.length === 0,
   };

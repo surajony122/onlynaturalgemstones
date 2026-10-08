@@ -1006,6 +1006,10 @@ const fieldStyle = {
 const labelStyle = { fontWeight: 500, fontSize: "12.5px", color: brand.body };
 const hintStyle = { fontSize: "12px", color: brand.muted, marginTop: "-12px", marginBottom: "16px" };
 
+// For a note that is NOT directly under an input box (hintStyle pulls itself up 12px to tuck under one, which
+// makes it ride over a checkbox or heading above it).
+const abNote = { fontSize: "12px", color: brand.muted, margin: "4px 0 14px", lineHeight: 1.55 };
+
 const primaryBtn = { padding: "10px 18px", borderRadius: "9px", border: "none", background: brand.accent, color: "#fff", fontSize: "13px", fontWeight: 600, cursor: "pointer" };
 const secondaryBtn = { padding: "10px 18px", borderRadius: "9px", border: `1px solid ${brand.border}`, background: "#fff", color: brand.body, fontSize: "13px", fontWeight: 500, cursor: "pointer" };
 
@@ -1864,7 +1868,7 @@ export default function SettingsPage() {
           </TemplateCard>
 
           <TemplateCard icon={<Icon name="cart" size={15} color={brand.accent} />} title="Abandoned Checkout — Email">
-            <p style={{ ...hintStyle, marginTop: 0 }}>
+            <p style={{ ...abNote, marginTop: 0 }}>
               Emails a customer once when they leave a checkout without paying. It sends from your Gmail, the same as the other emails, and only to
               customers who agreed to email marketing. It never emails someone who has ordered since, has unsubscribed, or was already emailed in the
               last 24 hours.
@@ -1874,7 +1878,7 @@ export default function SettingsPage() {
               <input type="checkbox" checked={abEnabled} onChange={(e) => setAbEnabled(e.target.checked)} style={{ width: "16px", height: "16px" }} />
               Send abandoned checkout emails
             </label>
-            <p style={hintStyle}>
+            <p style={abNote}>
               Off until you switch it on and press Save. Once on, only checkouts started <strong>after</strong> that moment are emailed, so nothing
               goes to older checkouts.
             </p>
@@ -1946,7 +1950,7 @@ export default function SettingsPage() {
 
             <div style={{ marginTop: "18px", paddingTop: "14px", borderTop: `1px solid ${brand.divider}` }}>
               <div style={{ fontSize: "13px", fontWeight: 600, color: brand.ink, marginBottom: "4px" }}>Check who would get an email right now</div>
-              <p style={hintStyle}>Looks at your recent abandoned checkouts and shows what would happen to each one. It sends nothing and works even while this is switched off.</p>
+              <p style={abNote}>Looks at your recent abandoned checkouts and shows what would happen to each one. It sends nothing and works even while this is switched off. For the full list with the cart, total and a Send now button, open the <a href="/app/abandoned-checkouts" style={{ color: brand.accent, fontWeight: 600 }}>Abandoned Checkouts</a> page.</p>
               <button
                 type="button"
                 disabled={abDryRunFetcher.state !== "idle"}
@@ -1958,10 +1962,10 @@ export default function SettingsPage() {
               {abDryRunFetcher.data?.intent === "abandonedDryRun" && abDryRunFetcher.state === "idle" && (
                 <div style={{ marginTop: "10px", fontSize: "12.5px" }}>
                   {abDryRunFetcher.data.error ? (
-                    <p style={{ ...hintStyle, color: brand.danger }}>Could not check: {abDryRunFetcher.data.error}</p>
+                    <p style={{ ...abNote, color: brand.danger }}>Could not check: {abDryRunFetcher.data.error}</p>
                   ) : (
                     <>
-                      <p style={hintStyle}>
+                      <p style={abNote}>
                         Looked at {abDryRunFetcher.data.result.checked} recent checkout{abDryRunFetcher.data.result.checked === 1 ? "" : "s"}:{" "}
                         <strong>{abDryRunFetcher.data.result.items.filter((i) => i.decision === "send").length} would be emailed now</strong>,{" "}
                         {abDryRunFetcher.data.result.waiting} still waiting, {abDryRunFetcher.data.result.skipped} skipped.

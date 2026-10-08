@@ -198,7 +198,7 @@ export function readUnsubscribeLink(e, t) {
 // ---------------------------------------------------------------- reading checkouts from Shopify
 
 const CHECKOUTS_QUERY = `#graphql
-  query AbandonedCheckoutsForReminder($first: Int!, $query: String!) {
+  query AbandonedCheckoutsForReminder($first: Int!, $query: String) {
     abandonedCheckouts(first: $first, sortKey: CREATED_AT, reverse: true, query: $query) {
       nodes {
         id
@@ -272,13 +272,26 @@ export function normaliseCheckout(node) {
   };
 }
 
-async function fetchRecentCheckouts(admin, sinceDate) {
-  const res = await admin.graphql(CHECKOUTS_QUERY, { variables: { first: FETCH_LIMIT, query: `created_at:>='${sinceDate.toISOString()}'` } });
+async function runCheckoutsQuery(admin, first, query) {
+  const res = await admin.graphql(CHECKOUTS_QUERY, { variables: { first, query } });
   const json = await res.json();
   if (json.errors && json.errors.length) {
     throw new Error("Shopify said: " + json.errors.map((e) => e.message).join("; "));
   }
   return ((json.data && json.data.abandonedCheckouts && json.data.abandonedCheckouts.nodes) || []).map(normaliseCheckout);
+}
+
+/**
+ * Recent abandoned checkouts, newest first. Shopify's search filter is picky about date
+ * syntax, and a filter it does not understand quietly returns NOTHING. So: try a plain
+ * date filter, and if that finds nothing ask for the newest checkouts with no filter at all,
+ * then apply the exact cut-off here. A search quirk can then never hide every checkout.
+ */
+export async function fetchRecentCheckouts(admin, sinceDate, limit = FETCH_LIMIT) {
+  const sinceMs = sinceDate.getTime();
+  let list = await runCheckoutsQuery(admin, limit, `created_at:>=${sinceDate.toISOString().slice(0, 10)}`);
+  if (!list.length) list = await runCheckoutsQuery(admin, limit, null);
+  return list.filter((c) => !c.createdAt || new Date(c.createdAt).getTime() >= sinceMs);
 }
 
 // ---------------------------------------------------------------- the decision (pure, no I/O)
@@ -566,4 +579,177 @@ export function sampleCheckout(email, shopUrl = "https://onlynaturalgemstones.co
       { title: "Gemstone Customisation", variantTitle: "Pendant / Panchdhatu / PD02", quantity: 1, imageUrl: "" },
     ],
   };
+}
+
+// ---------------------------------------------------------------- the "Abandoned Checkouts" page
+
+/** Reads a saved log status ("OK: ...", "FAILED: ...", "skipped: ...") into a simple kind. */
+export function classifyLogStatus(status) {
+  const t = String(status || "");
+  if (/^OK/i.test(t)) return "sent";
+  if (/^(FAILED|threw)/i.test(t)) return "failed";
+  if (/^sending/i.test(t)) return "sending";
+  if (/^(skipped|dismissed)/i.test(t)) return "skipped";
+  return "unknown";
+}
+
+const cleanStatusText = (t) => String(t || "").replace(/^(skipped|dismissed by staff|FAILED|threw)\s*:?\s*/i, "").replace(/\s+/g, " ").trim();
+
+/**
+ * Everything the Abandoned Checkouts page needs: Shopify's own recent abandoned
+ * checkouts, each joined to what this app did about it (sent / failed / skipped
+ * and why), or, if nothing has been done yet, what the next sweep WILL do and why.
+ * Read-only: nothing is sent or saved here.
+ */
+export async function getAbandonedCheckoutView({ admin, shop, days = 7, now = new Date() }) {
+  const settings = await getAppSettings(shop);
+  const enabled = isEnabled(settings);
+  const delayMinutes = clampDelayMinutes(settings.abandonedCheckoutDelayMinutes);
+  const gmailReady = !!(settings.gmailUser && settings.gmailAppPassword);
+  const nowMs = now.getTime();
+  const windowDays = Math.min(30, Math.max(1, parseInt(days, 10) || 7));
+  const enabledSince = settings.abandonedCheckoutEnabledSince || null;
+  const enabledSinceMs = enabledSince ? new Date(enabledSince).getTime() : 0;
+  const maxAgeSince = nowMs - MAX_AGE_DAYS * 24 * HOUR_MS;
+  const sinceMs = enabled && enabledSinceMs ? Math.max(maxAgeSince, enabledSinceMs) : maxAgeSince;
+  const base = { enabled, gmailReady, delayMinutes, enabledSince, windowDays, rows: [], counts: {} };
+
+  let checkouts;
+  try {
+    checkouts = await fetchRecentCheckouts(admin, new Date(nowMs - windowDays * 24 * HOUR_MS), 100);
+  } catch (err) {
+    console.error("[abandonedCheckoutEmail] page could not read abandoned checkouts:", err);
+    return { ...base, error: String((err && err.message) || err) };
+  }
+
+  const ids = checkouts.map((c) => c.id);
+  const emails = [...new Set(checkouts.map((c) => c.email).filter(Boolean))];
+  const [logs, opts, recent] = await Promise.all([
+    ids.length ? prisma.abandonedCheckoutEmail.findMany({ where: { checkoutId: { in: ids } } }) : [],
+    emails.length ? prisma.abandonedCheckoutOptOut.findMany({ where: { email: { in: emails } }, select: { email: true } }) : [],
+    emails.length
+      ? prisma.abandonedCheckoutEmail.findMany({
+          where: { email: { in: emails }, status: { startsWith: "OK" }, notifiedAt: { gte: new Date(nowMs - PER_ADDRESS_COOLDOWN_HOURS * HOUR_MS) } },
+          select: { email: true },
+        })
+      : [],
+  ]);
+  const logById = new Map(logs.map((l) => [l.checkoutId, l]));
+  const optedOut = new Set(opts.map((o) => o.email));
+  const ctx = { nowMs, delayMs: delayMinutes * 60 * 1000, sinceMs, handledIds: new Set(), optedOut, recentlyEmailed: new Set(recent.map((r) => r.email)) };
+
+  const counts = { total: 0, sent: 0, failed: 0, "will-send": 0, off: 0, waiting: 0, skipped: 0, recovered: 0, sending: 0 };
+  const rows = checkouts.map((c) => {
+    const log = logById.get(c.id);
+    let state;
+    let reason = "";
+    if (c.completedAt) {
+      state = "recovered";
+      reason = "The customer completed this checkout.";
+    } else if (log && classifyLogStatus(log.status) === "sent") {
+      state = "sent";
+      reason = cleanStatusText(log.status) || "Email sent";
+    } else if (log && classifyLogStatus(log.status) === "failed") {
+      state = "failed";
+      reason = cleanStatusText(log.status);
+    } else if (log && classifyLogStatus(log.status) === "sending") {
+      state = "sending";
+      reason = "Sending now.";
+    } else if (log) {
+      state = "skipped";
+      reason = cleanStatusText(log.status);
+    } else {
+      const d = decideCheckout(c, ctx);
+      if (d.action === "send") {
+        state = enabled ? "will-send" : "off";
+        reason = enabled ? "Due. It goes out on the next check (within about 5 minutes)." : "Would be emailed, but abandoned checkout emails are switched off.";
+      } else if (d.action === "wait") {
+        state = "waiting";
+        reason = d.reason;
+      } else {
+        state = "skipped";
+        reason = d.reason;
+      }
+    }
+    counts.total += 1;
+    counts[state] = (counts[state] || 0) + 1;
+
+    const alreadySent = state === "sent";
+    const blocked =
+      c.completedAt || !c.items.length || !c.email || !c.consent || optedOut.has(c.email) || (c.lastOrderAt && new Date(c.lastOrderAt).getTime() >= new Date(c.createdAt).getTime());
+    return {
+      id: c.id,
+      name: c.name,
+      createdAt: c.createdAt,
+      customer: c.fullName,
+      email: c.email,
+      consent: c.consent,
+      items: c.items.map((i) => ({ title: i.title, quantity: i.quantity })),
+      total: formatMoney(c.total),
+      state,
+      reason,
+      sentAt: log && alreadySent ? new Date(log.notifiedAt).toISOString() : null,
+      logId: log ? log.id : null,
+      canSendNow: !alreadySent && !blocked && gmailReady,
+      canRetry: state === "failed" && !!(log && log.snapshot),
+      canSkip: ["will-send", "off", "waiting", "failed"].includes(state),
+    };
+  });
+
+  return { ...base, rows, counts };
+}
+
+/**
+ * Staff pressed "Send now" on one checkout: sends it immediately, ignoring the idle
+ * delay and the once-a-day limit, but still honouring the rules that protect the
+ * customer (marketing consent, not unsubscribed, hasn't ordered since, not completed).
+ */
+export async function sendCheckoutNow({ admin, shop, checkoutId }) {
+  const settings = await getAppSettings(shop);
+  if (!settings.gmailUser || !settings.gmailAppPassword) return { ok: false, status: "error: Gmail is not connected (Settings -> Connections)." };
+
+  const existing = await prisma.abandonedCheckoutEmail.findUnique({ where: { checkoutId } });
+  if (existing && classifyLogStatus(existing.status) === "sent") return { ok: false, status: "skipped: an email was already sent for this checkout." };
+
+  let checkouts;
+  try {
+    checkouts = await fetchRecentCheckouts(admin, new Date(Date.now() - 30 * 24 * HOUR_MS), 100);
+  } catch (err) {
+    return { ok: false, status: "error: " + String((err && err.message) || err) };
+  }
+  const c = checkouts.find((x) => x.id === checkoutId);
+  if (!c) return { ok: false, status: "error: Shopify no longer lists this checkout (it may be older than 30 days)." };
+  if (c.completedAt) return { ok: false, status: "skipped: the customer completed this checkout." };
+  if (!c.items.length) return { ok: false, status: "skipped: no items in the cart." };
+  if (!c.email) return { ok: false, status: "skipped: no email address on this checkout." };
+  if (!c.consent) return { ok: false, status: "skipped: the customer did not agree to email marketing." };
+  if (await prisma.abandonedCheckoutOptOut.findUnique({ where: { email: c.email } })) return { ok: false, status: "skipped: this address unsubscribed from cart reminders." };
+  if (c.lastOrderAt && new Date(c.lastOrderAt).getTime() >= new Date(c.createdAt).getTime()) return { ok: false, status: "skipped: the customer placed an order after this checkout." };
+
+  const data = { shop, checkoutId: c.id, checkoutName: c.name, email: c.email, customerName: c.fullName || null, status: "sending...", snapshot: c, checkoutCreatedAt: c.createdAt ? new Date(c.createdAt) : null, notifiedAt: new Date() };
+  const row = existing
+    ? await prisma.abandonedCheckoutEmail.update({ where: { id: existing.id }, data })
+    : await prisma.abandonedCheckoutEmail.create({ data });
+
+  let status;
+  try {
+    status = await sendAbandonedCheckoutEmail(admin, settings, c);
+  } catch (err) {
+    status = "threw: " + String((err && err.message) || err);
+  }
+  await prisma.abandonedCheckoutEmail.update({ where: { id: row.id }, data: { status, notifiedAt: new Date() } });
+  return { ok: classifyLogStatus(status) === "sent", status };
+}
+
+/** "Don't email this one": recorded as skipped, so the sweep never sends it. */
+export async function markDoNotEmail({ shop, checkoutId, checkoutName, email, customerName }) {
+  const status = "skipped: marked do-not-email by staff";
+  const existing = await prisma.abandonedCheckoutEmail.findUnique({ where: { checkoutId } });
+  if (existing) {
+    if (classifyLogStatus(existing.status) === "sent") return { ok: false, status: "An email was already sent for this checkout." };
+    await prisma.abandonedCheckoutEmail.update({ where: { id: existing.id }, data: { status, notifiedAt: new Date() } });
+  } else {
+    await prisma.abandonedCheckoutEmail.create({ data: { shop, checkoutId, checkoutName: checkoutName || null, email: email || null, customerName: customerName || null, status } });
+  }
+  return { ok: true, status };
 }
