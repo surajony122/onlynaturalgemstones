@@ -454,6 +454,7 @@ async function syncLeadToShopify(admin, data, birthDetails, recommendation, astr
     tob: data.tob || "",
     placeOfBirth: data.placeOfBirth || "",
     purpose: data.purpose || "",
+    bodyWeightKg: typeof data.bodyWeightKg === "number" ? data.bodyWeightKg : null,
     ascendant: (birthDetails && birthDetails.ascendant) || "",
     moonsign: (birthDetails && birthDetails.moonsign) || "",
     recommendations: recommendation || {},

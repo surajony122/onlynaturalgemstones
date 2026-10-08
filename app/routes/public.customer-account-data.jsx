@@ -25,7 +25,7 @@
  */
 import { authenticate } from "../shopify.server";
 import { adminClientFor } from "../utils/shopify-admin.server";
-import { buildCustomerAdminData, buildWishlistAndRecommendation, getCustomerEmail } from "../utils/customerAccountData.server";
+import { buildCustomerAdminData, buildWishlistAndRecommendation, buildWishlistAndRecommendationFromShopify } from "../utils/customerAccountData.server";
 
 export const loader = async ({ request }) => {
   // authenticate.public.customerAccount handles Shopify's CORS preflight
@@ -53,23 +53,35 @@ export const action = async ({ request }) => {
   // With no ?part (the original combined hub) the response is unchanged.
   const part = new URL(request.url).searchParams.get("part");
   if (part === "wishlist" || part === "recommendation") {
+    const wantWishlist = part === "wishlist";
     let lightAdmin;
-    let lightEmail = null;
+    let fromShopify = null;
     try {
       lightAdmin = await adminClientFor(shop);
-      lightEmail = await getCustomerEmail(lightAdmin, customerGid);
+      // Primary source: the customer's own Shopify record (wishlist tags /
+      // custom.astro_advice metafield), so the page matches what the
+      // merchant sees on that customer in Shopify admin.
+      fromShopify = await buildWishlistAndRecommendationFromShopify(lightAdmin, customerGid, shop);
     } catch (err) {
-      console.error("[public.customer-account-data] failed to resolve customer email:", err);
+      console.error("[public.customer-account-data] failed to read customer from Shopify:", err);
     }
-    if (!lightEmail) {
-      return cors(Response.json({ signedIn: true, wishlist: { items: [] }, recommendation: null }));
+    let result = wantWishlist ? fromShopify?.wishlist : fromShopify?.recommendation;
+    const hasData = wantWishlist ? !!(result && result.items && result.items.length) : !!result;
+    // Backup source: this app's own database (wishlist/gem-lead records),
+    // matched by the customer's email -- used only when Shopify has nothing.
+    if (!hasData && fromShopify?.email) {
+      try {
+        const db = await buildWishlistAndRecommendation(lightAdmin, shop, { email: fromShopify.email });
+        result = wantWishlist ? db.wishlist : db.recommendation;
+      } catch (err) {
+        console.error("[public.customer-account-data] database fallback failed:", err);
+      }
     }
-    const lightData = await buildWishlistAndRecommendation(lightAdmin, shop, { email: lightEmail });
     return cors(
       Response.json(
-        part === "wishlist"
-          ? { signedIn: true, wishlist: lightData.wishlist }
-          : { signedIn: true, recommendation: lightData.recommendation }
+        wantWishlist
+          ? { signedIn: true, wishlist: result || { items: [] } }
+          : { signedIn: true, recommendation: result || null }
       )
     );
   }

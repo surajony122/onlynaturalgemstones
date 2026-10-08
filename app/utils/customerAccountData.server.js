@@ -109,19 +109,120 @@ export async function buildCustomerAdminData(admin, customerGid) {
   return { email: customerNode?.email || null, profile, addresses, orders };
 }
 
-/** Lightweight lookup of just a customer's email (no orders/addresses) --
- * used by the single-purpose Wishlist and Recommendation account pages,
- * which only need to know WHO the customer is to find their leads. */
-export async function getCustomerEmail(admin, customerGid) {
+/** Reads a customer's wishlist and gem recommendation straight from their own
+ * Shopify record -- the same data the app writes there when a customer saves
+ * a wishlist or gets a recommendation:
+ *   - wishlist  -> customer tags of the form "wishlist:<product-handle>"
+ *   - recommendation -> the customer metafield custom.astro_advice (JSON)
+ * Used by the single-purpose "My Wishlist" and "My Gemstone Recommendation"
+ * account pages, so what a customer sees matches what the merchant sees on
+ * that customer in Shopify admin. Returns { email, wishlist, recommendation }
+ * where an empty wishlist is { items: [] } and a missing recommendation is
+ * null -- callers fall back to the app database in those cases. */
+export async function buildWishlistAndRecommendationFromShopify(admin, customerGid, shop) {
   const res = await admin.graphql(
     `#graphql
-    query CustomerEmail($id: ID!) {
-      customer(id: $id) { email }
+    query CustomerWishlistAndAdvice($id: ID!) {
+      customer(id: $id) {
+        email
+        tags
+        metafield(namespace: "custom", key: "astro_advice") { value }
+      }
     }`,
     { variables: { id: customerGid } }
   );
   const json = await res.json();
-  return json?.data?.customer?.email || null;
+  const customer = json?.data?.customer;
+  if (!customer) return { email: null, wishlist: { items: [] }, recommendation: null };
+
+  // --- Wishlist: tags -> products ---
+  const handles = (customer.tags || [])
+    .filter((t) => typeof t === "string" && t.startsWith("wishlist:"))
+    .map((t) => t.slice("wishlist:".length).trim())
+    .filter(Boolean);
+  const wishlist = { items: await getProductsForHandles(admin, handles) };
+
+  // --- Recommendation: metafield JSON -> same shape the database path returns ---
+  let recommendation = null;
+  const raw = customer.metafield && customer.metafield.value;
+  if (raw) {
+    try {
+      const meta = JSON.parse(raw);
+      const recs = (meta && meta.recommendations) || null;
+      if (recs && (recs.life || recs.benefic || recs.lucky)) {
+        // Older metafield values don't carry the customer's body weight (the
+        // results page needs it for the carat range), so fall back to their
+        // latest saved lead for just that one number.
+        let bodyWeightKg = typeof meta.bodyWeightKg === "number" ? meta.bodyWeightKg : undefined;
+        if (bodyWeightKg === undefined && customer.email && shop) {
+          try {
+            const lead = await prisma.astroLead.findFirst({
+              where: { shop, email: customer.email, calculationOk: true },
+              orderBy: { createdAt: "desc" },
+              select: { bodyWeightKg: true },
+            });
+            if (lead && typeof lead.bodyWeightKg === "number") bodyWeightKg = lead.bodyWeightKg;
+          } catch (err) {
+            console.error("[customerAccountData] body weight fallback lookup failed:", err);
+          }
+        }
+        const resultsUrl = buildResultsPageUrl(
+          { name: meta.name, dob: meta.dob, tob: meta.tob, placeOfBirth: meta.placeOfBirth, bodyWeightKg },
+          { ascendant: meta.ascendant, moonsign: meta.moonsign },
+          recs
+        );
+        const life = recs.life || null;
+        const benefic = recs.benefic || null;
+        const lucky = recs.lucky || null;
+        let productByCollection = {};
+        try {
+          productByCollection = await getFirstProductForCollections(admin, [life, benefic, lucky].map((st) => st && st.collection));
+        } catch (err) {
+          console.error("[customerAccountData] failed to resolve recommendation products:", err);
+        }
+        const withProduct = (stone) => (stone ? { ...stone, product: productByCollection[stone.collection] || null } : null);
+        recommendation = { life: withProduct(life), benefic: withProduct(benefic), lucky: withProduct(lucky), resultsUrl };
+      }
+    } catch (err) {
+      console.error("[customerAccountData] could not parse custom.astro_advice metafield:", err);
+    }
+  }
+
+  return { email: customer.email || null, wishlist, recommendation };
+}
+
+/** Title / image / price for a list of product handles (deleted or missing
+ * products are simply left out). Same display shape as the database path. */
+async function getProductsForHandles(admin, handles) {
+  const unique = [...new Set(handles)];
+  if (!unique.length) return [];
+  try {
+    const parts = unique.map(
+      (h, i) => `p${i}: productByHandle(handle: ${JSON.stringify(h)}) {
+        title
+        handle
+        featuredImage { url }
+        priceRangeV2 { minVariantPrice { amount } }
+      }`
+    );
+    const res = await admin.graphql(`#graphql
+      query WishlistTagProducts { ${parts.join(" ")} }`);
+    const json = await res.json();
+    return unique
+      .map((_, i) => json?.data?.["p" + i])
+      .filter(Boolean)
+      .map((p) => ({
+        handle: p.handle,
+        title: p.title,
+        image: p.featuredImage?.url || "",
+        price: p.priceRangeV2?.minVariantPrice?.amount
+          ? "₹" + Number(p.priceRangeV2.minVariantPrice.amount).toLocaleString("en-IN")
+          : null,
+      }));
+  } catch (err) {
+    console.error("[customerAccountData] getProductsForHandles failed:", err);
+    return [];
+  }
 }
 
 /** Reads this app's own wishlist/gem-recommendation leads (WishlistLead /
