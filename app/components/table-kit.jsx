@@ -257,6 +257,7 @@ export function PageHeader({ title, description, action, actions, stats, info })
       ? stats.map((st) => (
           <span
             key={st.label}
+            title={st.title}
             style={{
               display: "inline-flex",
               alignItems: "baseline",

@@ -1222,28 +1222,30 @@ export default function SettingsPage() {
 
   return (
     <PageIn>
-      <PageHeader title="Settings" description="Connect and manage every external service this app uses." />
-
-      <Card style={{ marginBottom: "20px" }}>
-        <p style={{ fontSize: "13px", color: brand.body, margin: "0 0 10px" }}>
-          Live status, checked just now — the same checks the <a href="/app/server-health" style={{ color: brand.accent }}>Server</a> page runs. Reload
-          this page any time to re-check.
-        </p>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "7px", padding: "6px 12px", background: brand.panel, border: `1px solid ${brand.divider}`, borderRadius: "10px" }}>
-            <Icon name="mail" size={14} color={brand.accent} /> <span style={{ fontSize: "12.5px", fontWeight: 500 }}>Gmail</span> <StatusBadge status={data.serviceStatus.gmail} />
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "7px", padding: "6px 12px", background: brand.panel, border: `1px solid ${brand.divider}`, borderRadius: "10px" }}>
-            <Icon name="message" size={14} color={brand.success} /> <span style={{ fontSize: "12.5px", fontWeight: 500 }}>WhatsApp</span> <StatusBadge status={data.serviceStatus.interakt} />
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "7px", padding: "6px 12px", background: brand.panel, border: `1px solid ${brand.divider}`, borderRadius: "10px" }}>
-            <Icon name="sheets" size={14} color={brand.success} /> <span style={{ fontSize: "12.5px", fontWeight: 500 }}>Google Sheets</span> <StatusBadge status={data.serviceStatus.sheets} />
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "7px", padding: "6px 12px", background: brand.panel, border: `1px solid ${brand.divider}`, borderRadius: "10px" }}>
-            <Icon name="pin" size={14} color={brand.danger} /> <span style={{ fontSize: "12.5px", fontWeight: 500 }}>Google Places</span> <StatusBadge status={data.serviceStatus.places} />
-          </div>
-        </div>
-      </Card>
+      <PageHeader
+        title="Settings"
+        description="Connect and manage every external service this app uses."
+        stats={[
+          ["Gmail", data.serviceStatus.gmail],
+          ["WhatsApp", data.serviceStatus.interakt],
+          ["Google Sheets", data.serviceStatus.sheets],
+          ["Google Places", data.serviceStatus.places],
+        ]
+          .filter(([, st]) => st)
+          .map(([label, st]) => ({
+            label,
+            value: STATUS_STYLE[st.ok === true ? "true" : st.ok === false ? "false" : st.ok === "warn" ? "warn" : "none"].label,
+            tone: st.ok === true ? "success" : st.ok === false ? "danger" : st.ok === "warn" ? "accent" : undefined,
+            title: st.detail,
+          }))}
+        info={
+          <p style={{ margin: 0 }}>
+            Live status, checked just now. These are the same checks the{" "}
+            <a href="/app/server-health" style={{ color: brand.accent }}>System Health</a> page runs. Reload this page any time to
+            re-check. Hover a status to see why.
+          </p>
+        }
+      />
 
       <div>
         <GroupBanner tone="info" icon="clock">Message behavior — safe to change any time</GroupBanner>
@@ -1256,7 +1258,7 @@ export default function SettingsPage() {
             message once they've gone quiet, not one per add. The app checks every minute, so messages go out within
             about a minute of the wait ending. The{" "}
             <a href="/app/wishlist-leads" style={{ color: brand.accent }}>Wishlist Leads</a> page shows a countdown for
-            each waiting customer, and its "Send Due Emails Now" button runs a check immediately.
+            each waiting customer.
           </Explain>
           <label style={labelStyle} htmlFor="wishlistInterval">Send the reminder after</label>
           <select id="wishlistInterval" style={{ ...fieldStyle, maxWidth: "240px" }} value={wishlistInterval} onChange={(e) => setWishlistInterval(e.target.value)}>
