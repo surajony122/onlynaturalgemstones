@@ -10,6 +10,7 @@ api_version = "2026-07"
 [[extensions]]
 name = "customer-account-recommendation"
 handle = "customer-account-recommendation"
+uid = "f85a0cca-409f-f0b8-8e66-687b0ad8856c3804f5ef"
 type = "ui_extension"
 
 [[extensions.targeting]]
