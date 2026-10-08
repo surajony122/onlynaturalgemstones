@@ -643,7 +643,7 @@ export async function sendWhatsAppForLead(admin, settings, lead) {
   // customer actually asked, not when this particular message went out.
   const submittedOn = formatSubmittedOn(lead.createdAt);
 
-  return sendGemRecommendationWhatsApp(settings, data, lead.recommendation, lead.trackingId, submittedOn, FALLBACK_LOGO_URL, lead.shop);
+  return sendGemRecommendationWhatsApp(settings, data, lead.recommendation, lead.trackingId, submittedOn, null, lead.shop);
 }
 
 // Documented once, here, so the Settings page's "available placeholders"
@@ -1400,11 +1400,11 @@ const PLANET_SYMBOL = {
 
 // A distinct soft accent tint per recommendation type, so the three
 // cards read as visually distinct at a glance instead of three identical
-// gray boxes — Life warm/amber, Benefic sage green, Lucky soft blue.
+// gray boxes — Life warm/amber, Benefic soft blue, Lucky sage green.
 const TYPE_ACCENT = {
   Life: { bg: "#fdf1e7", text: "#c8712f" },
-  Benefic: { bg: "#eef4ec", text: "#5c8c5c" },
-  Lucky: { bg: "#eaf1f8", text: "#4a6fa5" },
+  Benefic: { bg: "#eaf1f8", text: "#4a6fa5" },
+  Lucky: { bg: "#eef4ec", text: "#5c8c5c" },
 };
 
 function detailChip(icon, value) {
