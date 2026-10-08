@@ -11,43 +11,43 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, NavLink, useLocation, useRevalidator } from "react-router";
 import { Icon, brand } from "./table-kit";
 
-// Every real destination in the app, grouped exactly like the ONG
-// Controls design pass — same 7 pages that used to live in the flat tab
-// bar, plus the template's own demo page folded into System (kept
-// reachable rather than silently dropped, just deprioritized).
+// Every real destination in the app, grouped by what the person is doing:
+// setting the store up, following customers, following orders and messages,
+// and keeping the system itself healthy. (The template's demo "Additional
+// page" was removed -- it was an empty placeholder.)
 export const NAV_GROUPS = [
   {
     label: "Home",
     items: [{ id: "overview", href: "/app/overview", label: "Overview", icon: "grid", end: true }],
   },
   {
-    label: "Catalog",
-    items: [{ id: "pricing", href: "/app", label: "Jewelry Pricing", icon: "tag", end: true }],
+    label: "Store setup",
+    items: [
+      { id: "pricing", href: "/app", label: "Jewelry Pricing", icon: "tag", end: true },
+      { id: "gemdetails", href: "/app/gemstone-details", label: "Gemstone details", icon: "diamond" },
+      { id: "currency", href: "/app/currency-countries", label: "Currency by country", icon: "tag" },
+    ],
   },
   {
-    label: "Leads",
+    label: "Customers & leads",
     items: [
       { id: "astro", href: "/app/astro-leads", label: "Astro Leads", icon: "users", badgeKey: "astro" },
-      { id: "gemdetails", href: "/app/gemstone-details", label: "Gemstone details", icon: "diamond" },
       { id: "wishlist", href: "/app/wishlist-leads", label: "Wishlist Leads", icon: "heart", badgeKey: "wishlist" },
     ],
   },
   {
-    label: "Messaging",
-    items: [{ id: "whatsapp", href: "/app/whatsapp-events", label: "Messages & Orders", icon: "message", badgeKey: "whatsapp" }],
-  },
-  {
-    label: "Orders",
-    items: [{ id: "invoices", href: "/app/invoices", label: "GST Invoices", icon: "tag", badgeKey: "invoices" }],
+    label: "Orders & messages",
+    items: [
+      { id: "whatsapp", href: "/app/whatsapp-events", label: "Messages & Orders", icon: "message", badgeKey: "whatsapp" },
+      { id: "invoices", href: "/app/invoices", label: "GST Invoices", icon: "tag", badgeKey: "invoices" },
+    ],
   },
   {
     label: "System",
     items: [
       { id: "server", href: "/app/server-health", label: "System Health", icon: "server" },
-      { id: "currency", href: "/app/currency-countries", label: "Currency by country", icon: "tag" },
       { id: "settings", href: "/app/settings", label: "Settings", icon: "gear" },
       { id: "documentation", href: "/app/documentation", label: "Documentation", icon: "file-text" },
-      { id: "additional", href: "/app/additional", label: "Additional page", icon: "package" },
     ],
   },
 ];

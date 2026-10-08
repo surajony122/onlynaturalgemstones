@@ -195,65 +195,44 @@ export default function OverviewPage() {
         <SectionCard
           icon="tag"
           iconColor={brand.accent}
-          title="Jewelry Pricing"
-          description="Daily metal rates and the customisation variants they price."
-          links={[{ href: "/app", label: "Open pricing" }]}
+          title="Store setup"
+          description="What customers see on the storefront: prices, stone details and currencies."
+          links={[
+            { href: "/app", label: "Jewelry Pricing (metal rates and customisation prices)" },
+            { href: "/app/gemstone-details", label: "Gemstone details (per-stone metal, finger, day, mantra)" },
+            { href: "/app/currency-countries", label: "Currency by country" },
+          ]}
         />
         <SectionCard
           icon="users"
           iconColor={brand.accent}
-          title="Leads"
+          title="Customers & leads"
           description="Everyone who filled the gem recommendation form or saved a wishlist item."
           links={[
             { href: "/app/astro-leads", label: "Gem recommendation leads" },
             { href: "/app/wishlist-leads", label: "Wishlist leads" },
-            { href: "/app/gemstone-details", label: "Gemstone details (per-stone metal, finger, day, mantra)" },
           ]}
         />
         <SectionCard
           icon="message"
           iconColor={brand.success}
-          title="Messages"
-          description="Every WhatsApp message sent, whether it was delivered or read."
-          links={[{ href: "/app/whatsapp-events", label: "Message history" }]}
-        />
-        <SectionCard
-          icon="package"
-          iconColor={brand.accent}
-          title="Orders"
-          description="GST tax invoices."
-          links={[{ href: "/app/invoices", label: "GST Invoices" }]}
-        />
-        <SectionCard
-          icon="tag"
-          iconColor={brand.accent}
-          title="Store tools"
-          description="Prices shown by country, and the additional page."
+          title="Orders & messages"
+          description="WhatsApp messages sent for orders, refunds and returns, and GST tax invoices."
           links={[
-            { href: "/app/currency-countries", label: "Currency by country" },
-            { href: "/app/additional", label: "Additional page" },
+            { href: "/app/whatsapp-events", label: "Message history" },
+            { href: "/app/invoices", label: "GST Invoices" },
           ]}
         />
         <SectionCard
           icon="gear"
           iconColor={brand.muted}
-          title="Settings"
-          description="Email, WhatsApp templates, Google Sheets, order trigger tag."
-          links={[{ href: "/app/settings", label: "Open settings" }]}
-        />
-        <SectionCard
-          icon="server"
-          iconColor={brand.danger}
-          title="System health"
-          description="Checks every connection this app depends on."
-          links={[{ href: "/app/server-health", label: "View diagnostics" }]}
-        />
-        <SectionCard
-          icon="file-text"
-          iconColor={brand.muted}
-          title="Documentation"
-          description="Every page and Settings section explained, plus FAQ."
-          links={[{ href: "/app/documentation", label: "Open documentation" }]}
+          title="System"
+          description="Connections, message templates, and a guide to every page."
+          links={[
+            { href: "/app/settings", label: "Settings (email, WhatsApp templates, Google Sheets)" },
+            { href: "/app/server-health", label: "System health" },
+            { href: "/app/documentation", label: "Documentation" },
+          ]}
         />
       </div>
     </PageIn>

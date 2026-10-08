@@ -13,7 +13,7 @@ import { brand, Icon, Card, PageHeader, PageIn, tableWrapStyle, tableStyle, thSt
 const hintStyle = { fontSize: "13px", color: brand.body, lineHeight: 1.6, margin: "0 0 10px" };
 
 // One collapsible group of pages, matching the sidebar's own grouping
-// (Home / Catalog / Leads / Messaging / Orders / System) — same
+// (Home / Store setup / Customers & leads / Orders & messages / System) — same
 // TemplateCard shape used throughout Settings, so this reads as one more
 // section of the same app rather than a different design.
 function GroupCard({ icon, title, navPath, children, defaultOpen = true }) {
@@ -119,7 +119,7 @@ export default function DocumentationPage() {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "12px", marginBottom: "20px" }}>
         {[
-          ["9", "Pages in the app"],
+          ["11", "Pages in the app"],
           ["11", "Editable message templates"],
           ["2", "Channels — Email & WhatsApp"],
         ].map(([n, label]) => (
@@ -142,7 +142,7 @@ export default function DocumentationPage() {
         />
       </GroupCard>
 
-      <GroupCard icon="tag" title="Catalog" navPath="Sidebar → Catalog">
+      <GroupCard icon="tag" title="Store setup" navPath="Sidebar → Store setup">
         <PageEntry
           title="Jewelry Pricing"
           route="/app"
@@ -154,9 +154,30 @@ export default function DocumentationPage() {
           ]}
           tags={["Core pricing engine", "Rebuild on demand only"]}
         />
+        <PageEntry
+          title="Gemstone details"
+          route="/app/gemstone-details"
+          purpose="The per-stone facts shown on every gem recommendation: metal, finger, day, mantra, substitute stone and tagline."
+          points={[
+            "Add a stone, edit its details, or remove it. A field left blank means “use the built-in default,” not “leave unchanged.”",
+            "What you save here appears in the recommendation email, the WhatsApp message and the storefront result page.",
+          ]}
+          tags={["Edits what customers read", "Blank = built-in default"]}
+        />
+        <PageEntry
+          title="Currency by country"
+          route="/app/currency-countries"
+          purpose="Chooses which countries the storefront's currency selector offers and which currency each one shows."
+          points={[
+            "Countries are grouped by continent; turn each on or off and pick its currency.",
+            "Saving keeps your choices in the app. Publish writes them into the chosen theme so the storefront can read them.",
+            "Prices are converted for display only. Checkout always stays in INR.",
+          ]}
+          tags={["Display only", "Publish to a theme"]}
+        />
       </GroupCard>
 
-      <GroupCard icon="users" title="Leads" navPath="Sidebar → Leads">
+      <GroupCard icon="users" title="Customers & leads" navPath="Sidebar → Customers & leads">
         <PageEntry
           title="Astro Leads"
           route="/app/astro-leads"
@@ -181,16 +202,13 @@ export default function DocumentationPage() {
         />
       </GroupCard>
 
-      <GroupCard icon="message" title="Messaging" navPath="Sidebar → Messaging">
+      <GroupCard icon="message" title="Orders & messages" navPath="Sidebar → Orders & messages">
         <PageEntry
           title="Messages & Orders"
           route="/app/whatsapp-events"
           purpose="A log of every WhatsApp message this app has sent tied to a real order, grouped by order."
           points={["Useful for confirming a specific customer actually received their Order Processing message, or for spotting a pattern of failures pointing at a misconfigured template."]}
         />
-      </GroupCard>
-
-      <GroupCard icon="package" title="Orders" navPath="Sidebar → Orders">
         <PageEntry
           title="GST Invoices"
           route="/app/invoices"
