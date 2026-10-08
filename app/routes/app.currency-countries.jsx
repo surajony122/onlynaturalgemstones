@@ -162,31 +162,37 @@ export default function CurrencyCountriesPage() {
     <PageIn>
       <PageHeader
         title="Currency by country"
-        description="Choose which countries the storefront currency selector serves and which currency each country gets. Prices are converted from INR for display; checkout is always charged in INR."
+        description="Which countries the store's currency selector serves, and in what currency."
+        info={
+          <>
+            <p style={{ margin: "0 0 8px" }}>
+              Choose which countries the storefront currency selector serves and which currency each country gets. Prices are converted
+              from INR for display; checkout is always charged in INR.
+            </p>
+            <p style={{ margin: "0 0 8px" }}>
+              A visitor's country is detected from their IP. If that country is <strong>on</strong> here and has a currency, they're
+              switched to it on their first visit. A country that's <strong>off</strong> (or has no currency) is left on INR. The
+              dropdown on the website lists INR plus every currency used by a country that's on ({totals.countries} countries,{" "}
+              {totals.currencies} currencies now). Exchange rates update automatically.
+            </p>
+            <p style={{ margin: 0 }}>
+              Publishing writes one small file to the chosen theme. Try it on your TEST theme first, then publish to the live theme.
+            </p>
+          </>
+        }
+        actions={
+          <>
+            <button type="button" style={btn} disabled={busy} onClick={() => submit("save")}>Save</button>
+            <select style={{ ...selectStyle, maxWidth: "260px" }} value={themeId} onChange={(e) => setThemeId(e.target.value)} aria-label="Theme to publish to">
+              {themes.length === 0 && <option value="">No themes found</option>}
+              {themes.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.role === "MAIN" ? "LIVE" : t.role.toLowerCase()})</option>)}
+            </select>
+            <button type="button" style={btnPrimary} disabled={busy || !themeId} onClick={() => submit("publish")}>
+              {busy ? "Working…" : targetTheme?.role === "MAIN" ? "Save & publish to LIVE" : "Save & publish"}
+            </button>
+          </>
+        }
       />
-
-      <Card style={{ marginBottom: "14px" }}>
-        <p style={{ margin: "0 0 10px", fontSize: "12.5px", color: brand.body, lineHeight: 1.5 }}>
-          A visitor's country is detected from their IP. If that country is <strong>on</strong> here and has a currency, they're
-          switched to it on their first visit. A country that's <strong>off</strong> (or has no currency) is left on INR. The
-          dropdown on the website lists INR plus every currency used by a country that's on ({totals.countries} countries, {totals.currencies} currencies now).
-          Exchange rates update automatically.
-        </p>
-        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
-          <button type="button" style={btn} disabled={busy} onClick={() => submit("save")}>Save</button>
-          <span style={{ fontSize: "12.5px", color: brand.muted }}>or save and publish to</span>
-          <select style={{ ...selectStyle, maxWidth: "300px" }} value={themeId} onChange={(e) => setThemeId(e.target.value)} aria-label="Theme to publish to">
-            {themes.length === 0 && <option value="">No themes found</option>}
-            {themes.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.role === "MAIN" ? "LIVE" : t.role.toLowerCase()})</option>)}
-          </select>
-          <button type="button" style={btnPrimary} disabled={busy || !themeId} onClick={() => submit("publish")}>
-            {busy ? "Working…" : targetTheme?.role === "MAIN" ? "Save & publish to LIVE" : "Save & publish"}
-          </button>
-        </div>
-        <p style={{ margin: "10px 0 0", fontSize: "12px", color: brand.muted }}>
-          Publishing writes one small file to the chosen theme. Try it on your TEST theme first, then publish to the live theme.
-        </p>
-      </Card>
 
       <Card style={{ marginBottom: "14px" }}>
         <h2 style={{ fontSize: "14px", fontWeight: 700, margin: "0 0 8px", color: brand.ink }}>Is the website up to date?</h2>

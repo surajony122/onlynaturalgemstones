@@ -752,20 +752,25 @@ export default function WhatsAppEventsPage() {
 
   return (
     <PageIn>
-      <PageHeader title={`Messages & order notifications`} description="Delivered and read status comes straight from Interakt's webhook." />
-
-      <p style={{ margin: "0 0 14px", fontSize: "12.5px", color: brand.muted }}>
-        Nothing shows here until the Interakt webhook is set up (see{" "}
-        <a href="/app/settings" style={{ color: brand.accent }}>Settings → Delivery/read tracking</a>). A row's "…" menu can
-        retry the message or delete its log entry.
-      </p>
-
-      <div style={{ display: "flex", gap: "12px", marginBottom: "20px", flexWrap: "wrap" }}>
-        <StatTile label="Total messages" value={summary.total} />
-        <StatTile label="Delivered" value={summary.delivered} color={brand.success} />
-        <StatTile label="Read" value={summary.read} color={brand.accent} />
-        <StatTile label="Failed" value={summary.failed} color={brand.danger} />
-      </div>
+      <PageHeader
+        title="Messages & order notifications"
+        description="Delivered and read status for every WhatsApp message."
+        stats={[
+          { label: "Total", value: summary.total },
+          { label: "Delivered", value: summary.delivered, tone: "success" },
+          { label: "Read", value: summary.read, tone: "accent" },
+          { label: "Failed", value: summary.failed, tone: "danger" },
+        ]}
+        info={
+          <>
+            <p style={{ margin: "0 0 8px" }}>Delivered and read status comes straight from Interakt's webhook.</p>
+            <p style={{ margin: "0 0 8px" }}>
+              Nothing shows here until the webhook is set up (see <a href="/app/settings" style={{ color: brand.accent }}>Settings → Delivery/read tracking</a>).
+            </p>
+            <p style={{ margin: 0 }}>A row's "…" menu can retry the message or delete its log entry.</p>
+          </>
+        }
+      />
 
       <OrderProcessingSection orderGroups={orderGroups} />
 

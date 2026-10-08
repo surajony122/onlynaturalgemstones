@@ -199,7 +199,16 @@ export default function InvoicesPage() {
 
   return (
     <PageIn>
-      <PageHeader title="GST Invoices" description="Every recent order, with GST already computed — click Send to email a customer their invoice PDF, or Download PDF to save it yourself. Nothing sends automatically." />
+      <PageHeader
+        title="GST Invoices"
+        description="Every recent order, with GST already computed."
+        stats={[{ label: "Orders shown", value: data.rows.length }]}
+        info={
+          <p style={{ margin: 0 }}>
+            Click Send to email a customer their invoice PDF, or Download PDF to save it yourself. Nothing sends automatically.
+          </p>
+        }
+      />
 
       {!data.gstConfigured && (
         <Card style={{ marginBottom: "16px", background: "#fff8ec", borderColor: "#e8c98a" }}>

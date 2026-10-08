@@ -770,9 +770,14 @@ export default function AstroLeadsPage() {
   return (
     <PageIn>
       <PageHeader
-        title={`Astro Advice leads (${leads.length})`}
+        title="Astro Advice leads"
         description="Everyone who submitted the gem recommendation form."
-        action={
+        stats={[
+          { label: "Total leads", value: leads.length },
+          { label: "Email sent", value: leads.filter((l) => String(l.emailSendStatus || "").startsWith("OK")).length, tone: "success" },
+          { label: "WhatsApp sent", value: leads.filter((l) => String(l.whatsappSendStatus || "").startsWith("OK")).length, tone: "success" },
+        ]}
+        actions={
           <button
             type="button"
             onClick={() => exportAstroLeadsToCsv(filteredLeads)}
@@ -796,14 +801,6 @@ export default function AstroLeadsPage() {
       />
 
       <WhatsAppQueueSection whatsappQueue={whatsappQueue} />
-
-      <p style={{ margin: "0 0 14px", fontSize: "12.5px", color: brand.muted }}>
-        "Opened" is approximate (some mail clients block tracking images); "Clicked" is exact — hover it to see which link.{" "}
-        <a href="https://admin.shopify.com/store/0f9yd0-jr/apps/flow" target="_blank" rel="noreferrer" style={{ color: brand.accent }}>
-          Open Shopify Flow
-        </a>
-        .
-      </p>
 
       <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center", marginBottom: "14px" }}>
         <input type="text" value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Search name, email, phone, stone, or SKU…" style={inputStyle} />

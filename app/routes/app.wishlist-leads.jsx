@@ -676,10 +676,25 @@ export default function WishlistLeadsPage() {
   return (
     <PageIn>
       <PageHeader
-        title={`Wishlist leads (${leads.length})`}
+        title="Wishlist leads"
         description="Customers with saved wishlist items, and their reminder email status."
-        action={
-          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+        stats={[
+          { label: "Total", value: leads.length },
+          { label: "Customers", value: new Set(leads.map((l) => String(l.email || l.phone || l.id).toLowerCase())).size },
+          { label: "Emailed", value: leads.filter((l) => l.emailStatus && l.emailStatus.sent > 0).length, tone: "success" },
+          { label: "Next check in", value: formatCountdown(Math.ceil(now / cronEveryMs) * cronEveryMs - now) },
+        ]}
+        info={
+          <>
+            <p style={{ margin: "0 0 8px" }}>Reminders are checked every minute.</p>
+            <p style={{ margin: 0 }}>
+              A customer gets one reminder after they've been quiet for the interval set in Settings (default 2h). Use a row's "…"
+              menu to send now, retry WhatsApp, or delete.
+            </p>
+          </>
+        }
+        actions={
+          <>
             <button
               type="button"
               onClick={() => exportWishlistLeadsToCsv(filteredLeads)}
@@ -699,18 +714,9 @@ export default function WishlistLeadsPage() {
             >
               <Icon name="sheets" size={15} color={brand.success} /> Export to Sheet (CSV)
             </button>
-          </div>
+          </>
         }
       />
-
-      <p style={{ margin: "0 0 8px", fontSize: "12.5px", color: brand.ink, fontVariantNumeric: "tabular-nums" }}>
-        Reminders are checked every minute · next check in{" "}
-        <strong>{formatCountdown(Math.ceil(now / cronEveryMs) * cronEveryMs - now)}</strong>
-      </p>
-      <p style={{ margin: "0 0 14px", fontSize: "12.5px", color: brand.muted }}>
-        A customer gets one reminder after they've been quiet for the interval set in Settings (default 2h). Use a row's
-        "…" menu to send now, retry WhatsApp, or delete.
-      </p>
 
       <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center", marginBottom: "14px" }}>
         <input type="text" value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Search email, phone, SKU, or item…" style={inputStyle} />

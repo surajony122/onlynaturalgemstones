@@ -118,19 +118,26 @@ export default function GemstoneDetailsPage() {
     <PageIn>
       <PageHeader
         title="Gemstone details"
-        description="Set the metal, finger, day, mantra, substitute and tagline shown for each stone on the recommendation result page, in the emailed result link, and in the email and WhatsApp messages."
+        description="Per-stone details shown in recommendations and messages."
+        info={
+          <>
+            <p style={{ margin: "0 0 8px" }}>
+              Set the metal, finger, day, mantra, substitute and tagline shown for each stone on the recommendation result page, in the
+              emailed result link, and in the email and WhatsApp messages.
+            </p>
+            <p style={{ margin: 0 }}>
+              Whatever you type here replaces the automatic value for that stone. <strong>Leave a field blank</strong> to keep the
+              automatic one (shown in grey). Weight is not set here; it still comes from the customer&rsquo;s chart. Changes apply to
+              new recommendations from the moment you save.
+            </p>
+          </>
+        }
+        actions={
+          <button type="button" style={btnPrimary} disabled={busy} onClick={save}>
+            {busy ? "Saving…" : "Save details"}
+          </button>
+        }
       />
-
-      <Card style={{ marginBottom: "14px" }}>
-        <p style={{ margin: "0 0 12px", fontSize: "12.5px", color: brand.body, lineHeight: 1.55 }}>
-          Whatever you type here replaces the automatic value for that stone. <strong>Leave a field blank</strong> to keep the
-          automatic one (shown in grey). Weight is not set here; it still comes from the customer&rsquo;s chart. Changes apply to
-          new recommendations from the moment you save.
-        </p>
-        <button type="button" style={btnPrimary} disabled={busy} onClick={save}>
-          {busy ? "Saving…" : "Save details"}
-        </button>
-      </Card>
 
       <Card style={{ marginBottom: "14px" }}>
         <div style={{ fontSize: "13.5px", fontWeight: 600, color: brand.ink, marginBottom: "8px" }}>Add a stone</div>

@@ -156,14 +156,125 @@ export function Card({ children, hover, padding = "18px 20px", style }) {
 // of Shopify's own <s-page heading="…">, now that the app shell (sidebar
 // + breadcrumb header) owns the page chrome instead of App Bridge's
 // Polaris-style page wrapper.
-export function PageHeader({ title, description, action }) {
+// A small "i" button that opens a short explanation. Anything a page used to
+// explain in grey paragraphs under its title goes in here instead, so the page
+// header stays one tidy row.
+export function InfoTip({ children, label = "More info" }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
   return (
-    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "20px", flexWrap: "wrap", marginBottom: "22px" }}>
-      <div>
-        <h1 style={{ margin: "0 0 5px", fontSize: "24px", fontWeight: 700, letterSpacing: "-0.02em", color: brand.ink }}>{title}</h1>
-        {description && <p style={{ margin: 0, fontSize: "14px", color: brand.muted }}>{description}</p>}
+    <span ref={ref} style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+      <button
+        type="button"
+        aria-label={label}
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          width: "22px",
+          height: "22px",
+          borderRadius: "50%",
+          border: `1px solid ${open ? brand.accent : brand.border}`,
+          background: "#fff",
+          color: open ? brand.accent : brand.muted,
+          fontSize: "12px",
+          fontWeight: 700,
+          fontFamily: "Georgia, 'Times New Roman', serif",
+          fontStyle: "italic",
+          lineHeight: 1,
+          cursor: "pointer",
+          padding: 0,
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        i
+      </button>
+      {open && (
+        <div
+          role="dialog"
+          style={{
+            position: "absolute",
+            top: "calc(100% + 8px)",
+            left: 0,
+            zIndex: 40,
+            width: "min(380px, 80vw)",
+            background: "#fff",
+            border: `1px solid ${brand.border}`,
+            borderRadius: "10px",
+            boxShadow: brand.shadow,
+            padding: "12px 14px",
+            fontSize: "12.5px",
+            lineHeight: 1.55,
+            color: brand.body,
+            fontWeight: 400,
+          }}
+        >
+          {children}
+        </div>
+      )}
+    </span>
+  );
+}
+
+// One consistent page header: title (+ an "i" button for any explanation),
+// a one-line description, real counts as small chips, and every page action
+// together in a single bar on the right. `action` is kept for older callers.
+export function PageHeader({ title, description, action, actions, stats, info }) {
+  const bar = actions || action;
+  const toneColor = (tone) =>
+    tone === "success" ? brand.success : tone === "danger" ? brand.danger : tone === "accent" ? brand.accent : brand.ink;
+  return (
+    <div style={{ marginBottom: "22px" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "20px", flexWrap: "wrap" }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "5px" }}>
+            <h1 style={{ margin: 0, fontSize: "24px", fontWeight: 700, letterSpacing: "-0.02em", color: brand.ink }}>{title}</h1>
+            {info && <InfoTip>{info}</InfoTip>}
+          </div>
+          {description && <p style={{ margin: 0, fontSize: "14px", color: brand.muted }}>{description}</p>}
+        </div>
+        {bar && <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>{bar}</div>}
       </div>
-      {action}
+      {stats && stats.length > 0 && (
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "14px" }}>
+          {stats.map((st) => (
+            <span
+              key={st.label}
+              style={{
+                display: "inline-flex",
+                alignItems: "baseline",
+                gap: "6px",
+                padding: "5px 12px",
+                borderRadius: "999px",
+                border: `1px solid ${brand.border}`,
+                background: "#fff",
+                fontSize: "12.5px",
+                color: brand.muted,
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              {st.label}
+              <strong style={{ fontSize: "13.5px", color: toneColor(st.tone) }}>{st.value}</strong>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
