@@ -193,7 +193,7 @@ export default function OverviewPage() {
       </h2>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "14px" }}>
         <SectionCard
-          icon="tag"
+          icon="diamond"
           iconColor={brand.accent}
           title="Store setup"
           description="What customers see on the storefront: prices, stone details and currencies."
@@ -214,7 +214,7 @@ export default function OverviewPage() {
           ]}
         />
         <SectionCard
-          icon="message"
+          icon="package"
           iconColor={brand.success}
           title="Orders & messages"
           description="WhatsApp messages sent for orders, refunds and returns, and GST tax invoices."

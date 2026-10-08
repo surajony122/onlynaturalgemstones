@@ -142,7 +142,7 @@ export default function DocumentationPage() {
         />
       </GroupCard>
 
-      <GroupCard icon="tag" title="Store setup" navPath="Sidebar → Store setup">
+      <GroupCard icon="diamond" title="Store setup" navPath="Sidebar → Store setup">
         <PageEntry
           title="Jewelry Pricing"
           route="/app"
@@ -202,7 +202,7 @@ export default function DocumentationPage() {
         />
       </GroupCard>
 
-      <GroupCard icon="message" title="Orders & messages" navPath="Sidebar → Orders & messages">
+      <GroupCard icon="package" title="Orders & messages" navPath="Sidebar → Orders & messages">
         <PageEntry
           title="Messages & Orders"
           route="/app/whatsapp-events"

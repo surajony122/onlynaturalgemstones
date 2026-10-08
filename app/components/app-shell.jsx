@@ -23,9 +23,9 @@ export const NAV_GROUPS = [
   {
     label: "Store setup",
     items: [
-      { id: "pricing", href: "/app", label: "Jewelry Pricing", icon: "tag", end: true },
+      { id: "pricing", href: "/app", label: "Jewelry Pricing", icon: "rupee", end: true },
       { id: "gemdetails", href: "/app/gemstone-details", label: "Gemstone details", icon: "diamond" },
-      { id: "currency", href: "/app/currency-countries", label: "Currency by country", icon: "tag" },
+      { id: "currency", href: "/app/currency-countries", label: "Currency by country", icon: "globe" },
     ],
   },
   {
@@ -38,8 +38,8 @@ export const NAV_GROUPS = [
   {
     label: "Orders & messages",
     items: [
-      { id: "whatsapp", href: "/app/whatsapp-events", label: "Messages & Orders", icon: "message", badgeKey: "whatsapp" },
-      { id: "invoices", href: "/app/invoices", label: "GST Invoices", icon: "tag", badgeKey: "invoices" },
+      { id: "whatsapp", href: "/app/whatsapp-events", label: "Messages & Orders", icon: "whatsapp", badgeKey: "whatsapp" },
+      { id: "invoices", href: "/app/invoices", label: "GST Invoices", icon: "receipt", badgeKey: "invoices" },
     ],
   },
   {
