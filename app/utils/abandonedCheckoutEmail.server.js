@@ -46,6 +46,7 @@ export const ABANDONED_CHECKOUT_EMAIL_PLACEHOLDERS = [
   { token: "checkout_url", description: "Link that takes the customer back to their saved checkout" },
   { token: "shop_name", description: "Store name" },
   { token: "shop_url", description: "Store web address" },
+  { token: "shop_email", description: "Store support email address" },
   { token: "shop_logo_url", description: "Store logo image address" },
   { token: "unsubscribe_url", description: "Link that stops further cart reminders for this email address" },
 ];
@@ -74,8 +75,75 @@ export const DEFAULT_ABANDONED_TEMPLATE = `<!DOCTYPE html>
     .email-button { display: inline-block; background-color: #8c7a4e; color: #ffffff !important; padding: 13px 34px; font-size: 15px; font-weight: bold; border-radius: 3px; text-decoration: none !important; }
     .note-section { padding: 18px 28px 6px; font-size: 14px; line-height: 1.6; color: #4f5965; }
     .note-box { background-color: #fffcf3; border-left: 3px solid #8c7a4e; padding: 12px 16px; }
-    .footer-section { padding: 20px 28px 26px; text-align: center; font-size: 12px; line-height: 1.6; color: #7b8590; background-color: #ffffff; }
-    .footer-section a { color: #7b8590; }
+    .footer-section {
+      padding: 14px 18px 16px;
+      text-align: center;
+      color: #4f5965;
+      background-color: #fffcf3;
+    }
+
+    .footer-title {
+      margin: 0 0 8px;
+      font-size: 14px;
+      line-height: 1.45;
+      color: #4f5965;
+    }
+
+    .address {
+      margin: 0 0 10px;
+      font-size: 13px;
+      line-height: 1.45;
+      color: #333333 !important;
+    }
+
+    .address a {
+      color: #333333 !important;
+      text-decoration: none !important;
+    }
+
+    /* ==============================
+       CONTACT INFORMATION
+    ============================== */
+
+    .contact-table {
+      width: 100%;
+      margin: 0 auto;
+      table-layout: fixed;
+    }
+
+    .website-row {
+      padding-bottom: 8px;
+    }
+
+    .contact-item {
+      width: 50%;
+      padding: 3px 2px;
+      text-align: center;
+      vertical-align: middle;
+      font-size: 13px;
+      line-height: 18px;
+    }
+
+    .single-contact-item {
+      padding: 3px 2px;
+      text-align: center;
+      vertical-align: middle;
+      font-size: 13px;
+      line-height: 18px;
+    }
+
+    .contact-link {
+      color: #333333 !important;
+      text-decoration: none !important;
+      white-space: nowrap;
+    }
+
+    .contact-icon {
+      width: 18px;
+      height: 18px;
+      display: block;
+    }
+    .contact-link { color: #333333 !important; }
     @media only screen and (max-width: 520px) {
       .content-section { padding: 24px 18px 8px !important; }
       .button-cell, .note-section, .footer-section { padding-left: 18px !important; padding-right: 18px !important; }
@@ -130,13 +198,264 @@ export const DEFAULT_ABANDONED_TEMPLATE = `<!DOCTYPE html>
             </td>
           </tr>
 
-          <tr><td style="padding: 14px 28px 0;"><div class="divider">&nbsp;</div></td></tr>
+          <tr><td><div class="divider">&nbsp;</div></td></tr>
 
           <tr>
             <td class="footer-section">
-              <div style="margin-bottom: 6px;"><a href="{{shop_url}}" style="font-weight:bold;">{{shop_name}}</a></div>
-              <div style="margin-bottom: 10px;">You are receiving this email because you left items in your cart at {{shop_name}}.</div>
-              <div><a href="{{unsubscribe_url}}">Unsubscribe from cart reminders</a></div>
+
+              <p class="footer-title">
+                Thanks for choosing {{shop_name}} from the House of Shubh Gems.
+              </p>
+
+              <p class="address">
+
+                <a href="https://maps.app.goo.gl/vffRkrDyMiM9q895A">
+                  L-75-76, Lajpat Nagar 2, New Delhi - Delhi - 110024, India
+                </a>
+
+              </p>
+
+              <!-- WEBSITE -->
+
+              <table
+                class="contact-table"
+                width="100%"
+                cellpadding="0"
+                cellspacing="0"
+                border="0"
+              >
+
+                <tr>
+
+                  <td
+                    class="single-contact-item website-row"
+                    align="center"
+                  >
+
+                    <table
+                      cellpadding="0"
+                      cellspacing="0"
+                      border="0"
+                      align="center"
+                    >
+
+                      <tr>
+
+                        <td
+                          valign="middle"
+                          style="padding-right:6px;"
+                        >
+
+                          <img
+                            src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/website.png?v=1788870868"
+                            alt="Website"
+                            width="18"
+                            height="18"
+                            class="contact-icon"
+                          >
+
+                        </td>
+
+                        <td valign="middle">
+
+                          <a
+                            href="{{shop_url}}"
+                            class="contact-link"
+                          >
+                            onlynaturalgemstones.com
+                          </a>
+
+                        </td>
+
+                      </tr>
+
+                    </table>
+
+                  </td>
+
+                </tr>
+
+              </table>
+
+              <!-- WHATSAPP AND PHONE -->
+
+              <table
+                class="contact-table"
+                width="100%"
+                cellpadding="0"
+                cellspacing="0"
+                border="0"
+              >
+
+                <tr>
+
+                  <!-- WHATSAPP -->
+
+                  <td
+                    class="contact-item"
+                    align="center"
+                  >
+
+                    <table
+                      cellpadding="0"
+                      cellspacing="0"
+                      border="0"
+                      align="center"
+                    >
+
+                      <tr>
+
+                        <td
+                          valign="middle"
+                          style="padding-right:5px;"
+                        >
+
+                          <a href="https://wa.me/919310400152">
+
+                            <img
+                              src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/whatsapp-svg-icon.svg?v=1787318358"
+                              alt="WhatsApp"
+                              width="18"
+                              height="18"
+                              class="contact-icon"
+                            >
+
+                          </a>
+
+                        </td>
+
+                        <td valign="middle">
+
+                          <a
+                            href="https://wa.me/919310400152"
+                            class="contact-link"
+                          >
+                            +91-9310-400-152
+                          </a>
+
+                        </td>
+
+                      </tr>
+
+                    </table>
+
+                  </td>
+
+                  <!-- PHONE -->
+
+                  <td
+                    class="contact-item"
+                    align="center"
+                  >
+
+                    <table
+                      cellpadding="0"
+                      cellspacing="0"
+                      border="0"
+                      align="center"
+                    >
+
+                      <tr>
+
+                        <td
+                          valign="middle"
+                          style="padding-right:5px;"
+                        >
+
+                          <img
+                            src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/phone.png?v=1788597346"
+                            alt="Phone"
+                            width="18"
+                            height="18"
+                            class="contact-icon"
+                          >
+
+                        </td>
+
+                        <td valign="middle">
+
+                          <a
+                            href="tel:+918010555111"
+                            class="contact-link"
+                          >
+                            +91-8010-555-111
+                          </a>
+
+                        </td>
+
+                      </tr>
+
+                    </table>
+
+                  </td>
+
+                </tr>
+
+              </table>
+
+              <!-- EMAIL -->
+
+              <table
+                class="contact-table"
+                width="100%"
+                cellpadding="0"
+                cellspacing="0"
+                border="0"
+              >
+
+                <tr>
+
+                  <td
+                    class="single-contact-item"
+                    align="center"
+                  >
+
+                    <table
+                      cellpadding="0"
+                      cellspacing="0"
+                      border="0"
+                      align="center"
+                    >
+
+                      <tr>
+
+                        <td
+                          valign="middle"
+                          style="padding-right:6px;"
+                        >
+
+                          <img src="https://cdn.shopify.com/s/files/1/0992/9929/5531/files/email_icon_24px.png?v=1790236665" alt="Email" width="18" class="contact-icon">
+
+                        </td>
+
+                        <td valign="middle">
+
+                          <a
+                            href="mailto:{{shop_email}}"
+                            class="contact-link"
+                          >
+                            {{shop_email}}
+                          </a>
+
+                        </td>
+
+                      </tr>
+
+                    </table>
+
+                  </td>
+
+                </tr>
+
+              </table>
+
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:10px 28px 14px; text-align:center; font-size:11px; line-height:1.6; color:#7b8590; background-color:#fffcf3; border-top:1px solid #ece6d9;">
+              You are receiving this email because you left items in your cart at {{shop_name}}.<br>
+              <a href="{{unsubscribe_url}}" style="color:#7b8590;">Unsubscribe from cart reminders</a>
             </td>
           </tr>
 
@@ -364,6 +683,7 @@ export function buildEmailVars(checkout, shopInfo) {
     checkout_url: checkout.url,
     shop_name: shopInfo.name,
     shop_url: shopInfo.url,
+    shop_email: shopInfo.email || "",
     shop_logo_url: shopInfo.logoUrl,
     unsubscribe_url: buildUnsubscribeUrl(checkout.email),
   };
