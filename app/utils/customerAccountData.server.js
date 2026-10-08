@@ -109,6 +109,21 @@ export async function buildCustomerAdminData(admin, customerGid) {
   return { email: customerNode?.email || null, profile, addresses, orders };
 }
 
+/** Lightweight lookup of just a customer's email (no orders/addresses) --
+ * used by the single-purpose Wishlist and Recommendation account pages,
+ * which only need to know WHO the customer is to find their leads. */
+export async function getCustomerEmail(admin, customerGid) {
+  const res = await admin.graphql(
+    `#graphql
+    query CustomerEmail($id: ID!) {
+      customer(id: $id) { email }
+    }`,
+    { variables: { id: customerGid } }
+  );
+  const json = await res.json();
+  return json?.data?.customer?.email || null;
+}
+
 /** Reads this app's own wishlist/gem-recommendation leads (WishlistLead /
  * AstroLead), matched by whichever of email/phone the caller has. Tries
  * email first (more leads are keyed by email historically), falling back

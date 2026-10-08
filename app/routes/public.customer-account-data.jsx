@@ -25,7 +25,7 @@
  */
 import { authenticate } from "../shopify.server";
 import { adminClientFor } from "../utils/shopify-admin.server";
-import { buildCustomerAdminData, buildWishlistAndRecommendation } from "../utils/customerAccountData.server";
+import { buildCustomerAdminData, buildWishlistAndRecommendation, getCustomerEmail } from "../utils/customerAccountData.server";
 
 export const loader = async ({ request }) => {
   // authenticate.public.customerAccount handles Shopify's CORS preflight
@@ -45,6 +45,33 @@ export const action = async ({ request }) => {
   const shop = String(sessionToken.dest || "").replace(/^https?:\/\//, "");
   if (!shop) {
     return cors(Response.json({ error: "Missing shop" }, { status: 400 }));
+  }
+
+  // The two single-purpose account pages ("My Wishlist" and "My Gemstone
+  // Recommendation") pass ?part=wishlist or ?part=recommendation and only
+  // need that one thing, so skip the heavy orders/addresses lookup for them.
+  // With no ?part (the original combined hub) the response is unchanged.
+  const part = new URL(request.url).searchParams.get("part");
+  if (part === "wishlist" || part === "recommendation") {
+    let lightAdmin;
+    let lightEmail = null;
+    try {
+      lightAdmin = await adminClientFor(shop);
+      lightEmail = await getCustomerEmail(lightAdmin, customerGid);
+    } catch (err) {
+      console.error("[public.customer-account-data] failed to resolve customer email:", err);
+    }
+    if (!lightEmail) {
+      return cors(Response.json({ signedIn: true, wishlist: { items: [] }, recommendation: null }));
+    }
+    const lightData = await buildWishlistAndRecommendation(lightAdmin, shop, { email: lightEmail });
+    return cors(
+      Response.json(
+        part === "wishlist"
+          ? { signedIn: true, wishlist: lightData.wishlist }
+          : { signedIn: true, recommendation: lightData.recommendation }
+      )
+    );
   }
 
   let email = null;

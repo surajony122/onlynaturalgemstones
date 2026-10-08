@@ -1,0 +1,22 @@
+# Customer account UI extension: the "My Gemstone Recommendation" page inside
+# Shopify's hosted customer accounts. Split out of the old combined
+# "customer-account-hub" extension (which is now wishlist-only).
+#
+# After deploying, add a link to this page by hand: Shopify Admin -> Settings
+# -> Customer accounts -> navigation (Shopify can't do that step from code).
+
+api_version = "2026-07"
+
+[[extensions]]
+name = "customer-account-recommendation"
+handle = "customer-account-recommendation"
+type = "ui_extension"
+
+[[extensions.targeting]]
+module = "./src/FullPageExtension.jsx"
+target = "customer-account.page.render"
+
+[extensions.capabilities]
+# network_access: calls OUR OWN app's backend (Render) to read the customer's
+# saved gemstone recommendation, not Shopify's Storefront API.
+network_access = true
