@@ -882,10 +882,23 @@ export default function WhatsAppEventsPage() {
   const { messages, summary, orderGroups, abandoned } = useLoaderData();
   const revalidator = useRevalidator();
   const toast = useToast();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab") === "wa" ? "gem" : searchParams.get("tab");
-  const tab = LOG_TABS.some((t) => t.key === requestedTab) ? requestedTab : "orders";
-  const changeTab = (key) => setSearchParams(key === "orders" ? {} : { tab: key }, { replace: true });
+  const validTab = (k) => (LOG_TABS.some((t) => t.key === k) ? k : "orders");
+  // The tab is page state, so switching is instant: changing the address with setSearchParams made the page
+  // re-run its loader (and, on System Health, every live check) before the new tab appeared.
+  const [tab, setTabState] = useState(() => validTab(requestedTab));
+  useEffect(() => setTabState(validTab(requestedTab)), [requestedTab]); // a link into a specific tab (?tab=...)
+  const changeTab = (key) => {
+    setTabState(key);
+    try {
+      const u = new URL(window.location.href);
+      if (key === "orders") u.searchParams.delete("tab"); else u.searchParams.set("tab", key);
+      window.history.replaceState(null, "", u.pathname + u.search + u.hash);
+    } catch {
+      /* the address bar is only a convenience */
+    }
+  };
   const gemMessages = messages.filter((m) => m.kind === "Gem Recommendation");
   const wishlistMessages = messages.filter((m) => m.kind === "Wishlist");
   const tabKind = tab === "gem" ? "Gem Recommendation" : tab === "wishlist" ? "Wishlist" : null;

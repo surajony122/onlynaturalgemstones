@@ -13,6 +13,7 @@ import prisma from "../db.server";
 import { getAppSettings } from "../utils/appSettings.server";
 import { withTimeout, checkGmail, checkGoogleSheets, checkInterakt } from "../utils/serviceHealth.server";
 import { brand, Icon, Card, PageHeader, PageIn, tableWrapStyle, tableStyle, thStyle, tdStyle } from "../components/table-kit";
+import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { getAttentionSummary } from "../utils/attention.server";
 import { runAttentionAction } from "../utils/attentionActions.server";
@@ -352,10 +353,23 @@ function HealthTabs({ tab, onChange, counts }) {
 export default function ServerHealthPage() {
   const { attention, checkedAt, checks, recentLeads, orderProcessingNotifications, orderProcessingEmailNotifications, registeredWebhooks, webhookReceipts } = useLoaderData();
   const failingCount = checks.filter((c) => c.ok === false).length;
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab");
-  const tab = HEALTH_TABS.some((t) => t.key === requestedTab) ? requestedTab : "attention";
-  const changeTab = (key) => setSearchParams(key === "attention" ? {} : { tab: key }, { replace: true });
+  const validTab = (k) => (HEALTH_TABS.some((t) => t.key === k) ? k : "attention");
+  // The tab is page state, so switching is instant: changing the address with setSearchParams made the page
+  // re-run its loader (and, on System Health, every live check) before the new tab appeared.
+  const [tab, setTabState] = useState(() => validTab(requestedTab));
+  useEffect(() => setTabState(validTab(requestedTab)), [requestedTab]); // a link into a specific tab (?tab=...)
+  const changeTab = (key) => {
+    setTabState(key);
+    try {
+      const u = new URL(window.location.href);
+      if (key === "attention") u.searchParams.delete("tab"); else u.searchParams.set("tab", key);
+      window.history.replaceState(null, "", u.pathname + u.search + u.hash);
+    } catch {
+      /* the address bar is only a convenience */
+    }
+  };
   const tabCounts = { attention: (attention.items || []).length, connections: failingCount };
 
   return (
