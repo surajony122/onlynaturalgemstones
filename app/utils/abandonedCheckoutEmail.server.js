@@ -681,43 +681,65 @@ function moneyOf(n, currency) {
 }
 
 /**
- * The cart as order-confirmation-style rows: a gemstone, then its "Gemstone Customisation" charge
- * underneath. A customisation line never shows a quantity (the old pricing trick used a huge
- * quantity of a Rs 1 item, which must never show to a customer).
+ * The cart as the same bundle cards the order confirmation uses: a gemstone and its
+ * "Gemstone Customisation" charge share ONE bordered card (image/title/price, then the
+ * customisation label + price, then its Type/Metal/Design line, then a combined Total).
+ * A customisation line pairs with the gemstone just before it in the cart; one with no
+ * gemstone before it still gets its own card so nothing is hidden. A customisation line
+ * never shows a quantity (the old pricing trick used a huge quantity of a Rs 1 item).
  */
 export function buildItemsHtml(items, currency = "INR") {
-  const rows = items
-    .map((it) => {
-      const price = it.price != null && !Number.isNaN(it.price) ? esc(moneyOf(it.price, currency)) : "";
-      const priceCell = (pad) =>
-        `<td width="90" align="right" style="padding:${pad};border-bottom:1px solid #ebe3cf;vertical-align:top;font-size:13px;color:#4f5965;white-space:nowrap;">${price}</td>`;
-      const variant = it.variantTitle && it.variantTitle !== "Default Title" ? `<p style="margin:0;${SUB}">${esc(it.variantTitle)}</p>` : "";
-      if (it.isCustomisation) {
-        const props = (it.props || []).length ? `<p style="margin:0;${SUB}">${it.props.map(esc).join(" &middot; ")}</p>` : "";
-        return (
-          `<tr><td width="72" style="padding:0 0 0 14px;border-bottom:1px solid #ebe3cf;">&nbsp;</td>` +
-          `<td style="padding:10px 14px 14px 14px;border-bottom:1px solid #ebe3cf;vertical-align:top;">` +
-          `<p style="margin:0 0 3px;font-size:14px;line-height:1.4;color:#8c7a4e;">Gemstone Customisation</p>` +
-          (/utility/i.test(it.variantTitle || "") ? "" : variant) +
-          props +
-          `</td>${priceCell("10px 14px 14px 0")}</tr>`
-        );
-      }
-      const img = it.imageUrl
-        ? `<img src="${esc(it.imageUrl)}" alt="${esc(it.title)}" width="72" height="72" style="width:72px;height:72px;object-fit:cover;border-radius:6px;display:block;">`
+  const groups = [];
+  for (const it of items) {
+    const last = groups[groups.length - 1];
+    if (it.isCustomisation && last && last.gem && !last.cust) last.cust = it;
+    else if (it.isCustomisation) groups.push({ gem: null, cust: it });
+    else groups.push({ gem: it, cust: null });
+  }
+  const money = (n) => (n != null && !Number.isNaN(n) ? esc(moneyOf(n, currency)) : "");
+  const gold = "font-size:13px;color:#8C7A4E;";
+  const small = "font-size:10px;line-height:1.5;color:#4f5965;";
+  const priceTd = (v, pad) => `<td width="90" align="right" valign="top" style="width:90px;padding:${pad};font-size:12px;color:#4f5965;white-space:nowrap;">${v}</td>`;
+  const propsOf = (it) => (it.props || []).map(esc).join(" &middot; ");
+
+  const cards = groups.map(({ gem, cust }) => {
+    let rows = "";
+    if (gem) {
+      const img = gem.imageUrl
+        ? `<img src="${esc(gem.imageUrl)}" alt="${esc(gem.title)}" width="42" height="42" style="width:42px;height:42px;object-fit:cover;border:0;display:block;">`
         : "";
-      return (
-        `<tr>` +
-        `<td width="72" style="padding:14px 0 14px 14px;border-bottom:1px solid #ebe3cf;vertical-align:top;">${img}</td>` +
-        `<td style="padding:14px;border-bottom:1px solid #ebe3cf;vertical-align:top;">` +
-        `<p style="margin:0 0 3px;font-size:15px;line-height:1.4;font-weight:bold;color:#3d4652;">${esc(it.title)}</p>` +
-        variant +
-        `<p style="margin:0;${SUB}">Qty: ${esc(it.quantity)}</p>` +
-        `</td>${priceCell("14px 14px 14px 0")}</tr>`
-      );
-    })
-    .join("");
-  return `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#fffcf3;border:1px solid #ebe3cf;border-radius:8px;">${rows}</table>`;
+      const variant = gem.variantTitle && gem.variantTitle !== "Default Title" ? `<br>${esc(gem.variantTitle)}` : "";
+      const own = propsOf(gem);
+      rows +=
+        `<tr><td width="55" valign="top" style="width:55px;padding:8px 8px 0 14px;">${img}</td>` +
+        `<td valign="top" style="padding:9px 8px 4px;"><div style="margin:0 0 3px;${gold}">${esc(gem.title)}</div>` +
+        `<div style="${small}">Qty: ${esc(gem.quantity)}${variant}${own ? "<br>" + own : ""}</div></td>` +
+        priceTd(money(gem.price), "14px 14px 4px 0") +
+        `</tr>`;
+    }
+    if (cust) {
+      const props = propsOf(cust);
+      rows +=
+        `<tr><td width="55" style="width:55px;padding:2px 8px 0 14px;"></td>` +
+        `<td valign="top" style="padding:2px 8px 0;"><div style="${gold}">Gemstone Customisation</div></td>` +
+        priceTd(money(cust.price), "2px 14px 0 0") +
+        `</tr>`;
+      if (props) {
+        rows +=
+          `<tr><td width="55" style="width:55px;padding:2px 8px 0 14px;"></td>` +
+          `<td colspan="2" valign="top" style="padding:2px 14px 8px 8px;"><div style="font-size:10px;line-height:1.6;color:#4f5965;">${props}</div></td></tr>`;
+      }
+      if (gem && gem.price != null && cust.price != null) {
+        const tb = "border-top:1px solid #ece6d9;";
+        rows +=
+          `<tr><td style="padding:5px 0 8px;${tb}"></td>` +
+          `<td valign="top" style="padding:5px 8px 8px;text-align:left;font-size:12px;font-weight:bold;color:#3d4652;${tb}">Total</td>` +
+          `<td align="right" valign="top" style="padding:5px 14px 8px 0;font-size:12px;font-weight:bold;color:#3d4652;white-space:nowrap;${tb}">${money(gem.price + cust.price)}</td></tr>`;
+      }
+    }
+    return `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border:1px solid #e2dccf;border-radius:4px;margin-bottom:6px;">${rows}</table>`;
+  });
+  return cards.join("");
 }
 
 /** Subtotal / Discount / Total block, same look as the order confirmation's totals. */
