@@ -235,8 +235,8 @@ export async function getAttentionSummary() {
       title: `${abandonedIssues.length} abandoned checkout email${abandonedIssues.length === 1 ? "" : "s"} failed to send`,
       detail: summarise(abandonedDetails),
       details: abandonedDetails,
-      href: "/app/settings",
-      action: "Open Settings → Emails",
+      href: "/app/whatsapp-events",
+      action: "Open Messages & Orders",
       severity: "warn",
     });
   }
@@ -246,10 +246,9 @@ export async function getAttentionSummary() {
     badges: {
       astro: astroIssues.length,
       wishlist: wishlistIssues.length,
-      whatsapp: orderFailures.length,
+      whatsapp: orderFailures.length + abandonedIssues.length,
       returnsRefunds: returnRefundIssues.length,
       invoices: invoiceIssues.length,
-      abandoned: abandonedIssues.length,
     },
     healthy: items.length === 0,
   };

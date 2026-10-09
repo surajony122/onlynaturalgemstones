@@ -33,6 +33,8 @@ import { getAppSettings } from "../utils/appSettings.server";
 import { sendWhatsAppForLead } from "../utils/astroAdvice.server";
 import { sendOrderProcessingWhatsApp } from "../utils/interakt.server";
 import { resendWishlistWhatsapp } from "../utils/wishlist.server";
+import { sendCheckoutNow, classifyLogStatus } from "../utils/abandonedCheckoutEmail.server";
+import { runAttentionAction } from "../utils/attentionActions.server";
 import {
   tableWrapStyle,
   tableStyle,
@@ -62,6 +64,17 @@ export const action = async ({ request }) => {
   const formData = await request.formData();
   const intent = formData.get("intent");
   const messageId = formData.get("messageId");
+
+  // Abandoned checkout emails (sent by this app through Gmail): retry a failed one from its saved
+  // snapshot, or send one again to a customer who was already emailed.
+  if (intent === "abandonedRetry") {
+    const r = await runAttentionAction({ admin, shop: session.shop, intent: "retry", kind: "abandoned-email", id: String(formData.get("logId") || "") });
+    return { intent, ok: !!r.ok, status: r.status, error: r.ok ? undefined : r.status || r.error };
+  }
+  if (intent === "abandonedResend") {
+    const r = await sendCheckoutNow({ admin, shop: session.shop, checkoutId: String(formData.get("checkoutId") || ""), resend: true });
+    return { intent, ok: !!r.ok, status: r.status, error: r.ok ? undefined : r.status };
+  }
 
   if (intent === "retryGemRecommendation") {
     const leadId = formData.get("leadId");
@@ -296,6 +309,23 @@ export const loader = async ({ request }) => {
     }),
   ]);
 
+  const abandonedRows = await prisma.abandonedCheckoutEmail.findMany({ orderBy: { notifiedAt: "desc" }, take: 100 });
+  const abandoned = abandonedRows.map((r) => {
+    const kind = classifyLogStatus(r.status);
+    return {
+      id: r.id,
+      checkoutId: r.checkoutId,
+      name: r.checkoutName || "Checkout",
+      customer: r.customerName || "",
+      email: r.email || "",
+      kind,
+      reason: String(r.status || "").replace(/^(OK|skipped|dismissed by staff|FAILED|threw)\s*:?\s*/i, "").trim(),
+      notifiedAt: r.notifiedAt.toISOString(),
+      canRetry: kind === "failed" && !!r.snapshot,
+      canResend: kind === "sent",
+    };
+  });
+
   const orderGroups = new Map();
   const ensureGroup = (orderId, orderName) => {
     if (!orderGroups.has(orderId)) {
@@ -377,6 +407,7 @@ export const loader = async ({ request }) => {
   return {
     messages: otherMessages,
     orderGroups: orderGroupsSorted,
+    abandoned,
     summary: {
       total: enriched.length,
       delivered: enriched.filter((m) => m.deliveredAt).length,
@@ -704,8 +735,94 @@ function matchesStatus(m, filters) {
   return filters.length === 0 || filters.some((f) => singleStatusMatch(m, f));
 }
 
+const ABANDONED_TONE = {
+  sent: { label: "Email sent", c: "#1e7e34", bg: "#e6f4ea" },
+  failed: { label: "Failed", c: "#c5221f", bg: "#fde8e8" },
+  skipped: { label: "Not emailed", c: "#5f6368", bg: "#f1f3f4" },
+  sending: { label: "Sending", c: "#b06000", bg: "#fef7e0" },
+  unknown: { label: "Unknown", c: "#5f6368", bg: "#f1f3f4" },
+};
+
+function AbandonedRow({ r }) {
+  const fetcher = useFetcher();
+  const toast = useToast();
+  const busy = fetcher.state !== "idle";
+  const res = fetcher.state === "idle" ? fetcher.data : null;
+  useEffect(() => {
+    if (!res) return;
+    if (res.ok) toast.show("Email sent to " + r.email);
+    else toast.show(res.error || res.status || "Could not send", { isError: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [res]);
+  const tone = ABANDONED_TONE[r.kind] || ABANDONED_TONE.unknown;
+  return (
+    <tr>
+      <td style={{ ...tdStyle, whiteSpace: "nowrap", fontSize: "12px", color: brand.muted }}>{new Date(r.notifiedAt).toLocaleString()}</td>
+      <td style={tdStyle}>
+        <div style={{ fontWeight: 600, color: brand.ink }}>{r.customer || "Customer"} <span style={{ fontWeight: 400, color: brand.muted }}>· {r.name}</span></div>
+        <div style={{ fontSize: "11.5px", color: brand.muted }}>{r.email}</div>
+      </td>
+      <td style={{ ...tdStyle, maxWidth: "340px" }}>
+        <span style={{ display: "inline-block", padding: "2px 9px", borderRadius: "999px", fontSize: "11.5px", fontWeight: 600, color: tone.c, background: tone.bg }}>{tone.label}</span>
+        {r.kind !== "sent" && r.reason && <div style={{ fontSize: "11.5px", color: r.kind === "failed" ? brand.danger : brand.muted, marginTop: "4px", lineHeight: 1.45, wordBreak: "break-word" }}>{r.reason}</div>}
+      </td>
+      <td style={tdStyle}>
+        {r.canRetry && (
+          <button type="button" disabled={busy} style={smallBtn} onClick={() => fetcher.submit({ intent: "abandonedRetry", logId: r.id }, { method: "POST" })}>
+            {busy ? "Retrying…" : "Retry"}
+          </button>
+        )}
+        {r.canResend && (
+          <button
+            type="button"
+            disabled={busy}
+            style={smallBtn}
+            onClick={() => window.confirm("This customer was already emailed. Send the abandoned cart email to " + r.email + " again?") && fetcher.submit({ intent: "abandonedResend", checkoutId: r.checkoutId }, { method: "POST" })}
+          >
+            {busy ? "Sending…" : "Resend email"}
+          </button>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+function AbandonedEmailSection({ rows }) {
+  const sent = rows.filter((r) => r.kind === "sent").length;
+  const failed = rows.filter((r) => r.kind === "failed").length;
+  return (
+    <div style={{ marginBottom: "28px" }}>
+      <h2 style={{ fontSize: "15px", fontWeight: 700, color: brand.ink, margin: "0 0 4px" }}>Abandoned cart emails</h2>
+      <p style={{ fontSize: "12.5px", color: brand.muted, margin: "0 0 12px" }}>
+        Reminder emails the app sent to customers who left a checkout ({sent} sent{failed ? `, ${failed} failed` : ""} in the latest {rows.length}). Turn them on or off in Settings → Emails.
+      </p>
+      {rows.length === 0 ? (
+        <p style={{ fontSize: "13px", color: brand.muted }}>No abandoned cart emails yet.</p>
+      ) : (
+        <div style={{ ...tableWrapStyle, maxHeight: "420px", overflowY: "auto" }}>
+          <table style={tableStyle}>
+            <thead>
+              <tr>
+                <th style={thStyle}>When</th>
+                <th style={thStyle}>Customer</th>
+                <th style={thStyle}>Email status</th>
+                <th style={thStyle}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <AbandonedRow key={r.id} r={r} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function WhatsAppEventsPage() {
-  const { messages, summary, orderGroups } = useLoaderData();
+  const { messages, summary, orderGroups, abandoned } = useLoaderData();
   const revalidator = useRevalidator();
   const toast = useToast();
 
@@ -773,6 +890,8 @@ export default function WhatsAppEventsPage() {
       />
 
       <OrderProcessingSection orderGroups={orderGroups} />
+
+      <AbandonedEmailSection rows={abandoned || []} />
 
       <h2 style={{ fontSize: "15px", fontWeight: 700, color: brand.ink, margin: "0 0 12px" }}>Gem Recommendation &amp; Wishlist</h2>
 

@@ -1950,7 +1950,7 @@ export default function SettingsPage() {
 
             <div style={{ marginTop: "18px", paddingTop: "14px", borderTop: `1px solid ${brand.divider}` }}>
               <div style={{ fontSize: "13px", fontWeight: 600, color: brand.ink, marginBottom: "4px" }}>Check who would get an email right now</div>
-              <p style={abNote}>Looks at your recent abandoned checkouts and shows what would happen to each one. It sends nothing and works even while this is switched off. For the full list with the cart, total and a Send now button, open the <a href="/app/abandoned-checkouts" style={{ color: brand.accent, fontWeight: 600 }}>Abandoned Checkouts</a> page.</p>
+              <p style={abNote}>Looks at your recent abandoned checkouts and shows what would happen to each one. It sends nothing and works even while this is switched off. Every email that was sent is listed under <a href="/app/whatsapp-events" style={{ color: brand.accent, fontWeight: 600 }}>Messages &amp; Orders</a>, where a failed one can be retried and a sent one resent.</p>
               <button
                 type="button"
                 disabled={abDryRunFetcher.state !== "idle"}

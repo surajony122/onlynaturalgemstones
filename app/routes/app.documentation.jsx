@@ -204,7 +204,7 @@ const FIRST_STEPS = [
 const SIDEBAR_GROUPS = [
   ["home", "Home", "Overview", "The page the app opens on: what needs attention, today's numbers, and a panel for every part of the app."],
   ["diamond", "Store setup", "Jewelry Pricing · Gemstone details · Currency by country", "What customers see on the storefront: prices, stone details, currencies."],
-  ["users", "Customers & leads", "Astro Leads · Wishlist Leads · Abandoned Checkouts", "Everyone who used the recommendation form, saved a wishlist or left a checkout, and what was sent to them."],
+  ["users", "Customers & leads", "Astro Leads · Wishlist Leads", "Everyone who used the recommendation form or saved a wishlist, and what was sent to them."],
   ["package", "Orders & messages", "Messages & Orders · GST Invoices", "What happens after a purchase: WhatsApp messages and tax invoices."],
   ["gear", "System", "System Health · Settings · Documentation", "Connections, message templates, live checks and this guide."],
 ];
@@ -356,23 +356,6 @@ function PagesTab() {
         />
       </GroupCard>
 
-      <GroupCard icon="cart" title="Abandoned checkouts" navPath="Sidebar → Customers & leads">
-        <PageEntry
-          icon="cart"
-          title="Abandoned Checkouts"
-          route="/app/abandoned-checkouts"
-          purpose="Every abandoned checkout, read live from Shopify, with what the reminder email did about it."
-          points={[
-            "Each row shows the checkout, the customer and whether they agreed to email marketing, the cart, the total, and the email's status: sent, failed, waiting, not emailed (with the reason) or recovered.",
-            "Filter by status, search by name, email or item, and look back 3, 7, 14 or 30 days.",
-            "Send now sends one email immediately (it skips the wait but still honours consent, unsubscribes and earlier orders). Retry resends a failed one. Don't email stops that checkout from ever being emailed.",
-            "Send due emails now runs the check straight away instead of waiting for the next 5-minute pass.",
-            "While the emails are switched off, the list shows what would happen to each checkout.",
-          ]}
-          tags={["Read live from Shopify", "Send / Retry / Skip"]}
-        />
-      </GroupCard>
-
       <GroupCard icon="package" title="Orders & messages" navPath="Sidebar → Orders & messages">
         <PageEntry
           icon="whatsapp"
@@ -383,6 +366,7 @@ function PagesTab() {
             "Use it to confirm a customer actually received their order message, or to spot a pattern of failures pointing at a setup problem.",
             "Delivered and read statuses come from Interakt's webhook, so nothing shows until the webhook is set up (Settings → Connections → WhatsApp — advanced).",
             "A row's “…” menu can retry the message or delete its log entry.",
+            "Abandoned cart emails (sent by the app through Gmail) are listed in their own section here, with the reason for any failure. A failed one can be retried and a sent one resent.",
           ]}
         />
         <PageEntry
@@ -670,7 +654,7 @@ export default function DocumentationPage() {
         title="Documentation"
         description="What every page, setting and automatic message in this app does."
         stats={[
-          { label: "Pages", value: 12 },
+          { label: "Pages", value: 11 },
           { label: "Settings sections", value: 14 },
           { label: "Automatic messages", value: 5 },
         ]}
