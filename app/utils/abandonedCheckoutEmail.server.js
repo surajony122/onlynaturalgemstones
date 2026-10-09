@@ -42,6 +42,7 @@ export const ABANDONED_CHECKOUT_EMAIL_PLACEHOLDERS = [
   { token: "customer_first_name", description: "Customer's first name (\"there\" if unknown)" },
   { token: "items_html", description: "The cart items, with photo, name, variant and quantity (generated automatically)" },
   { token: "item_count", description: "Number of items in the cart" },
+  { token: "totals_html", description: "Subtotal, discount and total block (generated automatically)" },
   { token: "total", description: "Cart total, e.g. ₹81,700.00" },
   { token: "checkout_url", description: "Link that takes the customer back to their saved checkout" },
   { token: "shop_name", description: "Store name" },
@@ -72,7 +73,8 @@ export const DEFAULT_ABANDONED_TEMPLATE = `<!DOCTYPE html>
     .content-section p { margin-top: 0; margin-bottom: 16px; }
     .headline { font-size: 22px; line-height: 1.3; font-weight: normal; color: #3d4652; margin: 0 0 14px; }
     .button-cell { padding: 22px 28px 8px; text-align: center; }
-    .email-button { display: inline-block; background-color: #8c7a4e; color: #ffffff !important; padding: 13px 34px; font-size: 15px; font-weight: bold; border-radius: 3px; text-decoration: none !important; }
+    .email-button { display: block; box-sizing: border-box; width: 100%; text-align: center; background-color: #8c7a4e; color: #ffffff !important; padding: 12px 5px; font-size: 14px; font-weight: 500; line-height: 16px; border-radius: 3px; white-space: nowrap; text-decoration: none !important; }
+    .secondary-button { background-color: #ffffff; color: #8c7a4e !important; border: 1px solid #8c7a4e; padding: 11px 5px; }
     .note-section { padding: 18px 28px 6px; font-size: 14px; line-height: 1.6; color: #4f5965; }
     .note-box { background-color: #fffcf3; border-left: 3px solid #8c7a4e; padding: 12px 16px; }
     .footer-section {
@@ -147,7 +149,7 @@ export const DEFAULT_ABANDONED_TEMPLATE = `<!DOCTYPE html>
     @media only screen and (max-width: 520px) {
       .content-section { padding: 24px 18px 8px !important; }
       .button-cell, .note-section, .footer-section { padding-left: 18px !important; padding-right: 18px !important; }
-      .email-button { display: block !important; padding: 14px 10px !important; }
+      .email-button { font-size: 13px !important; padding: 11px 3px !important; }
     }
   </style>
 </head>
@@ -180,13 +182,19 @@ export const DEFAULT_ABANDONED_TEMPLATE = `<!DOCTYPE html>
           <tr>
             <td style="padding: 6px 28px 6px;">
               {{items_html}}
-              <p style="margin:10px 2px 0; font-size:13px; color:#7b8590;">{{item_count}} in your cart &middot; Total <strong style="color:#3d4652;">{{total}}</strong></p>
+              {{totals_html}}
             </td>
           </tr>
 
           <tr>
-            <td class="button-cell">
-              <a class="email-button" href="{{checkout_url}}">Complete my order</a>
+            <td style="padding: 20px 28px 8px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td width="50%" valign="middle"><a class="email-button" href="{{checkout_url}}">Complete my order</a></td>
+                  <td width="8" style="width:8px;font-size:1px;line-height:1px;">&nbsp;</td>
+                  <td width="50%" valign="middle"><a class="email-button secondary-button" href="{{shop_url}}">Visit Our Store</a></td>
+                </tr>
+              </table>
             </td>
           </tr>
 
@@ -516,7 +524,7 @@ export function readUnsubscribeLink(e, t) {
 
 // ---------------------------------------------------------------- reading checkouts from Shopify
 
-const CHECKOUTS_QUERY = `#graphql
+const CHECKOUTS_QUERY_TEMPLATE = `#graphql
   query AbandonedCheckoutsForReminder($first: Int!, $query: String) {
     abandonedCheckouts(first: $first, sortKey: CREATED_AT, reverse: true, query: $query) {
       nodes {
@@ -542,11 +550,16 @@ const CHECKOUTS_QUERY = `#graphql
             variantTitle
             image { url }
             customAttributes { key value }
+            __PRICE__
           }
         }
       }
     }
   }`;
+
+const CHECKOUTS_QUERY = CHECKOUTS_QUERY_TEMPLATE.replace("__PRICE__", "originalTotalPriceSet { shopMoney { amount currencyCode } }");
+// If Shopify ever rejects the line-price field, the list still loads (just without per-line prices).
+const CHECKOUTS_QUERY_NO_PRICES = CHECKOUTS_QUERY_TEMPLATE.replace("__PRICE__", "");
 
 function attrMap(list) {
   const m = {};
@@ -567,6 +580,11 @@ export function normaliseCheckout(node) {
       title: li.title || "Item",
       variantTitle: li.variantTitle || "",
       quantity: li.quantity || 1,
+      price: li.originalTotalPriceSet && li.originalTotalPriceSet.shopMoney ? Number(li.originalTotalPriceSet.shopMoney.amount) : null,
+      isCustomisation: /customi[sz]ation/i.test(li.title || "") || la["_Linked Gemstone"] != null || la["Linked Gemstone"] != null,
+      props: Object.keys(la)
+        .filter((k) => k[0] !== "_" && !/^(Linked Gemstone|Lab Certification|GJI Certification|Custom Design Image)$/.test(k) && String(la[k] || "").trim())
+        .map((k) => String(la[k]).trim()),
       // Customisation lines have no product photo of their own, but carry the chosen design image.
       imageUrl: (li.image && li.image.url) || la["_Design Image"] || "",
     };
@@ -592,8 +610,12 @@ export function normaliseCheckout(node) {
 }
 
 async function runCheckoutsQuery(admin, first, query) {
-  const res = await admin.graphql(CHECKOUTS_QUERY, { variables: { first, query } });
-  const json = await res.json();
+  let res = await admin.graphql(CHECKOUTS_QUERY, { variables: { first, query } });
+  let json = await res.json();
+  if (json.errors && json.errors.length && /originalTotalPriceSet/i.test(JSON.stringify(json.errors))) {
+    res = await admin.graphql(CHECKOUTS_QUERY_NO_PRICES, { variables: { first, query } });
+    json = await res.json();
+  }
   if (json.errors && json.errors.length) {
     throw new Error("Shopify said: " + json.errors.map((e) => e.message).join("; "));
   }
@@ -652,30 +674,73 @@ function formatMoney(total) {
   }
 }
 
-export function buildItemsHtml(items) {
+const SUB = "font-size:12px;line-height:1.5;color:#7b8590;";
+
+function moneyOf(n, currency) {
+  return formatMoney({ amount: n, currency });
+}
+
+/**
+ * The cart as order-confirmation-style rows: a gemstone, then its "Gemstone Customisation" charge
+ * underneath. A customisation line never shows a quantity (the old pricing trick used a huge
+ * quantity of a Rs 1 item, which must never show to a customer).
+ */
+export function buildItemsHtml(items, currency = "INR") {
   const rows = items
     .map((it) => {
+      const price = it.price != null && !Number.isNaN(it.price) ? esc(moneyOf(it.price, currency)) : "";
+      const priceCell = (pad) =>
+        `<td width="90" align="right" style="padding:${pad};border-bottom:1px solid #ebe3cf;vertical-align:top;font-size:13px;color:#4f5965;white-space:nowrap;">${price}</td>`;
+      const variant = it.variantTitle && it.variantTitle !== "Default Title" ? `<p style="margin:0;${SUB}">${esc(it.variantTitle)}</p>` : "";
+      if (it.isCustomisation) {
+        const props = (it.props || []).length ? `<p style="margin:0;${SUB}">${it.props.map(esc).join(" &middot; ")}</p>` : "";
+        return (
+          `<tr><td width="72" style="padding:0 0 0 14px;border-bottom:1px solid #ebe3cf;">&nbsp;</td>` +
+          `<td style="padding:10px 14px 14px 14px;border-bottom:1px solid #ebe3cf;vertical-align:top;">` +
+          `<p style="margin:0 0 3px;font-size:14px;line-height:1.4;color:#8c7a4e;">Gemstone Customisation</p>` +
+          (/utility/i.test(it.variantTitle || "") ? "" : variant) +
+          props +
+          `</td>${priceCell("10px 14px 14px 0")}</tr>`
+        );
+      }
       const img = it.imageUrl
         ? `<img src="${esc(it.imageUrl)}" alt="${esc(it.title)}" width="72" height="72" style="width:72px;height:72px;object-fit:cover;border-radius:6px;display:block;">`
         : "";
-      const variant = it.variantTitle && it.variantTitle !== "Default Title" ? `<p style="margin:0;font-size:13px;line-height:1.4;color:#7b8590;">${esc(it.variantTitle)}</p>` : "";
       return (
         `<tr>` +
-        `<td width="72" style="padding:14px 0 14px 14px;border-bottom:1px solid #ebe3cf;vertical-align:middle;">${img}</td>` +
-        `<td style="padding:14px;border-bottom:1px solid #ebe3cf;vertical-align:middle;">` +
+        `<td width="72" style="padding:14px 0 14px 14px;border-bottom:1px solid #ebe3cf;vertical-align:top;">${img}</td>` +
+        `<td style="padding:14px;border-bottom:1px solid #ebe3cf;vertical-align:top;">` +
         `<p style="margin:0 0 3px;font-size:15px;line-height:1.4;font-weight:bold;color:#3d4652;">${esc(it.title)}</p>` +
         variant +
-        `<p style="margin:0;font-size:13px;line-height:1.4;color:#7b8590;">Qty: ${esc(it.quantity)}</p>` +
-        `</td></tr>`
+        `<p style="margin:0;${SUB}">Qty: ${esc(it.quantity)}</p>` +
+        `</td>${priceCell("14px 14px 14px 0")}</tr>`
       );
     })
     .join("");
   return `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#fffcf3;border:1px solid #ebe3cf;border-radius:8px;">${rows}</table>`;
 }
 
+/** Subtotal / Discount / Total block, same look as the order confirmation's totals. */
+export function buildTotalsHtml(checkout) {
+  const currency = (checkout.total && checkout.total.currency) || "INR";
+  const total = checkout.total && checkout.total.amount != null ? Number(checkout.total.amount) : null;
+  const priced = checkout.items.filter((it) => it.price != null && !Number.isNaN(it.price));
+  const subtotal = priced.length && priced.length === checkout.items.length ? priced.reduce((n, it) => n + it.price, 0) : null;
+  const row = (label, value, bold) => {
+    const st = bold ? "font-size:13px;font-weight:bold;color:#3d4652;" : "font-size:12px;color:#4f5965;";
+    return `<tr><td align="right" style="padding:3px 8px;${st}">${label}</td><td width="100" align="right" style="padding:3px 0;${st}white-space:nowrap;">${esc(value)}</td></tr>`;
+  };
+  let rows = "";
+  if (subtotal != null) rows += row("Subtotal", moneyOf(subtotal, currency));
+  if (subtotal != null && total != null && subtotal - total > 0.5) rows += row("Discount", "-" + moneyOf(subtotal - total, currency));
+  if (total != null) rows += row("Total", moneyOf(total, currency), true);
+  return rows ? `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:10px;">${rows}</table>` : "";
+}
+
 export function buildEmailVars(checkout, shopInfo) {
   const first = (checkout.firstName || "").trim() || "there";
-  const count = checkout.items.reduce((n, it) => n + (Number(it.quantity) || 1), 0);
+  const count = checkout.items.filter((it) => !it.isCustomisation).reduce((n, it) => n + (Number(it.quantity) || 1), 0) || 1;
+  const currency = (checkout.total && checkout.total.currency) || "INR";
   const raw = {
     customer_first_name: first,
     item_count: `${count} item${count === 1 ? "" : "s"}`,
@@ -687,9 +752,10 @@ export function buildEmailVars(checkout, shopInfo) {
     shop_logo_url: shopInfo.logoUrl,
     unsubscribe_url: buildUnsubscribeUrl(checkout.email),
   };
-  // HTML context: every value escaped, except the generated items block, which is already safe markup.
+  // HTML context: every value escaped, except the generated blocks, which are already safe markup.
   const html = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, esc(v)]));
-  html.items_html = buildItemsHtml(checkout.items);
+  html.items_html = buildItemsHtml(checkout.items, currency);
+  html.totals_html = buildTotalsHtml(checkout);
   return { raw, html };
 }
 
@@ -896,8 +962,8 @@ export function sampleCheckout(email, shopUrl = "https://onlynaturalgemstones.co
     url: shopUrl,
     total: { amount: "27300.00", currency: "INR" },
     items: [
-      { title: "Blue Sapphire (Neelam) - 5.25 Carat", variantTitle: "", quantity: 1, imageUrl: "" },
-      { title: "Gemstone Customisation", variantTitle: "Pendant / Panchdhatu / PD02", quantity: 1, imageUrl: "" },
+      { title: "Blue Sapphire (Neelam) - 5.25 Carat", variantTitle: "", quantity: 1, imageUrl: "", price: 24500, isCustomisation: false, props: [] },
+      { title: "Gemstone Customisation", variantTitle: "", quantity: 1, imageUrl: "", price: 2800, isCustomisation: true, props: ["Pendant", "Panchdhatu", "PD02"] },
     ],
   };
 }
