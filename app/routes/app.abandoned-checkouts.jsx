@@ -30,6 +30,10 @@ export const action = async ({ request }) => {
   const checkoutId = String(form.get("checkoutId") || "");
 
   try {
+    if (intent === "resend") {
+      const r = await sendCheckoutNow({ admin, shop: session.shop, checkoutId, resend: true });
+      return { intent, checkoutId, ...r };
+    }
     if (intent === "sendNow") {
       const r = await sendCheckoutNow({ admin, shop: session.shop, checkoutId });
       return { intent, checkoutId, ...r };
@@ -102,7 +106,7 @@ function RowActions({ row }) {
 
   useEffect(() => {
     if (!result) return;
-    if (result.intent === "sendNow" || result.intent === "retry") {
+    if (result.intent === "sendNow" || result.intent === "retry" || result.intent === "resend") {
       if (result.ok) toast.show("Email sent to " + row.email);
       else toast.show(result.status || result.error || "Could not send", { isError: true });
     } else if (result.intent === "skip") {
@@ -115,7 +119,7 @@ function RowActions({ row }) {
   const go = (intent, extra = {}) => fetcher.submit({ intent, checkoutId: row.id, logId: row.logId || "", name: row.name, email: row.email, customer: row.customer, ...extra }, { method: "post" });
   const running = busy ? fetcher.formData?.get("intent") : null;
 
-  if (!row.canSendNow && !row.canRetry && !row.canSkip) return <span style={{ color: brand.faint, fontSize: "12px" }}>—</span>;
+  if (!row.canSendNow && !row.canRetry && !row.canSkip && !row.canResend) return <span style={{ color: brand.faint, fontSize: "12px" }}>—</span>;
   return (
     <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
       {row.canRetry && (
@@ -138,6 +142,17 @@ function RowActions({ row }) {
         >
           <Icon name="send" size={12} color="currentColor" />
           {running === "sendNow" ? "Sending…" : "Send now"}
+        </button>
+      )}
+      {row.canResend && (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => window.confirm(`This customer was already emailed. Send the abandoned checkout email to ${row.email} again?`) && go("resend")}
+          style={{ ...btnBase, border: `1px solid ${brand.accent}`, background: "#fff", color: brand.accent, opacity: busy ? 0.7 : 1 }}
+        >
+          <Icon name="refresh" size={12} color="currentColor" />
+          {running === "resend" ? "Sending…" : "Resend email"}
         </button>
       )}
       {row.canSkip && (

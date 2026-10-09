@@ -1078,6 +1078,7 @@ export async function getAbandonedCheckoutView({ admin, shop, days = 7, now = ne
       sentAt: log && alreadySent ? new Date(log.notifiedAt).toISOString() : null,
       logId: log ? log.id : null,
       canSendNow: !alreadySent && !blocked && gmailReady,
+      canResend: alreadySent && !blocked && gmailReady,
       canRetry: state === "failed" && !!(log && log.snapshot),
       canSkip: ["will-send", "off", "waiting", "failed"].includes(state),
     };
@@ -1091,12 +1092,12 @@ export async function getAbandonedCheckoutView({ admin, shop, days = 7, now = ne
  * delay and the once-a-day limit, but still honouring the rules that protect the
  * customer (marketing consent, not unsubscribed, hasn't ordered since, not completed).
  */
-export async function sendCheckoutNow({ admin, shop, checkoutId }) {
+export async function sendCheckoutNow({ admin, shop, checkoutId, resend = false }) {
   const settings = await getAppSettings(shop);
   if (!settings.gmailUser || !settings.gmailAppPassword) return { ok: false, status: "error: Gmail is not connected (Settings -> Connections)." };
 
   const existing = await prisma.abandonedCheckoutEmail.findUnique({ where: { checkoutId } });
-  if (existing && classifyLogStatus(existing.status) === "sent") return { ok: false, status: "skipped: an email was already sent for this checkout." };
+  if (!resend && existing && classifyLogStatus(existing.status) === "sent") return { ok: false, status: "skipped: an email was already sent for this checkout." };
 
   let checkouts;
   try {
