@@ -53,19 +53,6 @@ export const LEAD_STATUS_OPTIONS = [
   { value: "Qualified", label: "Qualified", color: "#1e7e34", bg: "#e6f4ea" },
 ];
 
-const GEM_TO_HANDLE = {
-  Ruby: "ruby",
-  "Yellow Sapphire": "yellow-sapphire",
-  "Blue Sapphire": "blue-sapphire",
-  Emerald: "emerald",
-  "Red Coral": "red-coral",
-  Pearl: "pearl",
-  Hessonite: "hessonite-gomed",
-  "Cat's Eye": "cats-eye-lehsunia",
-  Diamond: "diamond",
-  "White Sapphire": "white-sapphire",
-};
-
 export function parseLeadStatus(rawNotes) {
   if (!rawNotes) return "New";
   const trimmed = rawNotes.trim();
@@ -95,7 +82,6 @@ function exportAstroLeadsToCsv(leadsToExport) {
     "Moon Sign",
     "Sun Sign",
     "Life Stone",
-    "Life Stone SKU",
     "Benefic Stone",
     "Lucky Stone",
     "Calculation Status",
@@ -129,7 +115,6 @@ function exportAstroLeadsToCsv(leadsToExport) {
       escapeCsv(lead.moonsign || ""),
       escapeCsv(lead.sunsign || ""),
       escapeCsv(lead.lifeStoneGem || ""),
-      escapeCsv(lead.lifeStoneSku || "N/A"),
       escapeCsv(lead.beneficStoneGem || ""),
       escapeCsv(lead.luckyStoneGem || ""),
       escapeCsv(lead.calculationOk ? "OK" : "Error"),
@@ -293,42 +278,11 @@ export const loader = async ({ request }) => {
     }
   }
 
-  // Collect unique gem names to fetch SKU for Life Stone
-  const uniqueGems = [...new Set(leads.map((l) => l.lifeStoneGem).filter(Boolean))];
-  const gemSkuMap = {};
-
-  if (uniqueGems.length > 0 && admin) {
-    try {
-      const queryParts = uniqueGems.map((gem, i) => {
-        const handle = GEM_TO_HANDLE[gem] || gem.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-        return `c${i}: collectionByHandle(handle: ${JSON.stringify(handle)}) { products(first: 2) { nodes { variants(first: 3) { nodes { sku } } } } }`;
-      });
-      const res = await admin.graphql(`#graphql
-      query AstroGemSkus { ${queryParts.join(" ")} }`);
-      const json = await res.json();
-      uniqueGems.forEach((gem, i) => {
-        const collection = json?.data?.[`c${i}`];
-        const skus = [];
-        if (collection?.products?.nodes) {
-          for (const p of collection.products.nodes) {
-            for (const v of p.variants?.nodes || []) {
-              if (v.sku && !skus.includes(v.sku)) skus.push(v.sku);
-            }
-          }
-        }
-        if (skus.length) gemSkuMap[gem] = skus.slice(0, 3).join(", ");
-      });
-    } catch (err) {
-      console.error("[astro-leads] SKU lookup failed:", err);
-    }
-  }
-
   return {
     whatsappQueue,
     leads: leads.map((l) => ({
       ...l,
       createdAt: l.createdAt.toISOString(),
-      lifeStoneSku: gemSkuMap[l.lifeStoneGem] || null,
       emailStatus: eventsByTrackingId[l.trackingId] || { sent: 0, opened: 0, clicked: 0, clickedLinks: [] },
     })),
   };
@@ -408,7 +362,7 @@ function WhatsAppQueueSection({ whatsappQueue }) {
   );
 }
 
-// Hindi names + ruling planets shown next to each stone in the Stones & SKU column.
+// Hindi names + ruling planets shown next to each stone in the Stones column.
 const HINDI_NAMES = {
   Ruby: "Manik", Pearl: "Moti", "Red Coral": "Moonga", Emerald: "Panna", "Yellow Sapphire": "Pukhraj",
   Diamond: "Heera", "Blue Sapphire": "Neelam", Hessonite: "Gomed", "Cat's Eye": "Lehsunia", Opal: "Upal",
@@ -563,11 +517,6 @@ function LeadRow({ lead, selected, onToggleSelect }) {
           )}
           {!lead.lifeStoneGem && !lead.beneficStoneGem && !lead.luckyStoneGem && "—"}
         </div>
-        {lead.lifeStoneSku ? (
-          <div style={{ fontSize: "10px", color: brand.muted, background: "#fff", padding: "1px 5px", borderRadius: "4px", border: `1px solid ${brand.border}`, marginTop: "4px", display: "inline-block" }}>
-            SKU: {lead.lifeStoneSku}
-          </div>
-        ) : null}
       </td>
       <td style={{ ...tdStyle, minWidth: "160px" }}>
         {(() => {
@@ -791,8 +740,7 @@ export default function AstroLeadsPage() {
       (lead.name || "").toLowerCase().includes(q) ||
       (lead.email || "").toLowerCase().includes(q) ||
       (lead.phone || "").toLowerCase().includes(q) ||
-      (lead.lifeStoneGem || "").toLowerCase().includes(q) ||
-      (lead.lifeStoneSku || "").toLowerCase().includes(q);
+      (lead.lifeStoneGem || "").toLowerCase().includes(q);
     return (
       matchesSearch &&
       matchesCalcStatus(lead, calcFilter) &&
@@ -890,7 +838,7 @@ export default function AstroLeadsPage() {
       <WhatsAppQueueSection whatsappQueue={whatsappQueue} />
 
       <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center", marginBottom: "14px" }}>
-        <input type="text" value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Search name, email, phone, stone, or SKU…" style={inputStyle} />
+        <input type="text" value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Search name, email, phone or stone…" style={inputStyle} />
         <MultiSelect label="lead status" options={LEAD_STATUS_OPTIONS.map((o) => ({ value: o.value, label: o.label }))} selected={leadStatusFilter} onChange={setLeadStatusFilter} />
         <MultiSelect label="calculation status" options={CALC_STATUS_OPTIONS} selected={calcFilter} onChange={setCalcFilter} />
         <MultiSelect label="email status" options={EMAIL_STATUS_OPTIONS} selected={emailFilter} onChange={setEmailFilter} />
@@ -919,7 +867,7 @@ export default function AstroLeadsPage() {
                   <SortTh label="When" sortKey="createdAt" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
                   <SortTh label="Contact" sortKey="name" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
                   <th style={thStyle}>Birth Details</th>
-                  <SortTh label="Stones & SKU" sortKey="lifeStoneGem" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                  <SortTh label="Stones" sortKey="lifeStoneGem" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
                   <th style={thStyle}>Lead Status</th>
                   <th style={thStyle}>Email</th>
                   <th style={thStyle}>WhatsApp</th>
