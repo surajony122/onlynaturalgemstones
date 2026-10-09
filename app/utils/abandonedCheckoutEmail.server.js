@@ -557,7 +557,7 @@ const CHECKOUTS_QUERY_TEMPLATE = `#graphql
     }
   }`;
 
-const CHECKOUTS_QUERY = CHECKOUTS_QUERY_TEMPLATE.replace("__PRICE__", "originalTotalPriceSet { shopMoney { amount currencyCode } }");
+const CHECKOUTS_QUERY = CHECKOUTS_QUERY_TEMPLATE.replace("__PRICE__", "originalTotalPriceSet { shopMoney { amount currencyCode } } variant { id }");
 // If Shopify ever rejects the line-price field, the list still loads (just without per-line prices).
 const CHECKOUTS_QUERY_NO_PRICES = CHECKOUTS_QUERY_TEMPLATE.replace("__PRICE__", "");
 
@@ -581,6 +581,8 @@ export function normaliseCheckout(node) {
       variantTitle: li.variantTitle || "",
       quantity: li.quantity || 1,
       price: li.originalTotalPriceSet && li.originalTotalPriceSet.shopMoney ? Number(li.originalTotalPriceSet.shopMoney.amount) : null,
+      variantId: li.variant && li.variant.id ? String(li.variant.id).split("/").pop() : "",
+      linkedId: String(la["_Linked Gemstone"] || la["Linked Gemstone"] || "").trim(),
       isCustomisation: /customi[sz]ation/i.test(li.title || "") || la["_Linked Gemstone"] != null || la["Linked Gemstone"] != null,
       props: Object.keys(la)
         .filter((k) => k[0] !== "_" && !/^(Linked Gemstone|Lab Certification|GJI Certification|Custom Design Image)$/.test(k) && String(la[k] || "").trim())
@@ -612,7 +614,7 @@ export function normaliseCheckout(node) {
 async function runCheckoutsQuery(admin, first, query) {
   let res = await admin.graphql(CHECKOUTS_QUERY, { variables: { first, query } });
   let json = await res.json();
-  if (json.errors && json.errors.length && /originalTotalPriceSet/i.test(JSON.stringify(json.errors))) {
+  if (json.errors && json.errors.length && /originalTotalPriceSet|variant/i.test(JSON.stringify(json.errors))) {
     res = await admin.graphql(CHECKOUTS_QUERY_NO_PRICES, { variables: { first, query } });
     json = await res.json();
   }
@@ -689,13 +691,25 @@ function moneyOf(n, currency) {
  * never shows a quantity (the old pricing trick used a huge quantity of a Rs 1 item).
  */
 export function buildItemsHtml(items, currency = "INR") {
-  const groups = [];
-  for (const it of items) {
-    const last = groups[groups.length - 1];
-    if (it.isCustomisation && last && last.gem && !last.cust) last.cust = it;
-    else if (it.isCustomisation) groups.push({ gem: null, cust: it });
-    else groups.push({ gem: it, cust: null });
+  // One card per gemstone, in cart order. A customisation line can sit before OR after its gemstone
+  // in the cart, so pair by the hidden "_Linked Gemstone" value (= the gemstone's variant id) when
+  // both are known, then pair whatever is left in cart order. A customisation that finds no
+  // gemstone still gets its own card.
+  const gems = items.filter((it) => !it.isCustomisation).map((gem) => ({ gem, cust: null }));
+  const custs = items.filter((it) => it.isCustomisation);
+  const loose = [];
+  for (const c of custs) {
+    const g = c.linkedId ? gems.find((x) => !x.cust && x.gem.variantId && x.gem.variantId === c.linkedId) : null;
+    if (g) g.cust = c;
+    else loose.push(c);
   }
+  const leftover = [];
+  for (const c of loose) {
+    const g = gems.find((x) => !x.cust);
+    if (g) g.cust = c;
+    else leftover.push({ gem: null, cust: c });
+  }
+  const groups = gems.concat(leftover);
   const money = (n) => (n != null && !Number.isNaN(n) ? esc(moneyOf(n, currency)) : "");
   const gold = "font-size:13px;color:#8C7A4E;";
   const small = "font-size:10px;line-height:1.5;color:#4f5965;";
