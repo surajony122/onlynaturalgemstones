@@ -1517,7 +1517,7 @@ export default function SettingsPage() {
           <Explain summary="Where to register the webhook URL">
             Interakt has no API to fetch campaign stats — register this URL in Interakt → Settings → Developer
             Setting → Webhooks (pick any secret, match it above) to see real sent/delivered/read status on{" "}
-            <a href="/app/whatsapp-events?tab=wa" style={{ color: brand.accent }}>Logs</a>:
+            <a href="/app/whatsapp-events?tab=gem" style={{ color: brand.accent }}>Logs</a>:
             <br />
             <code>https://shubh-gems-customizer-app.onrender.com/public/interakt-webhook</code>
           </Explain>

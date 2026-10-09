@@ -831,7 +831,8 @@ function AbandonedEmailSection({ rows }) {
 const LOG_TABS = [
   { key: "orders", label: "Order notifications" },
   { key: "abandoned", label: "Abandoned cart emails" },
-  { key: "wa", label: "Gem recommendation & wishlist" },
+  { key: "gem", label: "Gem recommendation" },
+  { key: "wishlist", label: "Wishlist" },
 ];
 
 // One tab per kind of notification, so each log is short and nothing needs scrolling past the others.
@@ -882,14 +883,17 @@ export default function WhatsAppEventsPage() {
   const revalidator = useRevalidator();
   const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
-  const requestedTab = searchParams.get("tab");
+  const requestedTab = searchParams.get("tab") === "wa" ? "gem" : searchParams.get("tab");
   const tab = LOG_TABS.some((t) => t.key === requestedTab) ? requestedTab : "orders";
   const changeTab = (key) => setSearchParams(key === "orders" ? {} : { tab: key }, { replace: true });
-  const tabCounts = { orders: (orderGroups || []).length, abandoned: (abandoned || []).length, wa: messages.length };
-  const tabProblems = { orders: 0, abandoned: (abandoned || []).filter((r) => r.kind === "failed").length, wa: summary.failed || 0 };
+  const gemMessages = messages.filter((m) => m.kind === "Gem Recommendation");
+  const wishlistMessages = messages.filter((m) => m.kind === "Wishlist");
+  const tabKind = tab === "gem" ? "Gem Recommendation" : tab === "wishlist" ? "Wishlist" : null;
+  const tabMessages = tab === "gem" ? gemMessages : tab === "wishlist" ? wishlistMessages : [];
+  const tabCounts = { orders: (orderGroups || []).length, abandoned: (abandoned || []).length, gem: gemMessages.length, wishlist: wishlistMessages.length };
+  const tabProblems = { orders: 0, abandoned: (abandoned || []).filter((r) => r.kind === "failed").length, gem: gemMessages.filter((m) => m.failedAt).length, wishlist: wishlistMessages.filter((m) => m.failedAt).length };
 
   const [searchText, setSearchText] = useState("");
-  const [kindFilter, setKindFilter] = useState([]);
   const [statusFilter, setStatusFilter] = useState([]);
 
   const filteredMessages = messages.filter((m) => {
@@ -901,7 +905,7 @@ export default function WhatsAppEventsPage() {
       (m.lead?.name || "").toLowerCase().includes(q) ||
       (m.orderNumber || "").toLowerCase().includes(q) ||
       (m.wishlistHandle || "").toLowerCase().includes(q);
-    const matchesKind = kindFilter.length === 0 || kindFilter.includes(m.kind);
+    const matchesKind = !tabKind || m.kind === tabKind;
     return matchesSearch && matchesKind && matchesStatus(m, statusFilter);
   });
 
@@ -935,12 +939,12 @@ export default function WhatsAppEventsPage() {
         title="Logs"
         description="Everything the app sent, one tab for each kind of notification."
         stats={
-          tab === "wa"
+          tab === "gem" || tab === "wishlist"
             ? [
-                { label: "WhatsApp total", value: summary.total },
-                { label: "Delivered", value: summary.delivered, tone: "success" },
-                { label: "Read", value: summary.read, tone: "accent" },
-                { label: "Failed", value: summary.failed, tone: "danger" },
+                { label: "WhatsApp total", value: tabMessages.length },
+                { label: "Delivered", value: tabMessages.filter((m) => m.deliveredAt).length, tone: "success" },
+                { label: "Read", value: tabMessages.filter((m) => m.readAt).length, tone: "accent" },
+                { label: "Failed", value: tabMessages.filter((m) => m.failedAt).length, tone: "danger" },
               ]
             : tab === "abandoned"
             ? [
@@ -967,30 +971,29 @@ export default function WhatsAppEventsPage() {
 
       {tab === "abandoned" && <AbandonedEmailSection rows={abandoned || []} />}
 
-      {tab === "wa" && (
+      {(tab === "gem" || tab === "wishlist") && (
       <>
-      <h2 style={{ fontSize: "15px", fontWeight: 700, color: brand.ink, margin: "0 0 12px" }}>Gem Recommendation &amp; Wishlist</h2>
+      <h2 style={{ fontSize: "15px", fontWeight: 700, color: brand.ink, margin: "0 0 12px" }}>{tab === "gem" ? "Gem recommendation messages" : "Wishlist reminder messages"}</h2>
 
       <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center", marginBottom: "14px" }}>
         <input type="text" value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Search phone, email, name, order #, item…" style={{ ...inputStyle, minWidth: "240px" }} />
-        <MultiSelect label="type" options={KIND_OPTIONS} selected={kindFilter} onChange={setKindFilter} />
         <MultiSelect label="status" options={STATUS_OPTIONS} selected={statusFilter} onChange={setStatusFilter} />
-        {(searchText || kindFilter.length > 0 || statusFilter.length > 0) && (
-          <button type="button" onClick={() => { setSearchText(""); setKindFilter([]); setStatusFilter([]); }} style={smallBtn}>
+        {(searchText || statusFilter.length > 0) && (
+          <button type="button" onClick={() => { setSearchText(""); setStatusFilter([]); }} style={smallBtn}>
             Clear filters
           </button>
         )}
         <span style={{ fontSize: "12.5px", color: brand.muted, marginLeft: "auto" }}>
-          Showing {filteredMessages.length} of {messages.length}
+          Showing {filteredMessages.length} of {tabMessages.length}
         </span>
       </div>
 
       <BulkActionsBar count={bulk.count} onDelete={handleBulkDelete} busy={bulkBusy} noun="event" />
 
-      {messages.length === 0 ? (
+      {tabMessages.length === 0 ? (
         <p style={{ fontSize: "13px", color: brand.muted }}>
-          No Gem Recommendation or Wishlist WhatsApp events logged yet — either the webhook isn't registered yet, or
-          no message has been sent since it was. (Order Processing has its own section above.)
+          No {tab === "gem" ? "gem recommendation" : "wishlist"} WhatsApp events logged yet — either the webhook isn't registered yet, or
+          no message has been sent since it was.
         </p>
       ) : filteredMessages.length === 0 ? (
         <p style={{ fontSize: "13px", color: brand.muted }}>No events match the current filters.</p>

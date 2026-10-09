@@ -22,6 +22,7 @@
  */
 import prisma from "../db.server";
 import { CAN_RETRY, CAN_DISMISS } from "./attentionActions.server";
+import { leadNeedsRetry } from "./retryRules";
 
 const SINCE_DAYS = 7;
 const MAX_DETAILS = 3;
@@ -91,12 +92,12 @@ export async function getAttentionSummary() {
     prisma.astroLead.findMany({
       where: { createdAt: { gte: since } },
       orderBy: { createdAt: "desc" },
-      select: { id: true, name: true, email: true, createdAt: true, calculationOk: true, astroError: true, shopifySyncStatus: true, emailSendStatus: true, whatsappSendStatus: true },
+      select: { id: true, name: true, email: true, phone: true, createdAt: true, calculationOk: true, astroError: true, shopifySyncStatus: true, emailSendStatus: true, whatsappSendStatus: true },
     }),
     prisma.wishlistLead.findMany({
       where: { createdAt: { gte: since } },
       orderBy: { createdAt: "desc" },
-      select: { id: true, email: true, createdAt: true, emailSendStatus: true, whatsappSendStatus: true },
+      select: { id: true, email: true, phone: true, createdAt: true, emailSendStatus: true, whatsappSendStatus: true },
     }),
     prisma.orderProcessingNotification.findMany({
       where: { notifiedAt: { gte: since } },
@@ -171,7 +172,41 @@ export async function getAttentionSummary() {
     .map((n) => detail(SERVICES.email, `Abandoned checkout ${n.checkoutName || ""} (${n.email || "no email"})`.replace("  ", " "), n.status, n.notifiedAt, "abandoned-email", n.id))
     .slice(0, MAX_DETAILS);
 
+  const seenWishlist = new Set();
+  const unsentWishlist = [];
+  for (const l of wishlistLeads) {
+    const key = String(l.email || "").toLowerCase();
+    if (!key || seenWishlist.has(key)) continue; // only a customer's newest save is ever messaged
+    seenWishlist.add(key);
+    if ((l.email && leadNeedsRetry(l.emailSendStatus, l.createdAt)) || (l.phone && leadNeedsRetry(l.whatsappSendStatus, l.createdAt))) unsentWishlist.push(l);
+  }
+  const unsentAstro = astroLeads.filter(
+    (l) => l.calculationOk && ((l.email && leadNeedsRetry(l.emailSendStatus, l.createdAt)) || (l.phone && leadNeedsRetry(l.whatsappSendStatus, l.createdAt)))
+  );
+
   const items = [];
+  if (unsentWishlist.length) {
+    items.push({
+      id: "unsent-wishlist",
+      title: `${unsentWishlist.length} wishlist lead${unsentWishlist.length === 1 ? "" : "s"} did not get their reminder`,
+      detail: "Their email or WhatsApp message failed, was skipped, or got stuck. Retrying sends only the message that is missing.",
+      bulk: { kind: "wishlist", count: unsentWishlist.length },
+      href: "/app/wishlist-leads",
+      action: "Open Wishlist Leads",
+      severity: "warn",
+    });
+  }
+  if (unsentAstro.length) {
+    items.push({
+      id: "unsent-astro",
+      title: `${unsentAstro.length} astro lead${unsentAstro.length === 1 ? "" : "s"} did not get their result`,
+      detail: "Their email or WhatsApp message failed, was skipped, or got stuck. Retrying sends only the message that is missing.",
+      bulk: { kind: "astro", count: unsentAstro.length },
+      href: "/app/astro-leads",
+      action: "Open Astro Leads",
+      severity: "warn",
+    });
+  }
   if (orderFailures.length) {
     const details = orderFailureRows.slice(0, MAX_DETAILS);
     items.push({
@@ -244,8 +279,8 @@ export async function getAttentionSummary() {
   return {
     items,
     badges: {
-      astro: astroIssues.length,
-      wishlist: wishlistIssues.length,
+      astro: Math.max(astroIssues.length, unsentAstro.length),
+      wishlist: Math.max(wishlistIssues.length, unsentWishlist.length),
       whatsapp: orderFailures.length + abandonedIssues.length,
       returnsRefunds: returnRefundIssues.length,
       invoices: invoiceIssues.length,

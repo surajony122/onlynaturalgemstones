@@ -13,6 +13,11 @@ import prisma from "../db.server";
 import { getAppSettings } from "../utils/appSettings.server";
 import { withTimeout, checkGmail, checkGoogleSheets, checkInterakt } from "../utils/serviceHealth.server";
 import { brand, Icon, Card, PageHeader, PageIn, tableWrapStyle, tableStyle, thStyle, tdStyle } from "../components/table-kit";
+import { Link } from "react-router";
+import { getAttentionSummary } from "../utils/attention.server";
+import { runAttentionAction } from "../utils/attentionActions.server";
+import { retryUnsentLeads } from "../utils/unsentLeads.server";
+import AttentionPanel from "../components/attention-panel";
 
 async function checkDatabase() {
   try {
@@ -153,6 +158,35 @@ async function checkWebhookReceipts() {
   return recent.map((r) => ({ ...r, receivedAt: r.receivedAt.toISOString() }));
 }
 
+// Fix buttons on the "Needs attention" panel (same ones as the Overview).
+export const action = async ({ request }) => {
+  const { admin, session } = await authenticate.admin(request);
+  const form = await request.formData();
+  const intent = String(form.get("intent") || "");
+  if (intent === "retryUnsent") {
+    try {
+      return await retryUnsentLeads({ admin, shop: session.shop, kind: String(form.get("kind") || "") });
+    } catch (err) {
+      return { ok: false, intent, error: String((err && err.message) || err) };
+    }
+  }
+  return runAttentionAction({ admin, shop: session.shop, intent, kind: String(form.get("kind") || ""), id: String(form.get("id") || "") });
+};
+
+// What to do when a live check fails, shown under its error.
+const CHECK_FIXES = [
+  [/^Database/, { text: "Check that the database is running on Render and that DATABASE_URL is set.", href: null }],
+  [/^Shopify Admin API/, { text: "Open the app again from Shopify admin so it can sign in again.", href: null }],
+  [/^Scope:/, { text: "Open the app from Shopify admin and approve the updated permissions when asked.", href: null }],
+  [/^Gmail/, { text: "Settings → Connections: check the Gmail address and app password.", href: "/app/settings" }],
+  [/^Google Sheets/, { text: "Settings → Connections: check the Google Sheets link (this one is optional).", href: "/app/settings" }],
+  [/^Interakt/, { text: "Settings → WhatsApp: check the Interakt API key.", href: "/app/settings" }],
+];
+function fixFor(name) {
+  const hit = CHECK_FIXES.find(([re]) => re.test(name));
+  return hit ? hit[1] : null;
+}
+
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const settings = await getAppSettings(session.shop);
@@ -180,7 +214,15 @@ export const loader = async ({ request }) => {
     checkWebhookReceipts(),
   ]);
 
+  let attention = { items: [], badges: {}, healthy: true };
+  try {
+    attention = await getAttentionSummary();
+  } catch (err) {
+    console.error("[server-health] attention summary failed:", err);
+  }
+
   return {
+    attention,
     checkedAt: new Date().toISOString(),
     checks: [
       { name: "Database (Postgres)", ...database },
@@ -260,12 +302,14 @@ function SectionTitle({ children }) {
 }
 
 export default function ServerHealthPage() {
-  const { checkedAt, checks, recentLeads, orderProcessingNotifications, orderProcessingEmailNotifications, registeredWebhooks, webhookReceipts } = useLoaderData();
+  const { attention, checkedAt, checks, recentLeads, orderProcessingNotifications, orderProcessingEmailNotifications, registeredWebhooks, webhookReceipts } = useLoaderData();
   const failingCount = checks.filter((c) => c.ok === false).length;
 
   return (
     <PageIn>
-      <PageHeader title="System health" description="A live check of every service this app depends on." />
+      <PageHeader title="System health" description="A live check of every service this app depends on, and everything that needs fixing." />
+
+      <AttentionPanel attention={attention} />
 
       <Card padding="0" style={{ marginBottom: "18px", overflow: "hidden" }}>
         <div style={{ padding: "18px 22px", background: failingCount === 0 ? brand.successBg : brand.dangerBg, borderBottom: `1px solid ${failingCount === 0 ? brand.successLine : brand.dangerLine}` }}>
@@ -303,7 +347,19 @@ export default function ServerHealthPage() {
                 <td style={tdStyle}>
                   <StatusPill ok={c.ok} />
                 </td>
-                <td style={{ ...tdStyle, ...(c.ok === false ? monoDetailStyle : { color: brand.muted, fontSize: "12.5px" }) }}>{c.detail}</td>
+                <td style={{ ...tdStyle, ...(c.ok === false ? monoDetailStyle : { color: brand.muted, fontSize: "12.5px" }) }}>
+                  {c.detail}
+                  {c.ok === false && fixFor(c.name) && (
+                    <div style={{ marginTop: "8px", fontFamily: "inherit", fontSize: "12.5px", color: brand.body }}>
+                      <strong style={{ color: brand.ink }}>How to fix: </strong>
+                      {fixFor(c.name).href ? (
+                        <Link to={fixFor(c.name).href} style={{ color: brand.accent, fontWeight: 600 }}>{fixFor(c.name).text}</Link>
+                      ) : (
+                        fixFor(c.name).text
+                      )}
+                    </div>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>

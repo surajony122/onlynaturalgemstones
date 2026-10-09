@@ -13,13 +13,13 @@
  * either, so this stays consistent with that rather than introducing a
  * new timezone concept just for this page).
  */
-import { useEffect } from "react";
-import { Link, useFetcher, useLoaderData } from "react-router";
+import { Link, useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { getAttentionSummary } from "../utils/attention.server";
 import { runAttentionAction } from "../utils/attentionActions.server";
-import { useToast } from "../components/toast";
+import { retryUnsentLeads } from "../utils/unsentLeads.server";
+import AttentionPanel from "../components/attention-panel";
 import { getAppSettings, ratesFromAppSettings } from "../utils/appSettings.server";
 import { getCurrencyCountryConfig } from "../utils/currencyCountries.server";
 import { getGemStoneRows } from "../utils/gemStoneDetails.server";
@@ -133,6 +133,18 @@ export const loader = async ({ request }) => {
     Promise.all([prisma.astroLead.count(), prisma.wishlistLead.count()]).catch(() => [0, 0]),
   ]);
 
+  const [contactToday, contactYesterday, contactNew, contactTotal, recentContact, abandonedToday, abandonedYesterday, abandonedTotal, recentAbandoned] = await Promise.all([
+    safe(prisma.contactLead.count({ where: { createdAt: { gte: todayStart } } }), 0, "contact today"),
+    safe(prisma.contactLead.count({ where: { createdAt: { gte: yesterdayStart, lt: todayStart } } }), 0, "contact yesterday"),
+    safe(prisma.contactLead.count({ where: { status: "New" } }), 0, "contact new"),
+    safe(prisma.contactLead.count(), 0, "contact total"),
+    safe(prisma.contactLead.findMany({ orderBy: { createdAt: "desc" }, take: 5, select: { id: true, name: true, email: true, message: true, status: true, createdAt: true } }), [], "recent contact"),
+    safe(prisma.abandonedCheckoutEmail.count({ where: { notifiedAt: { gte: todayStart }, status: { startsWith: "OK" } } }), 0, "abandoned today"),
+    safe(prisma.abandonedCheckoutEmail.count({ where: { notifiedAt: { gte: yesterdayStart, lt: todayStart }, status: { startsWith: "OK" } } }), 0, "abandoned yesterday"),
+    safe(prisma.abandonedCheckoutEmail.count({ where: { status: { startsWith: "OK" } } }), 0, "abandoned total"),
+    safe(prisma.abandonedCheckoutEmail.findMany({ orderBy: { notifiedAt: "desc" }, take: 5, select: { id: true, checkoutName: true, customerName: true, email: true, status: true, notifiedAt: true } }), [], "recent abandoned"),
+  ]);
+
   const settings = await safe(getAppSettings(shop), {}, "settings");
   const rates = ratesFromAppSettings(settings);
 
@@ -153,6 +165,8 @@ export const loader = async ({ request }) => {
       ordersNotifiedToday: { value: ordersToday, delta: ordersToday - ordersYesterday },
       returnsRefundsToday: { value: returnsRefundsToday, delta: returnsRefundsToday - returnsRefundsYesterday },
       invoicesToday: { value: invoicesToday, delta: invoicesToday - invoicesYesterday },
+      contactToday: { value: contactToday, delta: contactToday - contactYesterday },
+      abandonedToday: { value: abandonedToday, delta: abandonedToday - abandonedYesterday },
     },
     series: {
       leads: lastSevenDays(astroWeek.map((l) => l.createdAt), todayStart),
@@ -177,7 +191,9 @@ export const loader = async ({ request }) => {
       receivedAt: iso(m.receivedAt),
     })),
     invoices: { week: invoicesWeek, last: lastInvoice ? { ...lastInvoice, lastSentAt: iso(lastInvoice.lastSentAt) } : null },
-    totals: { astro: totals[0], wishlist: totals[1] },
+    totals: { astro: totals[0], wishlist: totals[1], contact: contactTotal, contactNew, abandonedSent: abandonedTotal },
+    recentContact: recentContact.map((l) => ({ ...l, createdAt: iso(l.createdAt) })),
+    recentAbandoned: recentAbandoned.map((r) => ({ ...r, notifiedAt: iso(r.notifiedAt) })),
     pricing: rates,
     store: { gemTotal: gemRows.length, gemCustomised, countries: enabledCountries.length, currencies: currencyCount },
     connections: {
@@ -193,6 +209,13 @@ export const loader = async ({ request }) => {
 export const action = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const form = await request.formData();
+  if (String(form.get("intent") || "") === "retryUnsent") {
+    try {
+      return await retryUnsentLeads({ admin, shop: session.shop, kind: String(form.get("kind") || "") });
+    } catch (err) {
+      return { ok: false, intent: "retryUnsent", error: String((err && err.message) || err) };
+    }
+  }
   return runAttentionAction({
     admin,
     shop: session.shop,
@@ -393,173 +416,12 @@ function Dot({ tone }) {
   return <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: tone === "pending" || tone === "skip" ? brand.border : t.color, flexShrink: 0 }} />;
 }
 
-// ---------------------------------------------------------------- attention
-
-const smallButton = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "6px",
-  padding: "6px 12px",
-  borderRadius: "8px",
-  fontSize: "12px",
-  fontWeight: 600,
-  cursor: "pointer",
-  whiteSpace: "nowrap",
-};
-
-// The buttons under one failure. Retry re-sends just that message and writes
-// the new result back, so a successful retry clears the failure from this
-// panel; "Mark as resolved" clears it without sending anything.
-function FailureActions({ d }) {
-  const fetcher = useFetcher();
-  const toast = useToast();
-  const busy = fetcher.state !== "idle";
-  const running = busy ? fetcher.formData?.get("intent") : null;
-  const result = fetcher.state === "idle" ? fetcher.data : null;
-
-  useEffect(() => {
-    if (!result) return;
-    if (result.intent === "retry") {
-      if (result.ok) toast.show("Sent again: " + d.subject);
-      else toast.show("Still failing: " + (result.status || result.error || "unknown error"), { isError: true });
-    } else if (result.intent === "dismiss") {
-      if (result.ok) toast.show("Marked as resolved");
-      else toast.show(result.error || "Could not mark as resolved", { isError: true });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [result]);
-
-  if (!d.canRetry && !d.canDismiss) return null;
-  const run = (intent) => fetcher.submit({ intent, kind: d.kind, id: d.id }, { method: "post" });
-
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-      {d.canRetry && (
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => {
-            if (window.confirm("Send this message again?\n\n" + d.subject + " (" + d.source + ")")) run("retry");
-          }}
-          style={{ ...smallButton, border: "1px solid " + brand.accent, background: brand.accent, color: "#fff", opacity: busy ? 0.7 : 1 }}
-        >
-          <Icon name="refresh" size={12} color="currentColor" style={{ animation: running === "retry" ? "ongSpin 0.8s linear infinite" : "none" }} />
-          {running === "retry" ? "Retrying…" : "Retry now"}
-        </button>
-      )}
-      {d.canDismiss && (
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => {
-            if (window.confirm("Mark this as resolved without sending anything?\n\nThe original error stays on record. Use this when the cause is already fixed and sending again would only confuse the customer.")) run("dismiss");
-          }}
-          style={{ ...smallButton, border: "1px solid " + brand.border, background: "#fff", color: brand.body, opacity: busy ? 0.7 : 1 }}
-        >
-          <Icon name="check" size={12} color="currentColor" />
-          {running === "dismiss" ? "Saving…" : "Mark as resolved"}
-        </button>
-      )}
-      {result && result.intent === "retry" && !result.ok && (
-        <span style={{ fontSize: "11.5px", color: brand.danger }}>Still failing. See the updated error above.</span>
-      )}
-    </div>
-  );
-}
-
-function AttentionPanel({ attention }) {
-  if (attention.healthy) {
-    return (
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "10px",
-          padding: "14px 20px",
-          background: brand.successBg,
-          border: `1px solid ${brand.successLine}`,
-          borderRadius: "14px",
-          marginBottom: "20px",
-        }}
-      >
-        <Icon name="check-circle" size={17} color={brand.success} />
-        <span style={{ fontSize: "14px", fontWeight: 700, color: brand.success }}>All clear</span>
-        <span style={{ fontSize: "12.5px", color: brand.muted }}>No failed messages, leads or invoices in the last 7 days.</span>
-      </div>
-    );
-  }
-  return (
-    <div style={{ background: "#fff", border: `1px solid ${brand.dangerLine}`, borderRadius: "14px", boxShadow: brand.shadow, overflow: "hidden", marginBottom: "20px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "9px", padding: "13px 20px", background: brand.dangerBg, borderBottom: `1px solid ${brand.dangerLine}` }}>
-        <Icon name="alert-triangle" size={16} color={brand.danger} />
-        <span style={{ fontSize: "14px", fontWeight: 700, color: brand.danger }}>Needs attention</span>
-        <span style={{ fontSize: "12.5px", color: brand.muted }}>
-          {attention.items.length} thing{attention.items.length === 1 ? "" : "s"} to look at, from the last 7 days
-        </span>
-      </div>
-      {attention.items.map((a) => (
-        <div key={a.id} style={{ padding: "16px 20px", borderBottom: `1px solid ${brand.divider}` }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-            <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: a.severity === "warn" ? brand.warn : brand.danger, flexShrink: 0 }} />
-            <div style={{ flex: 1, minWidth: 0, fontSize: "14px", fontWeight: 600, color: brand.ink }}>{a.title}</div>
-            <Link
-              to={a.href}
-              style={{
-                flexShrink: 0,
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "7px 13px",
-                border: `1px solid ${brand.border}`,
-                background: "#fff",
-                borderRadius: "8px",
-                fontSize: "12.5px",
-                fontWeight: 600,
-                color: brand.accent,
-                textDecoration: "none",
-              }}
-            >
-              {a.action}
-              <Icon name="chevron-right" size={12} color="currentColor" />
-            </Link>
-          </div>
-
-          {a.details && a.details.length > 0 && (
-            <div style={{ margin: "12px 0 0 22px", display: "flex", flexDirection: "column", gap: "10px" }}>
-              {a.details.map((d, i) => (
-                <div key={i} style={{ background: brand.panel, border: `1px solid ${brand.divider}`, borderRadius: "10px", padding: "10px 12px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "6px" }}>
-                    <span style={{ fontSize: "13px", fontWeight: 600, color: brand.ink }}>{d.subject}</span>
-                    <Tag tone="bad">{d.source}</Tag>
-                    {d.when && <span style={{ fontSize: "11.5px", color: brand.faint }}>{timeAgo(d.when)}</span>}
-                  </div>
-                  <div style={{ fontFamily: brand.mono, fontSize: "11.5px", color: brand.body, lineHeight: 1.55, wordBreak: "break-word" }}>{d.reason}</div>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap", marginTop: "9px" }}>
-                    {d.fix ? (
-                      <Link to={d.fix.href} style={{ fontSize: "12px", fontWeight: 600, color: brand.accent, textDecoration: "none" }}>
-                        {d.fix.label} →
-                      </Link>
-                    ) : (
-                      <span />
-                    )}
-                    <FailureActions d={d} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------- page
 
 const money = (n) => (Number.isFinite(n) ? "₹" + Number(n).toLocaleString("en-IN") : "—");
 
 export default function OverviewPage() {
-  const { stats, series, attention, recentAstro, recentWishlist, recentMessages, invoices, totals, pricing, store, connections } = useLoaderData();
+  const { stats, series, attention, recentAstro, recentWishlist, recentMessages, recentContact, recentAbandoned, invoices, totals, pricing, store, connections } = useLoaderData();
 
   const connectionRows = [
     ["Gmail (sends every email)", connections.gmail, "mail"],
@@ -580,6 +442,8 @@ export default function OverviewPage() {
         <StatCard icon="whatsapp" tint={brand.successBg} color={brand.success} label="WhatsApp sent today" stat={stats.whatsappSentToday} spark={series.whatsapp} />
         <StatCard icon="package" tint={brand.accentTint} color={brand.accent} label="Orders notified today" stat={stats.ordersNotifiedToday} />
         <StatCard icon="return" tint={brand.warnBg} color={brand.warn} label="Refund messages today" stat={stats.returnsRefundsToday} />
+        <StatCard icon="mail" tint={brand.accentTint} color={brand.accent} label="Contact messages today" stat={stats.contactToday} />
+        <StatCard icon="cart" tint={brand.warnBg} color={brand.warn} label="Abandoned cart emails sent today" stat={stats.abandonedToday} />
         <StatCard icon="receipt" tint={brand.successBg} color={brand.success} label="Invoices sent today" stat={stats.invoicesToday} />
       </div>
 
@@ -636,11 +500,50 @@ export default function OverviewPage() {
             ))
           )}
         </Panel>
+
+        <Panel icon="mail" color={brand.accent} tint={brand.accentTint} title="Contact Leads" subtitle={`${totals.contact} in total · ${totals.contactNew} new`} to="/app/contact-leads" linkLabel="Open messages">
+          {recentContact.length === 0 ? (
+            <Empty>No messages yet. They appear here when someone sends the Contact us form.</Empty>
+          ) : (
+            recentContact.map((l, i) => (
+              <Row key={l.id} last={i === recentContact.length - 1}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: "13px", fontWeight: 600, color: brand.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.name || l.email}</div>
+                  <div style={{ fontSize: "11.5px", color: brand.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {l.message || "No message"} · {timeAgo(l.createdAt)}
+                  </div>
+                </div>
+                <Tag tone={l.status === "New" ? "info" : "pending"}>{l.status}</Tag>
+              </Row>
+            ))
+          )}
+        </Panel>
+
+        <Panel icon="cart" color={brand.warn} tint={brand.warnBg} title="Abandoned cart emails" subtitle={`${totals.abandonedSent} sent in total`} to="/app/whatsapp-events?tab=abandoned" linkLabel="Open Logs">
+          {recentAbandoned.length === 0 ? (
+            <Empty>No abandoned cart emails yet.</Empty>
+          ) : (
+            recentAbandoned.map((r, i) => (
+              <Row key={r.id} last={i === recentAbandoned.length - 1}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: "13px", fontWeight: 600, color: brand.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.customerName || r.email || "Customer"}</div>
+                  <div style={{ fontSize: "11.5px", color: brand.muted }}>
+                    {r.checkoutName || "Checkout"} · {timeAgo(r.notifiedAt)}
+                  </div>
+                </div>
+                <span title={r.status || ""} style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                  <Icon name="mail" size={13} color={brand.faint} />
+                  <Dot tone={statusOf(r.status)} />
+                </span>
+              </Row>
+            ))
+          )}
+        </Panel>
       </div>
 
       <SectionTitle icon="whatsapp">Orders & messages</SectionTitle>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: "14px" }}>
-        <Panel icon="whatsapp" color={brand.success} tint={brand.successBg} title="Latest WhatsApp messages" subtitle="Status comes from Interakt" to="/app/whatsapp-events?tab=wa" linkLabel="Open Logs">
+        <Panel icon="whatsapp" color={brand.success} tint={brand.successBg} title="Latest WhatsApp messages" subtitle="Status comes from Interakt" to="/app/whatsapp-events?tab=gem" linkLabel="Open Logs">
           {recentMessages.length === 0 ? (
             <Empty>No message events yet.</Empty>
           ) : (

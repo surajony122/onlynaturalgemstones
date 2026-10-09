@@ -373,13 +373,17 @@ function PagesTab() {
           title="System Health"
           route="/app/server-health"
           purpose="A live connectivity check for every service the app depends on."
-          points={["Confirms Gmail, Google Sheets, Interakt and Google Places are each reachable with the credentials currently saved, not just that a field has something in it."]}
+          points={[
+            "Confirms Gmail, Google Sheets, Interakt and Google Places are each reachable with the credentials currently saved, not just that a field has something in it.",
+            "Shows everything that needs fixing at the top, with the real error: failed messages and leads that never got their email or WhatsApp. Each one has Retry now and Mark as resolved, and unsent leads have Retry all unsent. The Overview shows the same panel.",
+            "A failing check shows a How to fix line under its error.",
+          ]}
         />
         <PageEntry
           icon="whatsapp"
           title="Logs"
           route="/app/whatsapp-events"
-          purpose="A log of everything the app sent, in three tabs so nothing needs scrolling: Order notifications, Abandoned cart emails, and Gem recommendation & wishlist."
+          purpose="A log of everything the app sent, in four tabs so nothing needs scrolling: Order notifications, Abandoned cart emails, Gem recommendation and Wishlist."
           points={[
             "Use it to confirm a customer actually received their order message, or to spot a pattern of failures pointing at a setup problem.",
             "Delivered and read statuses come from Interakt's webhook, so nothing shows until the webhook is set up (Settings → Connections → WhatsApp — advanced).",
