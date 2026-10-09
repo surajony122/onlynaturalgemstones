@@ -6,8 +6,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useFetcher, useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
-const CONTACT_STATUSES = ["New", "Contacted", "Closed", "Spam"];
-import { brand, Icon, Card, PageHeader, PageIn, tableWrapStyle, tableStyle, thStyle, tdStyle } from "../components/table-kit";
+import { LEAD_STATUS_OPTIONS } from "../utils/leadStatuses";
+import { brand, Icon, Card, PageHeader, PageIn, MultiSelect, tableWrapStyle, tableStyle, thStyle, tdStyle } from "../components/table-kit";
 import { useToast } from "../components/toast";
 
 export const loader = async ({ request }) => {
@@ -24,7 +24,7 @@ export const action = async ({ request }) => {
   try {
     if (intent === "status") {
       const status = String(form.get("status") || "");
-      if (!CONTACT_STATUSES.includes(status)) return { intent, ok: false, error: "Unknown status" };
+      if (!LEAD_STATUS_OPTIONS.some((o) => o.value === status)) return { intent, ok: false, error: "Unknown status" };
       await prisma.contactLead.update({ where: { id }, data: { status } });
       return { intent, ok: true };
     }
@@ -38,12 +38,6 @@ export const action = async ({ request }) => {
   return { intent, ok: false, error: "Unknown action" };
 };
 
-const STATUS_TONE = {
-  New: { c: "#1a73e8", bg: "#e8f0fe" },
-  Contacted: { c: "#b06000", bg: "#fef7e0" },
-  Closed: { c: "#1e7e34", bg: "#e6f4ea" },
-  Spam: { c: "#c5221f", bg: "#fde8e8" },
-};
 
 const btn = { display: "inline-flex", alignItems: "center", gap: "5px", padding: "5px 10px", borderRadius: "8px", fontSize: "12px", fontWeight: 600, cursor: "pointer", fontFamily: "inherit", textDecoration: "none" };
 
@@ -73,7 +67,8 @@ function Row({ r }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [res]);
   const status = fetcher.formData?.get("status") || r.status;
-  const tone = STATUS_TONE[status] || STATUS_TONE.New;
+  const known = LEAD_STATUS_OPTIONS.find((o) => o.value === status);
+  const tone = known || { color: brand.body, bg: "#fff" }; // an older status that is no longer in the list still shows as it was
   return (
     <tr style={{ opacity: fetcher.formData?.get("intent") === "delete" ? 0.4 : 1 }}>
       <td style={{ ...tdStyle, whiteSpace: "nowrap", fontSize: "12px", color: brand.muted }}>{new Date(r.createdAt).toLocaleString()}</td>
@@ -88,10 +83,11 @@ function Row({ r }) {
           value={status}
           disabled={busy}
           onChange={(e) => fetcher.submit({ intent: "status", id: r.id, status: e.target.value }, { method: "post" })}
-          style={{ padding: "5px 8px", borderRadius: "8px", border: `1px solid ${brand.border}`, background: tone.bg, color: tone.c, fontWeight: 600, fontSize: "12px", fontFamily: "inherit" }}
+          style={{ padding: "5px 8px", borderRadius: "8px", border: `1px solid ${brand.border}`, background: tone.bg, color: tone.color, fontWeight: 600, fontSize: "12px", fontFamily: "inherit" }}
         >
-          {CONTACT_STATUSES.map((s) => (
-            <option key={s} value={s}>{s}</option>
+          {!known && <option value={status}>{status}</option>}
+          {LEAD_STATUS_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>
       </td>
@@ -118,7 +114,7 @@ function Row({ r }) {
 
 export default function ContactLeadsPage() {
   const { rows } = useLoaderData();
-  const [filter, setFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState([]);
   const [search, setSearch] = useState("");
   const counts = useMemo(() => {
     const c = { all: rows.length };
@@ -127,8 +123,8 @@ export default function ContactLeadsPage() {
   }, [rows]);
   const shown = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return rows.filter((r) => (filter === "all" || r.status === filter) && (!q || [r.name, r.email, r.phone, r.message].join(" ").toLowerCase().includes(q)));
-  }, [rows, filter, search]);
+    return rows.filter((r) => (statusFilter.length === 0 || statusFilter.includes(r.status)) && (!q || [r.name, r.email, r.phone, r.message].join(" ").toLowerCase().includes(q)));
+  }, [rows, statusFilter, search]);
 
   return (
     <PageIn>
@@ -138,7 +134,8 @@ export default function ContactLeadsPage() {
         stats={[
           { label: "Total", value: counts.all || 0 },
           { label: "New", value: counts.New || 0, tone: (counts.New || 0) > 0 ? "accent" : undefined },
-          { label: "Closed", value: counts.Closed || 0, tone: "success" },
+          { label: "Qualified", value: counts.Qualified || 0, tone: "success" },
+          { label: "Follow Up", value: counts["Follow Up"] || 0 },
         ]}
         actions={
           <button type="button" onClick={() => exportCsv(shown)} style={{ ...btn, padding: "8px 14px", fontSize: "13px", border: `1px solid ${brand.border}`, background: "#fff", color: brand.body }}>
@@ -148,19 +145,12 @@ export default function ContactLeadsPage() {
         }
       />
       <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center", marginBottom: "12px" }}>
-        {["all", ...CONTACT_STATUSES].map((key) => {
-          const active = filter === key;
-          return (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setFilter(key)}
-              style={{ padding: "6px 12px", borderRadius: "999px", border: `1px solid ${active ? brand.accent : brand.border}`, background: active ? brand.accentTint : "#fff", color: active ? brand.ink : brand.muted, fontSize: "12.5px", fontWeight: active ? 600 : 500, cursor: "pointer" }}
-            >
-              {key === "all" ? "All" : key} <span style={{ color: brand.faint, marginLeft: "3px" }}>{counts[key] || 0}</span>
-            </button>
-          );
-        })}
+        <MultiSelect label="lead status" options={LEAD_STATUS_OPTIONS.map((o) => ({ value: o.value, label: o.label }))} selected={statusFilter} onChange={setStatusFilter} />
+        {statusFilter.length > 0 && (
+          <button type="button" onClick={() => setStatusFilter([])} style={{ ...btn, border: `1px solid ${brand.border}`, background: "#fff", color: brand.body }}>
+            Clear filter
+          </button>
+        )}
         <input
           type="text"
           value={search}
