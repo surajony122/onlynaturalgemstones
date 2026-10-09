@@ -13,6 +13,8 @@ import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { processDueWishlistEmails, resendWishlistLeadEmail, resendWishlistWhatsapp, wishlistDueAtMs } from "../utils/wishlist.server";
 import { getAppSettings } from "../utils/appSettings.server";
+import { leadNeedsRetry } from "../utils/retryRules";
+import BulkRetryBar from "../components/bulk-retry";
 
 const CRON_EVERY_MS = 60 * 1000;
 import {
@@ -143,6 +145,34 @@ export const action = async ({ request }) => {
       return { intent, ok: true, deletedIds: ids, count: ids.length };
     } catch (err) {
       return { intent, ok: false, error: String(err?.message || err) };
+    }
+  }
+
+  if (intent === "bulkRetry") {
+    try {
+      const ids = JSON.parse(formData.get("leadIds") || "[]").slice(0, 40);
+      const mode = String(formData.get("mode") || "auto");
+      const rows = ids.length ? await prisma.wishlistLead.findMany({ where: { id: { in: ids } } }) : [];
+      let emailOk = 0;
+      let waOk = 0;
+      let failed = 0;
+      for (const lead of rows) {
+        const doEmail = lead.email && (mode === "email" || mode === "both" || (mode === "auto" && leadNeedsRetry(lead.emailSendStatus, lead.createdAt)));
+        const doWa = lead.phone && (mode === "whatsapp" || mode === "both" || (mode === "auto" && leadNeedsRetry(lead.whatsappSendStatus, lead.createdAt)));
+        if (doEmail) {
+          let st;
+          try { st = String(await resendWishlistLeadEmail(admin, lead.id)); } catch (e) { st = "threw: " + String((e && e.message) || e); }
+          if (/^OK/i.test(st)) emailOk += 1; else failed += 1;
+        }
+        if (doWa) {
+          let st;
+          try { st = String(await resendWishlistWhatsapp(lead.id)); } catch (e) { st = "threw: " + String((e && e.message) || e); }
+          if (/^OK/i.test(st)) waOk += 1; else failed += 1;
+        }
+      }
+      return { intent, ok: true, total: rows.length, emailOk, waOk, failed };
+    } catch (err) {
+      return { intent, ok: false, error: String((err && err.message) || err) };
     }
   }
 
@@ -362,16 +392,6 @@ const retryBtnStyle = {
   cursor: "pointer",
 };
 
-function sendNeedsRetry(statusText, createdAt) {
-  const t = String(statusText || "").trim();
-  if (!t) return false; // not sent yet, nothing has failed
-  if (/^(OK|sent)/i.test(t)) return false;
-  if (/^pending/i.test(t)) return false;
-  if (/^processing/i.test(t)) return Date.now() - new Date(createdAt).getTime() > 15 * 60 * 1000; // stuck
-  if (/superseded|emptied|ignored|no email on lead|no phone on lead|has no email|empty/i.test(t)) return false;
-  return true;
-}
-
 const smallBtn = {
   fontSize: "12px",
   padding: "6px 14px",
@@ -414,8 +434,8 @@ function LeadRow({ lead, selected, onToggleSelect, now }) {
 
   const sendNow = () => fetcher.submit({ intent: "sendNow", leadId: lead.id }, { method: "POST" });
   const retryWhatsapp = () => fetcher.submit({ intent: "resendWhatsapp", leadId: lead.id }, { method: "POST" });
-  const emailNeedsRetry = sendNeedsRetry(lead.emailSendStatus, lead.createdAt);
-  const whatsappNeedsRetry = sendNeedsRetry(lead.whatsappSendStatus, lead.createdAt);
+  const emailNeedsRetry = leadNeedsRetry(lead.emailSendStatus, lead.createdAt);
+  const whatsappNeedsRetry = leadNeedsRetry(lead.whatsappSendStatus, lead.createdAt);
 
   const confirmDelete = () => {
     setConfirming(false);
@@ -705,6 +725,38 @@ export default function WishlistLeadsPage() {
   const bulkFetcher = useFetcher();
   const bulkBusy = bulkFetcher.state !== "idle";
 
+  // Bulk "send the missing notification again"
+  const retryFetcher = useFetcher();
+  const retryBusy = retryFetcher.state !== "idle";
+  const unsentIds = useMemo(() => {
+    // A customer is only ever messaged from their newest save, so only the newest lead per customer counts.
+    const seen = new Set();
+    const ids = [];
+    for (const l of leads) {
+      const key = String(l.email || "").toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      if (leadNeedsRetry(l.emailSendStatus, l.createdAt) || (l.phone && leadNeedsRetry(l.whatsappSendStatus, l.createdAt))) ids.push(l.id);
+    }
+    return ids;
+  }, [leads]);
+  useEffect(() => {
+    const d = retryFetcher.data;
+    if (!d || d.intent !== "bulkRetry") return;
+    if (!d.ok) {
+      toast.show(d.error || "Could not retry", { isError: true });
+      return;
+    }
+    const parts = [];
+    if (d.emailOk) parts.push(d.emailOk + " email" + (d.emailOk === 1 ? "" : "s") + " sent");
+    if (d.waOk) parts.push(d.waOk + " WhatsApp message" + (d.waOk === 1 ? "" : "s") + " sent");
+    if (d.failed) parts.push(d.failed + " still failed");
+    toast.show(parts.length ? parts.join(", ") : "Nothing needed sending", { isError: !!d.failed && !d.emailOk && !d.waOk });
+    revalidator.revalidate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [retryFetcher.data]);
+  const submitRetry = (mode, ids) => retryFetcher.submit({ intent: "bulkRetry", mode, leadIds: JSON.stringify(ids) }, { method: "POST" });
+
   useEffect(() => {
     if (bulkFetcher.data?.intent === "bulkDelete" && bulkFetcher.data.ok) {
       const count = bulkFetcher.data.count;
@@ -807,6 +859,7 @@ export default function WishlistLeadsPage() {
         )}
       </div>
 
+      <BulkRetryBar unsentCount={unsentIds.length} onRetryUnsent={() => submitRetry("auto", unsentIds)} selectedCount={bulk.count} onRetrySelected={(mode) => submitRetry(mode, bulk.selectedIds)} busy={retryBusy} noun="lead" />
       <BulkActionsBar count={bulk.count} onDelete={handleBulkDelete} busy={bulkBusy} noun="lead" />
 
       {leads.length === 0 ? (

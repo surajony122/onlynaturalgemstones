@@ -875,6 +875,17 @@ export async function runAbandonedCheckoutSweep({ admin, shop, dryRun = false, n
     return { enabled, error: "Gmail is not connected (Settings -> Connections), so no emails were sent.", checked: 0, sent: 0, failed: 0, skipped: 0, items: [] };
   }
 
+  // The old "already emailed in the last 24 hours" rule is gone: every abandoned checkout gets its own email. Checkouts
+  // that were logged as skipped under that rule are cleared here, so the sweep looks at them again and sends them
+  // (if they are still within the 3-day window and otherwise eligible). Nothing writes that status any more.
+  if (!dryRun) {
+    try {
+      await prisma.abandonedCheckoutEmail.deleteMany({ where: { status: { startsWith: "skipped: this address was already emailed" } } });
+    } catch (err) {
+      console.error("[abandonedCheckoutEmail] could not clear old 24h-limit skips:", err);
+    }
+  }
+
   const delayMinutes = clampDelayMinutes(settings.abandonedCheckoutDelayMinutes);
   const nowMs = now.getTime();
   const maxAgeSince = nowMs - MAX_AGE_DAYS * 24 * HOUR_MS;

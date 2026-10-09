@@ -323,6 +323,8 @@ export const loader = async ({ request }) => {
       notifiedAt: r.notifiedAt.toISOString(),
       canRetry: kind === "failed" && !!r.snapshot,
       canResend: kind === "sent",
+      // A skipped checkout can still be sent by hand. The app re-checks consent / unsubscribe / later orders first and says so if it still must not go.
+      canSendNow: kind === "skipped" && !/do-not-email|unsubscribed|consent/i.test(String(r.status || "")),
     };
   });
 
@@ -770,6 +772,11 @@ function AbandonedRow({ r }) {
         {r.canRetry && (
           <button type="button" disabled={busy} style={smallBtn} onClick={() => fetcher.submit({ intent: "abandonedRetry", logId: r.id }, { method: "POST" })}>
             {busy ? "Retrying…" : "Retry"}
+          </button>
+        )}
+        {r.canSendNow && (
+          <button type="button" disabled={busy} style={smallBtn} onClick={() => fetcher.submit({ intent: "abandonedResend", checkoutId: r.checkoutId }, { method: "POST" })}>
+            {busy ? "Sending…" : "Send now"}
           </button>
         )}
         {r.canResend && (
