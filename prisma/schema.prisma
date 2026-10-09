@@ -824,3 +824,20 @@ model AbandonedCheckoutOptOut {
   email     String   @unique
   createdAt DateTime @default(now())
 }
+
+// A message sent through the storefront "Contact us" form. The theme still sends
+// Shopify's own contact email; this is a copy kept in the app so it can be tracked.
+model ContactLead {
+  id        String   @id @default(cuid())
+  shop      String?
+  name      String?
+  email     String
+  phone     String?
+  message   String?
+  status    String   @default("New") // New / Contacted / Closed / Spam
+  source    String?  // page the form was on
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([email, createdAt])
+}

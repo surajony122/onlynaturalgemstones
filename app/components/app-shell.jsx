@@ -34,6 +34,7 @@ export const NAV_GROUPS = [
       { id: "astro", href: "/app/astro-leads", label: "Astro Leads", icon: "users", badgeKey: "astro" },
       { id: "wishlist", href: "/app/wishlist-leads", label: "Wishlist Leads", icon: "heart", badgeKey: "wishlist" },
       { id: "abandoned", href: "/app/abandoned-checkouts", label: "Abandoned Checkouts", icon: "cart", badgeKey: "abandoned" },
+      { id: "contact", href: "/app/contact-leads", label: "Contact Leads", icon: "mail" },
     ],
   },
   {

@@ -1,0 +1,200 @@
+/**
+ * Contact Leads: messages sent through the storefront "Contact us" form.
+ * Staff can search, set a status, reply by email, export to CSV or delete.
+ */
+import { useEffect, useMemo, useState } from "react";
+import { useFetcher, useLoaderData } from "react-router";
+import { authenticate } from "../shopify.server";
+import prisma from "../db.server";
+const CONTACT_STATUSES = ["New", "Contacted", "Closed", "Spam"];
+import { brand, Icon, Card, PageHeader, PageIn, tableWrapStyle, tableStyle, thStyle, tdStyle } from "../components/table-kit";
+import { useToast } from "../components/toast";
+
+export const loader = async ({ request }) => {
+  await authenticate.admin(request);
+  const rows = await prisma.contactLead.findMany({ orderBy: { createdAt: "desc" }, take: 1000 });
+  return { rows: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })) };
+};
+
+export const action = async ({ request }) => {
+  await authenticate.admin(request);
+  const form = await request.formData();
+  const intent = String(form.get("intent") || "");
+  const id = String(form.get("id") || "");
+  try {
+    if (intent === "status") {
+      const status = String(form.get("status") || "");
+      if (!CONTACT_STATUSES.includes(status)) return { intent, ok: false, error: "Unknown status" };
+      await prisma.contactLead.update({ where: { id }, data: { status } });
+      return { intent, ok: true };
+    }
+    if (intent === "delete") {
+      await prisma.contactLead.delete({ where: { id } });
+      return { intent, ok: true };
+    }
+  } catch (err) {
+    return { intent, ok: false, error: String((err && err.message) || err) };
+  }
+  return { intent, ok: false, error: "Unknown action" };
+};
+
+const STATUS_TONE = {
+  New: { c: "#1a73e8", bg: "#e8f0fe" },
+  Contacted: { c: "#b06000", bg: "#fef7e0" },
+  Closed: { c: "#1e7e34", bg: "#e6f4ea" },
+  Spam: { c: "#c5221f", bg: "#fde8e8" },
+};
+
+const btn = { display: "inline-flex", alignItems: "center", gap: "5px", padding: "5px 10px", borderRadius: "8px", fontSize: "12px", fontWeight: 600, cursor: "pointer", fontFamily: "inherit", textDecoration: "none" };
+
+function exportCsv(rows) {
+  if (!rows.length) return alert("No contact leads to export");
+  const q = (v) => `"${String(v == null ? "" : v).replace(/"/g, '""')}"`;
+  const lines = [["Date", "Name", "Email", "Phone", "Message", "Status"].join(",")].concat(
+    rows.map((r) => [new Date(r.createdAt).toLocaleString(), r.name, r.email, r.phone, r.message, r.status].map(q).join(","))
+  );
+  const url = URL.createObjectURL(new Blob(["﻿" + lines.join("\n")], { type: "text/csv;charset=utf-8;" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `contact_leads_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function Row({ r }) {
+  const fetcher = useFetcher();
+  const toast = useToast();
+  const busy = fetcher.state !== "idle";
+  const res = fetcher.state === "idle" ? fetcher.data : null;
+  useEffect(() => {
+    if (res && !res.ok) toast.show(res.error || "Could not save", { isError: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [res]);
+  const status = fetcher.formData?.get("status") || r.status;
+  const tone = STATUS_TONE[status] || STATUS_TONE.New;
+  return (
+    <tr style={{ opacity: fetcher.formData?.get("intent") === "delete" ? 0.4 : 1 }}>
+      <td style={{ ...tdStyle, whiteSpace: "nowrap", fontSize: "12px", color: brand.muted }}>{new Date(r.createdAt).toLocaleString()}</td>
+      <td style={tdStyle}>
+        <div style={{ fontWeight: 600, color: brand.ink }}>{r.name || "No name"}</div>
+        <div style={{ fontSize: "11.5px", color: brand.muted }}>{r.email}</div>
+        {r.phone && <div style={{ fontSize: "11.5px", color: brand.muted }}>{r.phone}</div>}
+      </td>
+      <td style={{ ...tdStyle, maxWidth: "380px", whiteSpace: "pre-wrap", wordBreak: "break-word", lineHeight: 1.5 }}>{r.message || <span style={{ color: brand.faint }}>No message</span>}</td>
+      <td style={tdStyle}>
+        <select
+          value={status}
+          disabled={busy}
+          onChange={(e) => fetcher.submit({ intent: "status", id: r.id, status: e.target.value }, { method: "post" })}
+          style={{ padding: "5px 8px", borderRadius: "8px", border: `1px solid ${brand.border}`, background: tone.bg, color: tone.c, fontWeight: 600, fontSize: "12px", fontFamily: "inherit" }}
+        >
+          {CONTACT_STATUSES.map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+      </td>
+      <td style={tdStyle}>
+        <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+          <a href={`mailto:${r.email}?subject=${encodeURIComponent("Re: your message to Only Natural Gemstones")}`} style={{ ...btn, border: `1px solid ${brand.accent}`, background: brand.accent, color: "#fff" }}>
+            <Icon name="mail" size={12} color="currentColor" />
+            Reply
+          </a>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => window.confirm("Delete this contact lead?") && fetcher.submit({ intent: "delete", id: r.id }, { method: "post" })}
+            style={{ ...btn, border: `1px solid ${brand.border}`, background: "#fff", color: brand.body }}
+          >
+            <Icon name="trash" size={12} color="currentColor" />
+            Delete
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+export default function ContactLeadsPage() {
+  const { rows } = useLoaderData();
+  const [filter, setFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  const counts = useMemo(() => {
+    const c = { all: rows.length };
+    rows.forEach((r) => (c[r.status] = (c[r.status] || 0) + 1));
+    return c;
+  }, [rows]);
+  const shown = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return rows.filter((r) => (filter === "all" || r.status === filter) && (!q || [r.name, r.email, r.phone, r.message].join(" ").toLowerCase().includes(q)));
+  }, [rows, filter, search]);
+
+  return (
+    <PageIn>
+      <PageHeader
+        title="Contact Leads"
+        description="Messages sent through the Contact us form on your website."
+        stats={[
+          { label: "Total", value: counts.all || 0 },
+          { label: "New", value: counts.New || 0, tone: (counts.New || 0) > 0 ? "accent" : undefined },
+          { label: "Closed", value: counts.Closed || 0, tone: "success" },
+        ]}
+        actions={
+          <button type="button" onClick={() => exportCsv(shown)} style={{ ...btn, padding: "8px 14px", fontSize: "13px", border: `1px solid ${brand.border}`, background: "#fff", color: brand.body }}>
+            <Icon name="download" size={14} color="currentColor" />
+            Export CSV
+          </button>
+        }
+      />
+      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center", marginBottom: "12px" }}>
+        {["all", ...CONTACT_STATUSES].map((key) => {
+          const active = filter === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setFilter(key)}
+              style={{ padding: "6px 12px", borderRadius: "999px", border: `1px solid ${active ? brand.accent : brand.border}`, background: active ? brand.accentTint : "#fff", color: active ? brand.ink : brand.muted, fontSize: "12.5px", fontWeight: active ? 600 : 500, cursor: "pointer" }}
+            >
+              {key === "all" ? "All" : key} <span style={{ color: brand.faint, marginLeft: "3px" }}>{counts[key] || 0}</span>
+            </button>
+          );
+        })}
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search name, email or message…"
+          style={{ marginLeft: "auto", minWidth: "240px", padding: "8px 12px", borderRadius: "9px", border: `1px solid ${brand.border}`, fontSize: "13px", fontFamily: "inherit" }}
+        />
+      </div>
+      {shown.length === 0 ? (
+        <Card>
+          <p style={{ margin: 0, fontSize: "13px", color: brand.muted }}>
+            {rows.length === 0 ? "No messages yet. They appear here as soon as someone sends the Contact us form." : "No messages match this filter."}
+          </p>
+        </Card>
+      ) : (
+        <div style={tableWrapStyle}>
+          <table style={tableStyle}>
+            <thead>
+              <tr>
+                <th style={thStyle}>Received</th>
+                <th style={thStyle}>Customer</th>
+                <th style={thStyle}>Message</th>
+                <th style={thStyle}>Status</th>
+                <th style={thStyle}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((r) => (
+                <Row key={r.id} r={r} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </PageIn>
+  );
+}
