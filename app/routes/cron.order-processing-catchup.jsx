@@ -38,6 +38,7 @@ import shopify from "../shopify.server";
 import db from "../db.server";
 import { checkAndNotifyOrderProcessing } from "../utils/orderProcessingTrigger.server";
 import { runAbandonedCheckoutSweep } from "../utils/abandonedCheckoutEmail.server";
+import { processDueWishlistEmails } from "../utils/wishlist.server";
 
 // Orders older than this are very unlikely to still be waiting on a
 // "mark as in progress" click, and skipping them keeps each run's
@@ -166,7 +167,19 @@ export const loader = async ({ request }) => {
       abandoned = { error: String((err && err.message) || err) };
     }
 
-    return Response.json({ ok: true, ordersChecked: orders.length, results, abandoned });
+    // Backup driver for the wishlist reminders (the in-app timer normally sends them within a minute of the wait
+    // ending). Isolated like the sweep above; processDueWishlistEmails claims each lead atomically, so overlapping
+    // with the timer can never send a customer two reminders.
+    let wishlist = null;
+    try {
+      const w = await processDueWishlistEmails(admin, shop);
+      wishlist = { checked: w.checked, sent: w.sent };
+    } catch (err) {
+      console.error("[cron.order-processing-catchup] wishlist check failed:", err);
+      wishlist = { error: String((err && err.message) || err) };
+    }
+
+    return Response.json({ ok: true, ordersChecked: orders.length, results, abandoned, wishlist });
   } catch (err) {
     console.error("[cron.order-processing-catchup] failed:", err);
     return Response.json({ error: "Catch-up check failed", detail: String((err && err.message) || err) }, { status: 500 });

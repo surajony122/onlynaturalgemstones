@@ -403,14 +403,19 @@ export async function processDueWishlistEmails(
 
     // Immediate status lock to prevent concurrent workers/ticks from double-processing
     try {
-      await prisma.wishlistLead.update({
-        where: { id: latest.id },
+      // Atomic claim: only the run that flips this lead from "no status yet" to "processing" goes on to send.
+      // (Two drivers can overlap -- the in-app timer and the /cron/order-processing-catchup call -- and a plain
+      // update by id would let both pass and send the customer two reminders.)
+      const claimed = await prisma.wishlistLead.updateMany({
+        where: { id: latest.id, emailSendStatus: null },
 
         data: {
           emailSendStatus: "processing",
           whatsappSendStatus: "processing",
         },
       });
+
+      if (!claimed || claimed.count === 0) continue;
     } catch (lockErr) {
       console.error(
         "[wishlist] failed to set processing lock for",

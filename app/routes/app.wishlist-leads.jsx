@@ -237,7 +237,8 @@ export const loader = async ({ request }) => {
       const queryParts = handlesList.map(
         (h, i) => `p${i}: productByHandle(handle: ${JSON.stringify(h)}) { handle variants(first: 5) { nodes { sku } } }`
       );
-      const res = await admin.graphql(`#graphql query WishlistSkus { ${queryParts.join(" ")} }`);
+      const res = await admin.graphql(`#graphql
+      query WishlistSkus { ${queryParts.join(" ")} }`);
       const json = await res.json();
       handlesList.forEach((h, i) => {
         const p = json?.data?.[`p${i}`];

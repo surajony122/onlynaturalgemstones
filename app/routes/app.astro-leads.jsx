@@ -273,7 +273,8 @@ export const loader = async ({ request }) => {
         const handle = GEM_TO_HANDLE[gem] || gem.toLowerCase().replace(/[^a-z0-9]+/g, "-");
         return `c${i}: collectionByHandle(handle: ${JSON.stringify(handle)}) { products(first: 2) { nodes { variants(first: 3) { nodes { sku } } } } }`;
       });
-      const res = await admin.graphql(`#graphql query AstroGemSkus { ${queryParts.join(" ")} }`);
+      const res = await admin.graphql(`#graphql
+      query AstroGemSkus { ${queryParts.join(" ")} }`);
       const json = await res.json();
       uniqueGems.forEach((gem, i) => {
         const collection = json?.data?.[`c${i}`];
