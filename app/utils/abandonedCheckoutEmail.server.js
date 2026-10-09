@@ -190,9 +190,9 @@ export const DEFAULT_ABANDONED_TEMPLATE = `<!DOCTYPE html>
             <td style="padding: 20px 28px 8px;">
               <table width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
-                  <td width="50%" valign="middle"><a class="email-button" href="{{checkout_url}}">Complete my order</a></td>
-                  <td width="8" style="width:8px;font-size:1px;line-height:1px;">&nbsp;</td>
-                  <td width="50%" valign="middle"><a class="email-button secondary-button" href="{{shop_url}}">Visit Our Store</a></td>
+                  <td width="48%" valign="middle"><a class="email-button" href="{{checkout_url}}">Complete my order</a></td>
+                  <td width="4%" style="width:14px;min-width:14px;font-size:1px;line-height:1px;">&nbsp;</td>
+                  <td width="48%" valign="middle"><a class="email-button secondary-button" href="{{shop_url}}">Visit Our Store</a></td>
                 </tr>
               </table>
             </td>
