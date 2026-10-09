@@ -712,7 +712,7 @@ export function buildItemsHtml(items, currency = "INR") {
   const money = (n) => (n != null && !Number.isNaN(n) ? esc(moneyOf(n, currency)) : "");
   const gold = "font-size:13px;color:#8C7A4E;";
   const small = "font-size:10px;line-height:1.5;color:#4f5965;";
-  const priceTd = (v, pad) => `<td width="90" align="right" valign="top" style="width:90px;padding:${pad};font-size:12px;color:#4f5965;white-space:nowrap;">${v}</td>`;
+  const priceTd = (v, pad) => `<td width="90" align="right" valign="top" style="width:90px;padding:${pad};font-size:12px;line-height:1.4;color:#4f5965;white-space:nowrap;">${v}</td>`;
   const propsOf = (it) => (it.props || []).map(esc).join(" &middot; ");
 
   const cards = groups.map(({ gem, cust }) => {
@@ -723,11 +723,12 @@ export function buildItemsHtml(items, currency = "INR") {
         : "";
       const variant = gem.variantTitle && gem.variantTitle !== "Default Title" ? `<br>${esc(gem.variantTitle)}` : "";
       const own = propsOf(gem);
+      const solo = !cust;
       rows +=
-        `<tr><td width="55" valign="top" style="width:55px;padding:8px 8px 0 14px;">${img}</td>` +
-        `<td valign="top" style="padding:9px 8px 4px;"><div style="margin:0 0 3px;${gold}">${esc(gem.title)}</div>` +
+        `<tr><td width="55" valign="top" style="width:55px;padding:${solo ? "12px 8px 12px 14px" : "8px 8px 0 14px"};">${img}</td>` +
+        `<td valign="top" style="padding:${solo ? "12px 8px 12px" : "9px 8px 4px"};"><div style="margin:0 0 3px;line-height:1.4;${gold}">${esc(gem.title)}</div>` +
         `<div style="${small}">Qty: ${esc(gem.quantity)}${variant}${own ? "<br>" + own : ""}</div></td>` +
-        priceTd(money(gem.price), "14px 14px 4px 0") +
+        priceTd(money(gem.price), solo ? "12px 14px 12px 0" : "14px 14px 4px 0") +
         `</tr>`;
     }
     if (cust) {
@@ -765,6 +766,9 @@ export function buildTotalsHtml(checkout) {
     const st = bold ? "font-size:13px;font-weight:bold;color:#3d4652;" : "font-size:12px;color:#4f5965;";
     return `<tr><td align="right" style="padding:3px 8px;${st}">${label}</td><td width="100" align="right" style="padding:3px 0;${st}white-space:nowrap;">${esc(value)}</td></tr>`;
   };
+  const hasDiscount = subtotal != null && total != null && subtotal - total > 0.5;
+  const itemCount = checkout.items.filter((it) => !it.isCustomisation).length || checkout.items.length;
+  if (itemCount <= 1 && !hasDiscount) return ""; // one item: its price is already on the card, Subtotal/Total would just repeat it
   let rows = "";
   if (subtotal != null) rows += row("Subtotal", moneyOf(subtotal, currency));
   if (subtotal != null && total != null && subtotal - total > 0.5) rows += row("Discount", "-" + moneyOf(subtotal - total, currency));
