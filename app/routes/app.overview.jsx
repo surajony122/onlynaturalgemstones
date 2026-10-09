@@ -640,7 +640,7 @@ export default function OverviewPage() {
 
       <SectionTitle icon="whatsapp">Orders & messages</SectionTitle>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: "14px" }}>
-        <Panel icon="whatsapp" color={brand.success} tint={brand.successBg} title="Latest WhatsApp messages" subtitle="Status comes from Interakt" to="/app/whatsapp-events" linkLabel="Message history">
+        <Panel icon="whatsapp" color={brand.success} tint={brand.successBg} title="Latest WhatsApp messages" subtitle="Status comes from Interakt" to="/app/whatsapp-events?tab=wa" linkLabel="Open Logs">
           {recentMessages.length === 0 ? (
             <Empty>No message events yet.</Empty>
           ) : (

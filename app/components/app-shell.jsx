@@ -31,7 +31,6 @@ export const NAV_GROUPS = [
   {
     label: "Orders & messages",
     items: [
-      { id: "whatsapp", href: "/app/whatsapp-events", label: "Messages & Orders", icon: "whatsapp", badgeKey: "whatsapp" },
       { id: "invoices", href: "/app/invoices", label: "GST Invoices", icon: "receipt", badgeKey: "invoices" },
     ],
   },
@@ -47,6 +46,7 @@ export const NAV_GROUPS = [
     label: "System",
     items: [
       { id: "server", href: "/app/server-health", label: "System Health", icon: "server" },
+      { id: "whatsapp", href: "/app/whatsapp-events", label: "Logs", icon: "history", badgeKey: "whatsapp" },
       { id: "settings", href: "/app/settings", label: "Settings", icon: "gear" },
       { id: "documentation", href: "/app/documentation", label: "Documentation", icon: "file-text" },
     ],

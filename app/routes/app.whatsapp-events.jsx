@@ -25,7 +25,7 @@
  * needed.
  */
 import { useEffect, useState } from "react";
-import { useFetcher, useLoaderData, useRevalidator } from "react-router";
+import { useFetcher, useLoaderData, useRevalidator, useSearchParams } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -828,10 +828,65 @@ function AbandonedEmailSection({ rows }) {
   );
 }
 
+const LOG_TABS = [
+  { key: "orders", label: "Order notifications" },
+  { key: "abandoned", label: "Abandoned cart emails" },
+  { key: "wa", label: "Gem recommendation & wishlist" },
+];
+
+// One tab per kind of notification, so each log is short and nothing needs scrolling past the others.
+function LogTabs({ tab, onChange, counts, problems }) {
+  return (
+    <div role="tablist" style={{ display: "flex", gap: "4px", flexWrap: "wrap", borderBottom: `1px solid ${brand.border}`, marginBottom: "18px" }}>
+      {LOG_TABS.map((t) => {
+        const active = tab === t.key;
+        return (
+          <button
+            key={t.key}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => onChange(t.key)}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "8px",
+              padding: "10px 16px",
+              marginBottom: "-1px",
+              background: "none",
+              border: "none",
+              borderBottom: `2px solid ${active ? brand.accent : "transparent"}`,
+              color: active ? brand.ink : brand.muted,
+              fontSize: "13.5px",
+              fontWeight: active ? 700 : 500,
+              cursor: "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            {t.label}
+            <span style={{ fontSize: "11.5px", fontWeight: 600, color: brand.muted, background: brand.accentTint, borderRadius: "999px", padding: "1px 8px" }}>{counts[t.key] || 0}</span>
+            {problems[t.key] > 0 && (
+              <span title={problems[t.key] + " failed"} style={{ fontSize: "11.5px", fontWeight: 700, color: "#fff", background: brand.danger, borderRadius: "999px", padding: "1px 7px" }}>
+                {problems[t.key]}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function WhatsAppEventsPage() {
   const { messages, summary, orderGroups, abandoned } = useLoaderData();
   const revalidator = useRevalidator();
   const toast = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get("tab");
+  const tab = LOG_TABS.some((t) => t.key === requestedTab) ? requestedTab : "orders";
+  const changeTab = (key) => setSearchParams(key === "orders" ? {} : { tab: key }, { replace: true });
+  const tabCounts = { orders: (orderGroups || []).length, abandoned: (abandoned || []).length, wa: messages.length };
+  const tabProblems = { orders: 0, abandoned: (abandoned || []).filter((r) => r.kind === "failed").length, wa: summary.failed || 0 };
 
   const [searchText, setSearchText] = useState("");
   const [kindFilter, setKindFilter] = useState([]);
@@ -877,14 +932,24 @@ export default function WhatsAppEventsPage() {
   return (
     <PageIn>
       <PageHeader
-        title="Messages & order notifications"
-        description="Delivered and read status for every WhatsApp message."
-        stats={[
-          { label: "Total", value: summary.total },
-          { label: "Delivered", value: summary.delivered, tone: "success" },
-          { label: "Read", value: summary.read, tone: "accent" },
-          { label: "Failed", value: summary.failed, tone: "danger" },
-        ]}
+        title="Logs"
+        description="Everything the app sent, one tab for each kind of notification."
+        stats={
+          tab === "wa"
+            ? [
+                { label: "WhatsApp total", value: summary.total },
+                { label: "Delivered", value: summary.delivered, tone: "success" },
+                { label: "Read", value: summary.read, tone: "accent" },
+                { label: "Failed", value: summary.failed, tone: "danger" },
+              ]
+            : tab === "abandoned"
+            ? [
+                { label: "Emails", value: tabCounts.abandoned },
+                { label: "Sent", value: (abandoned || []).filter((r) => r.kind === "sent").length, tone: "success" },
+                { label: "Failed", value: tabProblems.abandoned, tone: tabProblems.abandoned > 0 ? "danger" : undefined },
+              ]
+            : [{ label: "Orders", value: tabCounts.orders }]
+        }
         info={
           <>
             <p style={{ margin: "0 0 8px" }}>Delivered and read status comes straight from Interakt's webhook.</p>
@@ -896,10 +961,14 @@ export default function WhatsAppEventsPage() {
         }
       />
 
-      <OrderProcessingSection orderGroups={orderGroups} />
+      <LogTabs tab={tab} onChange={changeTab} counts={tabCounts} problems={tabProblems} />
 
-      <AbandonedEmailSection rows={abandoned || []} />
+      {tab === "orders" && <OrderProcessingSection orderGroups={orderGroups} />}
 
+      {tab === "abandoned" && <AbandonedEmailSection rows={abandoned || []} />}
+
+      {tab === "wa" && (
+      <>
       <h2 style={{ fontSize: "15px", fontWeight: 700, color: brand.ink, margin: "0 0 12px" }}>Gem Recommendation &amp; Wishlist</h2>
 
       <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center", marginBottom: "14px" }}>
@@ -950,6 +1019,8 @@ export default function WhatsAppEventsPage() {
             </tbody>
           </table>
         </div>
+      )}
+      </>
       )}
     </PageIn>
   );

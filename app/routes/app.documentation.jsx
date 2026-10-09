@@ -205,8 +205,8 @@ const SIDEBAR_GROUPS = [
   ["home", "Home", "Overview", "The page the app opens on: what needs attention, today's numbers, and a panel for every part of the app."],
   ["diamond", "Store setup", "Jewelry Pricing · Gemstone details · Currency by country", "What customers see on the storefront: prices, stone details, currencies."],
   ["users", "Customers & leads", "Astro Leads · Wishlist Leads", "Everyone who used the recommendation form or saved a wishlist, and what was sent to them."],
-  ["package", "Orders & messages", "Messages & Orders · GST Invoices", "What happens after a purchase: WhatsApp messages and tax invoices."],
-  ["gear", "System", "System Health · Settings · Documentation", "Connections, message templates, live checks and this guide."],
+  ["package", "Orders & messages", "GST Invoices", "What happens after a purchase: tax invoices."],
+  ["gear", "System", "System Health · Logs · Settings · Documentation", "Connections, message templates, live checks, the log of everything the app sent, and this guide."],
 ];
 
 function StartTab() {
@@ -358,18 +358,6 @@ function PagesTab() {
 
       <GroupCard icon="package" title="Orders & messages" navPath="Sidebar → Orders & messages">
         <PageEntry
-          icon="whatsapp"
-          title="Messages & Orders"
-          route="/app/whatsapp-events"
-          purpose="A log of every WhatsApp message the app sent, grouped by order where it belongs to one."
-          points={[
-            "Use it to confirm a customer actually received their order message, or to spot a pattern of failures pointing at a setup problem.",
-            "Delivered and read statuses come from Interakt's webhook, so nothing shows until the webhook is set up (Settings → Connections → WhatsApp — advanced).",
-            "A row's “…” menu can retry the message or delete its log entry.",
-            "Abandoned cart emails (sent by the app through Gmail) are listed in their own section here, with the reason for any failure. A failed one can be retried and a sent one resent.",
-          ]}
-        />
-        <PageEntry
           icon="receipt"
           title="GST Invoices"
           route="/app/invoices"
@@ -390,6 +378,18 @@ function PagesTab() {
           route="/app/server-health"
           purpose="A live connectivity check for every service the app depends on."
           points={["Confirms Gmail, Google Sheets, Interakt and Google Places are each reachable with the credentials currently saved, not just that a field has something in it."]}
+        />
+        <PageEntry
+          icon="whatsapp"
+          title="Logs"
+          route="/app/whatsapp-events"
+          purpose="A log of everything the app sent, in three tabs so nothing needs scrolling: Order notifications, Abandoned cart emails, and Gem recommendation & wishlist."
+          points={[
+            "Use it to confirm a customer actually received their order message, or to spot a pattern of failures pointing at a setup problem.",
+            "Delivered and read statuses come from Interakt's webhook, so nothing shows until the webhook is set up (Settings → Connections → WhatsApp — advanced).",
+            "A row's “…” menu can retry the message or delete its log entry.",
+            "Abandoned cart emails (sent by the app through Gmail) are listed in their own section here, with the reason for any failure. A failed one can be retried and a sent one resent.",
+          ]}
         />
         <PageEntry
           icon="gear"
@@ -496,8 +496,8 @@ function SettingsTab() {
 const AUTOMATIONS = [
   ["Gem recommendation result", "WhatsApp + email", "Right after the customer confirms their one-time code and the lead is saved.", "Email: Settings → Emails. WhatsApp: template name in Settings → WhatsApp messages; wording in Interakt.", "Astro Leads"],
   ["Wishlist reminder", "WhatsApp + email", "After a customer has been quiet for the set interval (default 2 hours).", "Interval: Settings → Emails. WhatsApp template: Settings → WhatsApp messages.", "Wishlist Leads"],
-  ["Order is being prepared", "WhatsApp + email", "When an order gets the trigger tag set in Settings → WhatsApp messages. A catch-up check also runs on a schedule, so a missed order is picked up.", "Email: Settings → Emails. WhatsApp: Settings → WhatsApp messages.", "Messages & Orders"],
-  ["Refund processed", "WhatsApp", "Automatically when a refund is processed in Shopify. Refunds that come from cancelling an order are skipped.", "Template name: Settings → WhatsApp messages.", "Messages & Orders"],
+  ["Order is being prepared", "WhatsApp + email", "When an order gets the trigger tag set in Settings → WhatsApp messages. A catch-up check also runs on a schedule, so a missed order is picked up.", "Email: Settings → Emails. WhatsApp: Settings → WhatsApp messages.", "Logs"],
+  ["Refund processed", "WhatsApp", "Automatically when a refund is processed in Shopify. Refunds that come from cancelling an order are skipped.", "Template name: Settings → WhatsApp messages.", "Logs"],
   ["Abandoned checkout reminder", "Email", "Once per checkout, after it has been idle for the wait time you set (default 1 hour). Only for customers who agreed to email marketing, who have not ordered since and have not unsubscribed. A customer with several abandoned checkouts gets one email for each. Switched OFF until you turn it on, and then only for checkouts started after that moment.", "Settings → Emails (switch, wait time, subject, layout, test email).", "Settings → Emails (Latest checkouts handled)"],
   ["GST tax invoice", "Email with PDF", "Only when someone clicks Send. Never automatic.", "Settings → Invoices.", "GST Invoices"],
 ];

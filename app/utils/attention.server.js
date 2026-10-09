@@ -180,7 +180,7 @@ export async function getAttentionSummary() {
       detail: summarise(details),
       details,
       href: "/app/whatsapp-events",
-      action: "Open Messages & Orders",
+      action: "Open Logs",
       severity: "danger",
     });
   }
@@ -213,7 +213,7 @@ export async function getAttentionSummary() {
       detail: summarise(returnDetails),
       details: returnDetails,
       href: "/app/whatsapp-events",
-      action: "Open Messages & Orders",
+      action: "Open Logs",
       severity: "danger",
     });
   }
@@ -235,8 +235,8 @@ export async function getAttentionSummary() {
       title: `${abandonedIssues.length} abandoned checkout email${abandonedIssues.length === 1 ? "" : "s"} failed to send`,
       detail: summarise(abandonedDetails),
       details: abandonedDetails,
-      href: "/app/whatsapp-events",
-      action: "Open Messages & Orders",
+      href: "/app/whatsapp-events?tab=abandoned",
+      action: "Open Logs",
       severity: "warn",
     });
   }

@@ -1517,7 +1517,7 @@ export default function SettingsPage() {
           <Explain summary="Where to register the webhook URL">
             Interakt has no API to fetch campaign stats — register this URL in Interakt → Settings → Developer
             Setting → Webhooks (pick any secret, match it above) to see real sent/delivered/read status on{" "}
-            <a href="/app/whatsapp-events" style={{ color: brand.accent }}>WhatsApp Events</a>:
+            <a href="/app/whatsapp-events?tab=wa" style={{ color: brand.accent }}>Logs</a>:
             <br />
             <code>https://shubh-gems-customizer-app.onrender.com/public/interakt-webhook</code>
           </Explain>
@@ -1950,7 +1950,7 @@ export default function SettingsPage() {
 
             <div style={{ marginTop: "18px", paddingTop: "14px", borderTop: `1px solid ${brand.divider}` }}>
               <div style={{ fontSize: "13px", fontWeight: 600, color: brand.ink, marginBottom: "4px" }}>Check who would get an email right now</div>
-              <p style={abNote}>Looks at your recent abandoned checkouts and shows what would happen to each one. It sends nothing and works even while this is switched off. Every email that was sent is listed under <a href="/app/whatsapp-events" style={{ color: brand.accent, fontWeight: 600 }}>Messages &amp; Orders</a>, where a failed one can be retried and a sent one resent.</p>
+              <p style={abNote}>Looks at your recent abandoned checkouts and shows what would happen to each one. It sends nothing and works even while this is switched off. Every email that was sent is listed under <a href="/app/whatsapp-events?tab=abandoned" style={{ color: brand.accent, fontWeight: 600 }}>Logs</a>, where a failed one can be retried and a sent one resent.</p>
               <button
                 type="button"
                 disabled={abDryRunFetcher.state !== "idle"}
