@@ -986,7 +986,7 @@ const WISHLIST_INTERVAL_OPTIONS = [
   { value: "24", label: "24 hours" },
 
   // Fixed delivery times
-  { value: "FIXED_9AM_9PM", label: "9 AM & 9 PM only" },
+  { value: "FIXED_9AM_9PM", label: "9 AM & 9 PM only (India time)" },
 ];
 
 const fieldStyle = {

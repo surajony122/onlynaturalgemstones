@@ -237,6 +237,69 @@ export function resolveWishlistIntervalHours(
 
 
 /**
+ * Settings value for "9 AM & 9 PM only": reminders go out at those two times each day (India time),
+ * instead of a fixed number of hours after the customer's last wishlist change.
+ */
+export const WISHLIST_FIXED_SLOTS_VALUE = "FIXED_9AM_9PM";
+
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+// In fixed-time mode a save is never emailed straight away: the customer must have been quiet for at least this
+// long (so a save at 8:55 isn't emailed at 9:00 while they are still browsing). It then goes at the next 9 AM / 9 PM.
+const FIXED_SLOT_MIN_QUIET_MS = 60 * 60 * 1000;
+
+export function isWishlistFixedSlotMode(settings) {
+  return (
+    String((settings && settings.wishlistEmailIntervalHours) || "").trim() ===
+    WISHLIST_FIXED_SLOTS_VALUE
+  );
+}
+
+/** The next 9:00 or 21:00 India time that is strictly after afterMs. */
+export function nextWishlistFixedSlotMs(afterMs) {
+  const ist = new Date(afterMs + IST_OFFSET_MS);
+  const y = ist.getUTCFullYear();
+  const m = ist.getUTCMonth();
+  const d = ist.getUTCDate();
+  const candidates = [
+    Date.UTC(y, m, d, 9, 0, 0),
+    Date.UTC(y, m, d, 21, 0, 0),
+    Date.UTC(y, m, d + 1, 9, 0, 0),
+  ];
+  for (const c of candidates) {
+    const real = c - IST_OFFSET_MS;
+    if (real > afterMs) return real;
+  }
+  return afterMs + 12 * 60 * 60 * 1000;
+}
+
+/** When a wishlist lead created at createdAt becomes due, for the current Settings choice. */
+export function wishlistDueAtMs(createdAt, settings) {
+  const created = new Date(createdAt).getTime();
+  if (isWishlistFixedSlotMode(settings)) {
+    return nextWishlistFixedSlotMs(created + FIXED_SLOT_MIN_QUIET_MS);
+  }
+  return created + resolveWishlistIntervalHours(settings) * 60 * 60 * 1000;
+}
+
+// Each customer's reminder runs on its own: a slow or stuck email/WhatsApp call for one lead can no longer hold
+// up the others (they run side by side, a few at a time, and every send has its own time limit).
+const WISHLIST_SEND_TIMEOUT_MS = 90 * 1000;
+const WISHLIST_PARALLEL_LEADS = 5;
+// The same list that was already reminded within this window is a duplicate (double click / re-sync), not new activity.
+const WISHLIST_DUPLICATE_WINDOW_HOURS = 1;
+
+function withTimeout(promise, ms, label) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(label + " timed out after " + Math.round(ms / 1000) + "s")), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+
+/**
  * Process due wishlist emails.
  */
 export async function processDueWishlistEmails(
@@ -245,11 +308,6 @@ export async function processDueWishlistEmails(
 ) {
   const settings =
     await getAppSettings(shop);
-
-  const intervalHours =
-    resolveWishlistIntervalHours(
-      settings
-    );
 
   const pendingRows =
     await prisma.wishlistLead.findMany({
@@ -271,9 +329,8 @@ export async function processDueWishlistEmails(
     ),
   ];
 
-  const results = [];
-
-  for (const email of emails) {
+  // One customer's lead, start to finish. Returns a result row, or null when there is nothing to report.
+  const processOne = async (email) => {
     const latest =
       await prisma.wishlistLead.findFirst({
         where: {
@@ -287,7 +344,7 @@ export async function processDueWishlistEmails(
       });
 
     if (!latest) {
-      continue;
+      return null;
     }
 
     if (latest.emailSendStatus) {
@@ -307,10 +364,21 @@ export async function processDueWishlistEmails(
         },
       });
 
-      continue;
+      return null;
     }
 
-    // Cooldown Guard: check if this customer ALREADY received a wishlist email/whatsapp
+    // Not due yet? (a later save by the same customer restarts the wait, so only the newest save counts)
+    const dueAt = wishlistDueAtMs(latest.createdAt, settings);
+    if (Date.now() < dueAt) {
+      const mins = Math.max(1, Math.ceil((dueAt - Date.now()) / 60000));
+      return {
+        email,
+        status: `not due yet (sends in about ${mins} min)`,
+      };
+    }
+
+    // Duplicate guard: the very same list, already reminded a moment ago, is not new activity.
+    // (A different list -- anything new the customer saved -- always gets its own reminder.)
     const lastSentLead =
       await prisma.wishlistLead.findFirst({
         where: {
@@ -343,11 +411,9 @@ export async function processDueWishlistEmails(
       const sameProducts =
         JSON.stringify(currentHandles) === JSON.stringify(prevHandles);
 
-      const cooldownHours = Math.max(24, intervalHours);
-      if (sameProducts || hoursSinceLastSent < cooldownHours) {
-        const skipReason = sameProducts
-          ? "skipped: customer already received reminder for these wishlist items"
-          : `skipped: customer notified ${hoursSinceLastSent.toFixed(1)}h ago (cooldown ${cooldownHours}h)`;
+      if (sameProducts && hoursSinceLastSent < WISHLIST_DUPLICATE_WINDOW_HOURS) {
+        const skipReason =
+          "skipped: this exact wishlist was already sent a moment ago";
 
         await prisma.wishlistLead.update({
           where: { id: latest.id },
@@ -375,37 +441,14 @@ export async function processDueWishlistEmails(
           },
         });
 
-        results.push({ email, status: skipReason });
-        continue;
+        return { email, status: skipReason };
       }
     }
 
-    const ageHours =
-      (
-        Date.now() -
-        new Date(
-          latest.createdAt
-        ).getTime()
-      ) /
-      (60 * 60 * 1000);
-
-    if (ageHours < intervalHours) {
-      results.push({
-        email,
-        status:
-          `not due yet (${ageHours.toFixed(
-            1
-          )}h of ${intervalHours}h)`,
-      });
-
-      continue;
-    }
-
-    // Immediate status lock to prevent concurrent workers/ticks from double-processing
+    // Atomic claim: only the run that flips this lead from "no status yet" to "processing" goes on to send.
+    // (Two drivers can overlap -- the in-app timer and the /cron/order-processing-catchup call -- and a plain
+    // update by id would let both pass and send the customer two reminders.)
     try {
-      // Atomic claim: only the run that flips this lead from "no status yet" to "processing" goes on to send.
-      // (Two drivers can overlap -- the in-app timer and the /cron/order-processing-catchup call -- and a plain
-      // update by id would let both pass and send the customer two reminders.)
       const claimed = await prisma.wishlistLead.updateMany({
         where: { id: latest.id, emailSendStatus: null },
 
@@ -415,7 +458,7 @@ export async function processDueWishlistEmails(
         },
       });
 
-      if (!claimed || claimed.count === 0) continue;
+      if (!claimed || claimed.count === 0) return null;
     } catch (lockErr) {
       console.error(
         "[wishlist] failed to set processing lock for",
@@ -423,7 +466,7 @@ export async function processDueWishlistEmails(
         lockErr
       );
 
-      continue;
+      return null;
     }
 
     const handles =
@@ -444,13 +487,17 @@ export async function processDueWishlistEmails(
 
     try {
       status =
-        await sendWishlistEmail(
-          admin,
-          settings,
-          email,
-          handles,
-          products,
-          latest.trackingId
+        await withTimeout(
+          sendWishlistEmail(
+            admin,
+            settings,
+            email,
+            handles,
+            products,
+            latest.trackingId
+          ),
+          WISHLIST_SEND_TIMEOUT_MS,
+          "email"
         );
     } catch (err) {
       status =
@@ -467,9 +514,13 @@ export async function processDueWishlistEmails(
 
     try {
       whatsappStatus =
-        await sendWishlistWhatsAppForLead(
-          settings,
-          latest
+        await withTimeout(
+          sendWishlistWhatsAppForLead(
+            settings,
+            latest
+          ),
+          WISHLIST_SEND_TIMEOUT_MS,
+          "WhatsApp"
         );
     } catch (err) {
       whatsappStatus =
@@ -522,10 +573,25 @@ export async function processDueWishlistEmails(
       );
     }
 
-    results.push({
+    return {
       email,
       status,
       whatsappStatus,
+    };
+  };
+
+  const results = [];
+
+  for (let i = 0; i < emails.length; i += WISHLIST_PARALLEL_LEADS) {
+    const batch = emails.slice(i, i + WISHLIST_PARALLEL_LEADS);
+    const settled = await Promise.allSettled(batch.map((e) => processOne(e)));
+    settled.forEach((s, idx) => {
+      if (s.status === "fulfilled") {
+        if (s.value) results.push(s.value);
+      } else {
+        console.error("[wishlist] lead processing crashed for", batch[idx], s.reason);
+        results.push({ email: batch[idx], status: "threw: " + String((s.reason && s.reason.message) || s.reason) });
+      }
     });
   }
 

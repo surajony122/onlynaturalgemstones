@@ -11,7 +11,7 @@ import { useFetcher, useLoaderData, useRevalidator } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
-import { processDueWishlistEmails, resendWishlistLeadEmail, resendWishlistWhatsapp, resolveWishlistIntervalHours } from "../utils/wishlist.server";
+import { processDueWishlistEmails, resendWishlistLeadEmail, resendWishlistWhatsapp, wishlistDueAtMs } from "../utils/wishlist.server";
 import { getAppSettings } from "../utils/appSettings.server";
 
 const CRON_EVERY_MS = 60 * 1000;
@@ -195,7 +195,6 @@ export const action = async ({ request }) => {
 export const loader = async ({ request }) => {
   const { session, admin } = await authenticate.admin(request);
   const settings = await getAppSettings(session.shop);
-  const intervalMs = resolveWishlistIntervalHours(settings) * 60 * 60 * 1000;
 
   const leads = await prisma.wishlistLead.findMany({
     orderBy: { createdAt: "desc" },
@@ -250,6 +249,24 @@ export const loader = async ({ request }) => {
     } catch (err) {
       console.error("[wishlist-leads] SKU lookup failed:", err);
     }
+
+    // Save what was found back onto each lead, so its SKUs stay on record even if the product changes later.
+    if (Object.keys(skuMap).length) {
+      for (const l of leads) {
+        const prods = Array.isArray(l.products) ? l.products : [];
+        let changed = false;
+        const next = prods.map((p) => {
+          if (p && p.handle && !p.sku && skuMap[p.handle]) {
+            changed = true;
+            return { ...p, sku: skuMap[p.handle] };
+          }
+          return p;
+        });
+        if (changed) {
+          prisma.wishlistLead.update({ where: { id: l.id }, data: { products: next } }).catch((e) => console.error("[wishlist-leads] could not save SKUs for", l.id, e));
+        }
+      }
+    }
   }
 
   // A customer is emailed from their LATEST snapshot only, so only the newest
@@ -268,7 +285,7 @@ export const loader = async ({ request }) => {
     cronEveryMs: CRON_EVERY_MS,
     leads: leads.map((l) => {
       const created = l.createdAt.getTime();
-      const dueAt = created + intervalMs;
+      const dueAt = wishlistDueAtMs(l.createdAt, settings);
       const rawProducts = Array.isArray(l.products) ? l.products : [];
       const products = rawProducts.map((p) => ({
         ...p,
