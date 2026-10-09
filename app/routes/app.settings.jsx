@@ -1870,8 +1870,8 @@ export default function SettingsPage() {
           <TemplateCard icon={<Icon name="cart" size={15} color={brand.accent} />} title="Abandoned Checkout — Email">
             <p style={{ ...abNote, marginTop: 0 }}>
               Emails a customer once when they leave a checkout without paying. It sends from your Gmail, the same as the other emails, and only to
-              customers who agreed to email marketing. It never emails someone who has ordered since, has unsubscribed, or was already emailed in the
-              last 24 hours.
+              customers who agreed to email marketing. It never emails someone who has ordered since or has unsubscribed. Each abandoned checkout gets its own
+              email: a customer who leaves five checkouts gets five emails (one per checkout).
             </p>
 
             <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: "9px", cursor: "pointer" }}>

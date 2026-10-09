@@ -8,8 +8,9 @@
  *      5-minute order catch-up job) asks Shopify for recent abandoned checkouts.
  *   2. Each checkout is judged by decideCheckout() below. It is emailed only if
  *      it is idle for the configured delay, the customer agreed to email
- *      marketing, has not ordered since, has not unsubscribed, and has not been
- *      emailed in the last 24 hours.
+ *      marketing, has not ordered since and has not unsubscribed. There is no
+ *      per-address limit: a customer who abandons five checkouts gets five emails
+ *      (one per checkout), never more.
  *   3. The email goes out ONCE per checkout. The AbandonedCheckoutEmail row is
  *      created before sending as an atomic claim (checkoutId is unique), so two
  *      overlapping runs can never both send. The row also keeps a snapshot of
@@ -32,7 +33,6 @@ const MAX_DELAY_MINUTES = 3 * 24 * 60;
 const MAX_AGE_DAYS = 3;
 const MAX_SENDS_PER_RUN = 10;
 const FETCH_LIMIT = 50;
-const PER_ADDRESS_COOLDOWN_HOURS = 24;
 const HOUR_MS = 60 * 60 * 1000;
 const FALLBACK_APP_URL = "https://shubh-gems-customizer-app.onrender.com";
 
@@ -646,7 +646,7 @@ export async function fetchRecentCheckouts(admin, sinceDate, limit = FETCH_LIMIT
  *   action "skip"  -> never email it; `record` says whether to write that down
  */
 export function decideCheckout(c, ctx) {
-  const { nowMs, delayMs, sinceMs, handledIds, optedOut, recentlyEmailed } = ctx;
+  const { nowMs, delayMs, sinceMs, handledIds, optedOut } = ctx;
   if (handledIds.has(c.id)) return { action: "skip", reason: "already handled", record: false };
   if (c.completedAt) return { action: "skip", reason: "the customer completed this checkout", record: false };
   if (!c.items.length) return { action: "skip", reason: "no items in the cart", record: false };
@@ -661,7 +661,6 @@ export function decideCheckout(c, ctx) {
   if (idleMs < delayMs) {
     return { action: "wait", reason: `not due yet (sends in about ${Math.max(1, Math.ceil((delayMs - idleMs) / 60000))} min)`, record: false };
   }
-  if (recentlyEmailed.has(c.email)) return { action: "skip", reason: `this address was already emailed in the last ${PER_ADDRESS_COOLDOWN_HOURS} hours`, record: true };
   return { action: "send", reason: "ready to send", record: false };
 }
 
@@ -892,15 +891,9 @@ export async function runAbandonedCheckoutSweep({ admin, shop, dryRun = false, n
 
   const ids = checkouts.map((c) => c.id);
   const emails = [...new Set(checkouts.map((c) => c.email).filter(Boolean))];
-  const [handled, opts, recent] = await Promise.all([
+  const [handled, opts] = await Promise.all([
     ids.length ? prisma.abandonedCheckoutEmail.findMany({ where: { checkoutId: { in: ids } }, select: { checkoutId: true } }) : [],
     emails.length ? prisma.abandonedCheckoutOptOut.findMany({ where: { email: { in: emails } }, select: { email: true } }) : [],
-    emails.length
-      ? prisma.abandonedCheckoutEmail.findMany({
-          where: { email: { in: emails }, status: { startsWith: "OK" }, notifiedAt: { gte: new Date(nowMs - PER_ADDRESS_COOLDOWN_HOURS * HOUR_MS) } },
-          select: { email: true },
-        })
-      : [],
   ]);
   const ctx = {
     nowMs,
@@ -908,7 +901,6 @@ export async function runAbandonedCheckoutSweep({ admin, shop, dryRun = false, n
     sinceMs,
     handledIds: new Set(handled.map((r) => r.checkoutId)),
     optedOut: new Set(opts.map((r) => r.email)),
-    recentlyEmailed: new Set(recent.map((r) => r.email)),
   };
 
   const out = { enabled, delayMinutes, checked: checkouts.length, sent: 0, failed: 0, skipped: 0, waiting: 0, items: [] };
@@ -973,7 +965,6 @@ export async function runAbandonedCheckoutSweep({ admin, shop, dryRun = false, n
     sendsThisRun += 1;
     if (String(status).startsWith("OK")) {
       out.sent += 1;
-      ctx.recentlyEmailed.add(c.email);
       row.reason = "sent";
     } else {
       out.failed += 1;
@@ -1047,19 +1038,13 @@ export async function getAbandonedCheckoutView({ admin, shop, days = 7, now = ne
 
   const ids = checkouts.map((c) => c.id);
   const emails = [...new Set(checkouts.map((c) => c.email).filter(Boolean))];
-  const [logs, opts, recent] = await Promise.all([
+  const [logs, opts] = await Promise.all([
     ids.length ? prisma.abandonedCheckoutEmail.findMany({ where: { checkoutId: { in: ids } } }) : [],
     emails.length ? prisma.abandonedCheckoutOptOut.findMany({ where: { email: { in: emails } }, select: { email: true } }) : [],
-    emails.length
-      ? prisma.abandonedCheckoutEmail.findMany({
-          where: { email: { in: emails }, status: { startsWith: "OK" }, notifiedAt: { gte: new Date(nowMs - PER_ADDRESS_COOLDOWN_HOURS * HOUR_MS) } },
-          select: { email: true },
-        })
-      : [],
   ]);
   const logById = new Map(logs.map((l) => [l.checkoutId, l]));
   const optedOut = new Set(opts.map((o) => o.email));
-  const ctx = { nowMs, delayMs: delayMinutes * 60 * 1000, sinceMs, handledIds: new Set(), optedOut, recentlyEmailed: new Set(recent.map((r) => r.email)) };
+  const ctx = { nowMs, delayMs: delayMinutes * 60 * 1000, sinceMs, handledIds: new Set(), optedOut };
 
   const counts = { total: 0, sent: 0, failed: 0, "will-send": 0, off: 0, waiting: 0, skipped: 0, recovered: 0, sending: 0 };
   const rows = checkouts.map((c) => {

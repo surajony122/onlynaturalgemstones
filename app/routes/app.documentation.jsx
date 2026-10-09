@@ -498,7 +498,7 @@ const AUTOMATIONS = [
   ["Wishlist reminder", "WhatsApp + email", "After a customer has been quiet for the set interval (default 2 hours).", "Interval: Settings → Emails. WhatsApp template: Settings → WhatsApp messages.", "Wishlist Leads"],
   ["Order is being prepared", "WhatsApp + email", "When an order gets the trigger tag set in Settings → WhatsApp messages. A catch-up check also runs on a schedule, so a missed order is picked up.", "Email: Settings → Emails. WhatsApp: Settings → WhatsApp messages.", "Messages & Orders"],
   ["Refund processed", "WhatsApp", "Automatically when a refund is processed in Shopify. Refunds that come from cancelling an order are skipped.", "Template name: Settings → WhatsApp messages.", "Messages & Orders"],
-  ["Abandoned checkout reminder", "Email", "Once per checkout, after it has been idle for the wait time you set (default 1 hour). Only for customers who agreed to email marketing, who have not ordered since, have not unsubscribed, and were not already emailed in the last 24 hours. Switched OFF until you turn it on, and then only for checkouts started after that moment.", "Settings → Emails (switch, wait time, subject, layout, test email).", "Settings → Emails (Latest checkouts handled)"],
+  ["Abandoned checkout reminder", "Email", "Once per checkout, after it has been idle for the wait time you set (default 1 hour). Only for customers who agreed to email marketing, who have not ordered since and have not unsubscribed. A customer with several abandoned checkouts gets one email for each. Switched OFF until you turn it on, and then only for checkouts started after that moment.", "Settings → Emails (switch, wait time, subject, layout, test email).", "Settings → Emails (Latest checkouts handled)"],
   ["GST tax invoice", "Email with PDF", "Only when someone clicks Send. Never automatic.", "Settings → Invoices.", "GST Invoices"],
 ];
 
@@ -627,7 +627,7 @@ function FaqTab() {
       <FaqItem q="Why didn't an abandoned checkout email go out?">
         The reminder is skipped, on purpose, when any of these is true: it is switched off in Settings → Emails; the checkout was started
         before you switched it on; the customer did not agree to email marketing; they placed an order after that checkout; they unsubscribed;
-        they were already emailed in the last 24 hours; or the checkout has not been idle for the wait time yet. Open Settings → Emails →
+        or the checkout has not been idle for the wait time yet. Open Settings → Emails →
         Abandoned Checkout and press <strong>Check now</strong>. It lists each recent checkout and the exact reason for its decision, and
         sends nothing. If an email failed to send, it appears under “Needs attention” on the Overview with the real error and a Retry button.
       </FaqItem>
