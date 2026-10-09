@@ -204,8 +204,7 @@ const FIRST_STEPS = [
 const SIDEBAR_GROUPS = [
   ["home", "Home", "Overview", "The page the app opens on: what needs attention, today's numbers, and a panel for every part of the app."],
   ["diamond", "Store setup", "Jewelry Pricing · Gemstone details · Currency by country", "What customers see on the storefront: prices, stone details, currencies."],
-  ["users", "Customers & leads", "Astro Leads · Wishlist Leads", "Everyone who used the recommendation form or saved a wishlist, and what was sent to them."],
-  ["package", "Orders & messages", "GST Invoices", "What happens after a purchase: tax invoices."],
+  ["users", "Customers & leads", "Astro Leads · Wishlist Leads · Contact Leads · GST Invoices", "Everyone who used the recommendation form, saved a wishlist or wrote to you, and the tax invoices for their orders."],
   ["gear", "System", "System Health · Logs · Settings · Documentation", "Connections, message templates, live checks, the log of everything the app sent, and this guide."],
 ];
 
@@ -354,9 +353,6 @@ function PagesTab() {
           ]}
           tags={["Debounced, not instant", "Email + WhatsApp", "Export to CSV"]}
         />
-      </GroupCard>
-
-      <GroupCard icon="package" title="Orders & messages" navPath="Sidebar → Orders & messages">
         <PageEntry
           icon="receipt"
           title="GST Invoices"
@@ -654,7 +650,7 @@ export default function DocumentationPage() {
         title="Documentation"
         description="What every page, setting and automatic message in this app does."
         stats={[
-          { label: "Pages", value: 11 },
+          { label: "Pages", value: 12 },
           { label: "Settings sections", value: 14 },
           { label: "Automatic messages", value: 5 },
         ]}

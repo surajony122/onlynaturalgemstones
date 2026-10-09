@@ -26,11 +26,6 @@ export const NAV_GROUPS = [
       { id: "astro", href: "/app/astro-leads", label: "Astro Leads", icon: "users", badgeKey: "astro" },
       { id: "wishlist", href: "/app/wishlist-leads", label: "Wishlist Leads", icon: "heart", badgeKey: "wishlist" },
       { id: "contact", href: "/app/contact-leads", label: "Contact Leads", icon: "mail" },
-    ],
-  },
-  {
-    label: "Orders & messages",
-    items: [
       { id: "invoices", href: "/app/invoices", label: "GST Invoices", icon: "receipt", badgeKey: "invoices" },
     ],
   },
