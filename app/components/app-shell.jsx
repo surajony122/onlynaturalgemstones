@@ -21,14 +21,6 @@ export const NAV_GROUPS = [
     items: [{ id: "overview", href: "/app/overview", label: "Overview", icon: "grid", end: true }],
   },
   {
-    label: "Store setup",
-    items: [
-      { id: "pricing", href: "/app/pricing", label: "Jewelry Pricing", icon: "rupee" },
-      { id: "gemdetails", href: "/app/gemstone-details", label: "Gemstone details", icon: "diamond" },
-      { id: "currency", href: "/app/currency-countries", label: "Currency by country", icon: "globe" },
-    ],
-  },
-  {
     label: "Customers & leads",
     items: [
       { id: "astro", href: "/app/astro-leads", label: "Astro Leads", icon: "users", badgeKey: "astro" },
@@ -41,6 +33,14 @@ export const NAV_GROUPS = [
     items: [
       { id: "whatsapp", href: "/app/whatsapp-events", label: "Messages & Orders", icon: "whatsapp", badgeKey: "whatsapp" },
       { id: "invoices", href: "/app/invoices", label: "GST Invoices", icon: "receipt", badgeKey: "invoices" },
+    ],
+  },
+  {
+    label: "Store setup",
+    items: [
+      { id: "pricing", href: "/app/pricing", label: "Jewelry Pricing", icon: "rupee" },
+      { id: "gemdetails", href: "/app/gemstone-details", label: "Gemstone details", icon: "diamond" },
+      { id: "currency", href: "/app/currency-countries", label: "Currency by country", icon: "globe" },
     ],
   },
   {
