@@ -304,6 +304,31 @@ export const loader = async ({ request }) => {
   };
 };
 
+// A visible Retry button next to a status that did not go through (failed / skipped / stuck), so nobody has to
+// dig through the "..." menu. Statuses that can never be retried (no email/phone on the lead, replaced by a newer
+// save, empty wishlist) get no button.
+const retryBtnStyle = {
+  marginTop: "6px",
+  fontSize: "11px",
+  padding: "3px 10px",
+  borderRadius: "999px",
+  border: `1px solid ${brand.accent}`,
+  background: "#fff",
+  color: brand.accent,
+  fontWeight: 600,
+  cursor: "pointer",
+};
+
+function sendNeedsRetry(statusText, createdAt) {
+  const t = String(statusText || "").trim();
+  if (!t) return false; // not sent yet, nothing has failed
+  if (/^(OK|sent)/i.test(t)) return false;
+  if (/^pending/i.test(t)) return false;
+  if (/^processing/i.test(t)) return Date.now() - new Date(createdAt).getTime() > 15 * 60 * 1000; // stuck
+  if (/superseded|emptied|ignored|no email on lead|no phone on lead|has no email|empty/i.test(t)) return false;
+  return true;
+}
+
 const smallBtn = {
   fontSize: "12px",
   padding: "6px 14px",
@@ -402,6 +427,8 @@ function LeadRow({ lead, selected, onToggleSelect }) {
 
   const sendNow = () => fetcher.submit({ intent: "sendNow", leadId: lead.id }, { method: "POST" });
   const retryWhatsapp = () => fetcher.submit({ intent: "resendWhatsapp", leadId: lead.id }, { method: "POST" });
+  const emailNeedsRetry = sendNeedsRetry(lead.emailSendStatus, lead.createdAt);
+  const whatsappNeedsRetry = sendNeedsRetry(lead.whatsappSendStatus, lead.createdAt);
   const confirmDelete = () => {
     setConfirming(false);
     fetcher.submit({ intent: "delete", leadId: lead.id }, { method: "POST" });
@@ -564,6 +591,13 @@ function LeadRow({ lead, selected, onToggleSelect }) {
           active={lead.emailStatus.clicked > 0}
           color={brand.accent}
         />
+        {emailNeedsRetry && (
+          <div>
+            <button type="button" onClick={sendNow} disabled={busy} style={{ ...retryBtnStyle, opacity: busy ? 0.6 : 1 }} title={`Last result: ${lead.emailSendStatus}`}>
+              ↻ Retry email
+            </button>
+          </div>
+        )}
       </td>
       <td style={tdStyle} title={lead.whatsappSendStatus || "pending"}>
         {lead.whatsappSendStatus?.startsWith("OK") ? (
@@ -574,6 +608,13 @@ function LeadRow({ lead, selected, onToggleSelect }) {
           <Pill label="Failed" active color={brand.danger} />
         ) : (
           <Pill label="—" color={brand.muted} />
+        )}
+        {whatsappNeedsRetry && (
+          <div>
+            <button type="button" onClick={retryWhatsapp} disabled={busy} style={{ ...retryBtnStyle, opacity: busy ? 0.6 : 1 }} title={`Last result: ${lead.whatsappSendStatus}`}>
+              ↻ Retry WhatsApp
+            </button>
+          </div>
         )}
       </td>
       <td style={{ ...tdStyle, whiteSpace: "normal", minWidth: "180px" }}>
