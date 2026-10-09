@@ -1,6 +1,6 @@
 /**
  * Contact Leads: messages sent through the storefront "Contact us" form.
- * Staff can search, set a status, reply by email, export to CSV or delete.
+ * Staff can search, set a status and export to CSV.
  */
 import { useEffect, useMemo, useState } from "react";
 import { useFetcher, useLoaderData } from "react-router";
@@ -26,10 +26,6 @@ export const action = async ({ request }) => {
       const status = String(form.get("status") || "");
       if (!LEAD_STATUS_OPTIONS.some((o) => o.value === status)) return { intent, ok: false, error: "Unknown status" };
       await prisma.contactLead.update({ where: { id }, data: { status } });
-      return { intent, ok: true };
-    }
-    if (intent === "delete") {
-      await prisma.contactLead.delete({ where: { id } });
       return { intent, ok: true };
     }
   } catch (err) {
@@ -70,7 +66,7 @@ function Row({ r }) {
   const known = LEAD_STATUS_OPTIONS.find((o) => o.value === status);
   const tone = known || { color: brand.body, bg: "#fff" }; // an older status that is no longer in the list still shows as it was
   return (
-    <tr style={{ opacity: fetcher.formData?.get("intent") === "delete" ? 0.4 : 1 }}>
+    <tr>
       <td style={{ ...tdStyle, whiteSpace: "nowrap", fontSize: "12px", color: brand.muted }}>{new Date(r.createdAt).toLocaleString()}</td>
       <td style={tdStyle}>
         <div style={{ fontWeight: 600, color: brand.ink }}>{r.name || "No name"}</div>
@@ -90,23 +86,6 @@ function Row({ r }) {
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>
-      </td>
-      <td style={tdStyle}>
-        <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-          <a href={`mailto:${r.email}?subject=${encodeURIComponent("Re: your message to Only Natural Gemstones")}`} style={{ ...btn, border: `1px solid ${brand.accent}`, background: brand.accent, color: "#fff" }}>
-            <Icon name="mail" size={12} color="currentColor" />
-            Reply
-          </a>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => window.confirm("Delete this contact lead?") && fetcher.submit({ intent: "delete", id: r.id }, { method: "post" })}
-            style={{ ...btn, border: `1px solid ${brand.border}`, background: "#fff", color: brand.body }}
-          >
-            <Icon name="trash" size={12} color="currentColor" />
-            Delete
-          </button>
-        </div>
       </td>
     </tr>
   );
@@ -174,7 +153,6 @@ export default function ContactLeadsPage() {
                 <th style={thStyle}>Customer</th>
                 <th style={thStyle}>Message</th>
                 <th style={thStyle}>Status</th>
-                <th style={thStyle}>Actions</th>
               </tr>
             </thead>
             <tbody>
