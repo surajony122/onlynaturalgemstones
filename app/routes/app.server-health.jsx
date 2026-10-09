@@ -13,7 +13,7 @@ import prisma from "../db.server";
 import { getAppSettings } from "../utils/appSettings.server";
 import { withTimeout, checkGmail, checkGoogleSheets, checkInterakt } from "../utils/serviceHealth.server";
 import { brand, Icon, Card, PageHeader, PageIn, tableWrapStyle, tableStyle, thStyle, tdStyle } from "../components/table-kit";
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { getAttentionSummary } from "../utils/attention.server";
 import { runAttentionAction } from "../utils/attentionActions.server";
 import { retryUnsentLeads } from "../utils/unsentLeads.server";
@@ -301,16 +301,107 @@ function SectionTitle({ children }) {
   return <h2 style={{ fontSize: "15px", fontWeight: 700, color: brand.ink, margin: "28px 0 12px" }}>{children}</h2>;
 }
 
+const HEALTH_TABS = [
+  { key: "attention", label: "Needs attention" },
+  { key: "connections", label: "Connections" },
+  { key: "webhooks", label: "Webhooks" },
+  { key: "orders", label: "Order notifications" },
+];
+
+// One tab per area, so each part of the page is short and nothing needs scrolling past the others.
+function HealthTabs({ tab, onChange, counts }) {
+  return (
+    <div role="tablist" style={{ display: "flex", gap: "4px", flexWrap: "wrap", borderBottom: `1px solid ${brand.border}`, marginBottom: "18px" }}>
+      {HEALTH_TABS.map((t) => {
+        const active = tab === t.key;
+        const bad = counts[t.key] || 0;
+        return (
+          <button
+            key={t.key}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => onChange(t.key)}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "8px",
+              padding: "10px 16px",
+              marginBottom: "-1px",
+              background: "none",
+              border: "none",
+              borderBottom: `2px solid ${active ? brand.accent : "transparent"}`,
+              color: active ? brand.ink : brand.muted,
+              fontSize: "13.5px",
+              fontWeight: active ? 700 : 500,
+              cursor: "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            {t.label}
+            {bad > 0 && (
+              <span style={{ fontSize: "11.5px", fontWeight: 700, color: "#fff", background: brand.danger, borderRadius: "999px", padding: "1px 7px" }}>{bad}</span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function ServerHealthPage() {
   const { attention, checkedAt, checks, recentLeads, orderProcessingNotifications, orderProcessingEmailNotifications, registeredWebhooks, webhookReceipts } = useLoaderData();
   const failingCount = checks.filter((c) => c.ok === false).length;
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get("tab");
+  const tab = HEALTH_TABS.some((t) => t.key === requestedTab) ? requestedTab : "attention";
+  const changeTab = (key) => setSearchParams(key === "attention" ? {} : { tab: key }, { replace: true });
+  const tabCounts = { attention: (attention.items || []).length, connections: failingCount };
 
   return (
     <PageIn>
       <PageHeader title="System health" description="A live check of every service this app depends on, and everything that needs fixing." />
 
+      <HealthTabs tab={tab} onChange={changeTab} counts={tabCounts} />
+
+      {tab === "attention" && (
+        <>
       <AttentionPanel attention={attention} />
 
+      <SectionTitle>Recent lead issues (last 7 days — {recentLeads.totalLast7Days} lead(s) total)</SectionTitle>
+      {recentLeads.issues.length === 0 ? (
+        <p style={{ fontSize: "13px", color: brand.muted }}>No issues found among leads from the last 7 days.</p>
+      ) : (
+        <div style={tableWrapStyle}>
+          <table style={tableStyle}>
+            <thead>
+              <tr>
+                <th style={thStyle}>When</th>
+                <th style={thStyle}>Email</th>
+                <th style={thStyle}>Problems</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentLeads.issues.map((issue) => (
+                <tr key={issue.id}>
+                  <td style={tdStyle}>{new Date(issue.when).toLocaleString()}</td>
+                  <td style={tdStyle}>{issue.email || "—"}</td>
+                  <td style={{ ...tdStyle, color: brand.danger }}>
+                    {issue.problems.map((p, i) => (
+                      <div key={i}>• {p}</div>
+                    ))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+        </>
+      )}
+
+      {tab === "connections" && (
+        <>
       <Card padding="0" style={{ marginBottom: "18px", overflow: "hidden" }}>
         <div style={{ padding: "18px 22px", background: failingCount === 0 ? brand.successBg : brand.dangerBg, borderBottom: `1px solid ${failingCount === 0 ? brand.successLine : brand.dangerLine}` }}>
           <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
@@ -366,36 +457,27 @@ export default function ServerHealthPage() {
         </table>
       </div>
 
-      <SectionTitle>Recent lead issues (last 7 days — {recentLeads.totalLast7Days} lead(s) total)</SectionTitle>
-      {recentLeads.issues.length === 0 ? (
-        <p style={{ fontSize: "13px", color: brand.muted }}>No issues found among leads from the last 7 days.</p>
-      ) : (
-        <div style={tableWrapStyle}>
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={thStyle}>When</th>
-                <th style={thStyle}>Email</th>
-                <th style={thStyle}>Problems</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recentLeads.issues.map((issue) => (
-                <tr key={issue.id}>
-                  <td style={tdStyle}>{new Date(issue.when).toLocaleString()}</td>
-                  <td style={tdStyle}>{issue.email || "—"}</td>
-                  <td style={{ ...tdStyle, color: brand.danger }}>
-                    {issue.problems.map((p, i) => (
-                      <div key={i}>• {p}</div>
-                    ))}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <SectionTitle>What each check means</SectionTitle>
+      <Card>
+        <Explain summary="read_themes / read_products">
+          If either fails, the recommendation email still sends but falls back to a plain text header (no store
+          logo/social links) or a gray box instead of a real collection image.
+        </Explain>
+        <Explain summary="Google Sheets">
+          "Not configured" is expected and harmless if you're not using the Sheet mirror — leads/events still save
+          to the database regardless.
+        </Explain>
+        <Explain summary="Interakt">
+          This only confirms the Secret Key itself is valid — it can't confirm the WhatsApp template is
+          Meta-approved (green dot in Interakt's Templates Library), since that's not something the API exposes a
+          check for. Use the Settings page's "Send Test" button to confirm the full send path.
+        </Explain>
+      </Card>
+        </>
       )}
 
+      {tab === "webhooks" && (
+        <>
       <SectionTitle>Webhook receipts (definitive)</SectionTitle>
       <Explain summary="What this table is, and why it's the most trustworthy one on this page">
         Every real hit this server has received on <code>/webhooks/orders/updated</code> — logged unconditionally,
@@ -462,7 +544,11 @@ export default function ServerHealthPage() {
           </table>
         </div>
       )}
+        </>
+      )}
 
+      {tab === "orders" && (
+        <>
       <SectionTitle>Order Processing WhatsApp notifications</SectionTitle>
       <Explain summary="What counts as a row here, and what an empty list means">
         One row per order the webhook found IN_PROGRESS and attempted to notify — see{" "}
@@ -535,23 +621,8 @@ export default function ServerHealthPage() {
           </table>
         </div>
       )}
-
-      <SectionTitle>What each check means</SectionTitle>
-      <Card>
-        <Explain summary="read_themes / read_products">
-          If either fails, the recommendation email still sends but falls back to a plain text header (no store
-          logo/social links) or a gray box instead of a real collection image.
-        </Explain>
-        <Explain summary="Google Sheets">
-          "Not configured" is expected and harmless if you're not using the Sheet mirror — leads/events still save
-          to the database regardless.
-        </Explain>
-        <Explain summary="Interakt">
-          This only confirms the Secret Key itself is valid — it can't confirm the WhatsApp template is
-          Meta-approved (green dot in Interakt's Templates Library), since that's not something the API exposes a
-          check for. Use the Settings page's "Send Test" button to confirm the full send path.
-        </Explain>
-      </Card>
+        </>
+      )}
     </PageIn>
   );
 }

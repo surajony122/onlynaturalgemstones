@@ -198,7 +198,7 @@ const FIRST_STEPS = [
   ["mail", "Check the email wording and send yourself a test", "Settings → Emails: review the two email templates, then use “Send a test email” to receive a real sample at your own address. Nothing goes to customers."],
   ["receipt", "Fill in your invoice details", "Settings → Invoices: GSTIN, seller details, GST rates per collection, invoice number prefix and the PDF layout."],
   ["rupee", "Set today's metal rates", "Jewelry Pricing: enter the rates and press “Save Rates & Rebuild Customisation Matrix”. Customisation prices on the storefront follow these rates."],
-  ["check-circle", "Confirm everything is healthy", "Open Overview. “All clear” means no failed messages, leads or invoices in the last 7 days. System Health runs a live check of every connection."],
+  ["check-circle", "Confirm everything is healthy", "Open Overview. “All clear” means no failed or unsent messages, leads or invoices in the last 7 days. System Health shows the same list with fix buttons, and runs a live check of every connection."],
 ];
 
 const SIDEBAR_GROUPS = [
@@ -277,9 +277,9 @@ function PagesTab() {
           route="/app/overview"
           purpose="The page the app opens on. Everything important, on one screen."
           points={[
-            "“Needs attention” lists failures from the last 7 days with the actual cause: which order or lead, which service failed (Interakt, Gmail, AstrologyAPI or Shopify), the error that service returned, and a link to where it is fixed.",
-            "Six cards show today's numbers against yesterday's, with a 7-day bar chart for leads and WhatsApp sends.",
-            "A panel for each area shows the latest few items and links into the full page: leads, wishlists, messages, invoices, pricing, gemstone details, currencies and connections.",
+            "“Needs attention” lists problems from the last 7 days with the actual cause: which order or lead, which service failed (Interakt, Gmail, AstrologyAPI or Shopify), the error that service returned, and a link to where it is fixed. Each failure has Retry now and Mark as resolved. Leads whose email or WhatsApp never went out (failed, skipped or stuck) get one-click Retry all unsent.",
+            "Eight cards show today's numbers against yesterday's: leads, wishlist syncs, WhatsApp sends, orders notified, refund messages, contact messages, abandoned cart emails and invoices. A 7-day bar chart covers leads and WhatsApp sends.",
+            "A panel for each area shows the latest few items and links into the full page: astro leads, wishlists, contact messages, abandoned cart emails, WhatsApp messages, invoices, pricing, gemstone details, currencies and connections.",
             "The Connections panel shows whether each service has been set up, not whether it is working right now. For a live check, open System Health.",
           ]}
         />
@@ -336,7 +336,8 @@ function PagesTab() {
           points={[
             "The customer first confirms a one-time code (sent by WhatsApp and/or email). Once confirmed, the lead is saved and the result is sent. If neither code can be delivered, the lead is still saved so your team can follow up.",
             "The recommendation email and WhatsApp message go out right after the lead is saved, in the background, so the customer's results page never waits for them.",
-            "Each row shows the recommended stones, whether the email and WhatsApp went out, and a menu to send again.",
+            "Each row shows the recommended stones and whether the email and WhatsApp went out. A status that did not go through shows a visible ↻ Retry email or ↻ Retry WhatsApp button; hover it to see the last result.",
+            "Above the table, “Retry all unsent” sends the missing message to every lead that never got it. Tick rows to Retry email, Retry WhatsApp or Retry both for just those leads (they are sent again even if sent before). Up to 40 leads per click.",
             "Links in the email are tracked: whether it was opened (approximate) and which link was clicked (exact).",
           ]}
           tags={["Sends immediately", "Email + WhatsApp", "Export to CSV"]}
@@ -347,11 +348,24 @@ function PagesTab() {
           route="/app/wishlist-leads"
           purpose="Everyone who has saved products to a wishlist, and where their reminder stands."
           points={[
-            "Reminders are not sent the moment someone adds an item. They go out once the customer has been quiet for the interval set in Settings → Emails (default 2 hours).",
-            "The header shows a countdown to the next check, which runs every minute.",
-            "Each row shows the saved products and the reminder's status, with its own menu for Send now, Retry WhatsApp and Delete.",
+            "Reminders are not sent the moment someone adds an item. They go out once the customer has been quiet for the wait set in Settings → Emails: 2 minutes up to 24 hours (default 2 hours), or “9 AM & 9 PM only” (India time, after at least 1 hour of quiet).",
+            "Every new wishlist gets its own reminder, even if the customer was reminded earlier the same day. The only skip is the exact same list reminded within the last hour. Each customer is handled on their own timer, so one stuck send never holds up the others.",
+            "The header shows a countdown to the next check, which runs every minute. A backup check also runs every 5 minutes.",
+            "Each row shows the saved products with their SKUs (kept on the lead), and the reminder's status. A status that did not go through shows ↻ Retry email / ↻ Retry WhatsApp, and the bar above the table has Retry all unsent (newest save per customer) and retry for ticked rows.",
           ]}
-          tags={["Debounced, not instant", "Email + WhatsApp", "Export to CSV"]}
+          tags={["Per-customer timer", "Email + WhatsApp", "Export to CSV"]}
+        />
+        <PageEntry
+          icon="mail"
+          title="Contact Leads"
+          route="/app/contact-leads"
+          purpose="Every message sent through the Contact us form on the website."
+          points={[
+            "Each message is saved here with name, email, phone and message. Shopify's own contact email still goes out as before.",
+            "Set a status on each lead with the same choices as Astro Leads (New, Follow Up, Qualified, Junk and so on). Search, filter by status, and Export CSV.",
+            "After sending, the visitor sees a green confirmation under the form that fades away on its own. The same address can save up to 5 messages an hour.",
+          ]}
+          tags={["From the Contact us form", "Export to CSV"]}
         />
         <PageEntry
           icon="receipt"
@@ -377,6 +391,7 @@ function PagesTab() {
             "Confirms Gmail, Google Sheets, Interakt and Google Places are each reachable with the credentials currently saved, not just that a field has something in it.",
             "Shows everything that needs fixing at the top, with the real error: failed messages and leads that never got their email or WhatsApp. Each one has Retry now and Mark as resolved, and unsent leads have Retry all unsent. The Overview shows the same panel.",
             "A failing check shows a How to fix line under its error.",
+            "Four tabs keep it short: Needs attention (issues with fix buttons, and recent lead problems), Connections (the live checks), Webhooks (receipts and registered webhooks) and Order notifications (order WhatsApp and email logs). A red number on a tab means something is failing there.",
           ]}
         />
         <PageEntry
@@ -385,10 +400,11 @@ function PagesTab() {
           route="/app/whatsapp-events"
           purpose="A log of everything the app sent, in four tabs so nothing needs scrolling: Order notifications, Abandoned cart emails, Gem recommendation and Wishlist."
           points={[
-            "Use it to confirm a customer actually received their order message, or to spot a pattern of failures pointing at a setup problem.",
+            "Use it to confirm a customer actually received their order message, or to spot a pattern of failures pointing at a setup problem. Each tab shows a count and a red number for failures.",
+            "The Gem recommendation and Wishlist tabs list the WhatsApp messages with Delivered / Read status, with search and a status filter.",
             "Delivered and read statuses come from Interakt's webhook, so nothing shows until the webhook is set up (Settings → Connections → WhatsApp — advanced).",
             "A row's “…” menu can retry the message or delete its log entry.",
-            "Abandoned cart emails (sent by the app through Gmail) are listed in their own section here, with the reason for any failure. A failed one can be retried and a sent one resent.",
+            "The Abandoned cart emails tab lists every email the app sent through Gmail, with the reason for any failure or skip. A failed one can be retried, a sent one resent, and a skipped one sent by hand with Send now (consent, unsubscribe and later orders are re-checked first).",
           ]}
         />
         <PageEntry
@@ -494,10 +510,10 @@ function SettingsTab() {
 // ------------------------------------------------------------------ tab: Automations
 
 const AUTOMATIONS = [
-  ["Gem recommendation result", "WhatsApp + email", "Right after the customer confirms their one-time code and the lead is saved.", "Email: Settings → Emails. WhatsApp: template name in Settings → WhatsApp messages; wording in Interakt.", "Astro Leads"],
-  ["Wishlist reminder", "WhatsApp + email", "After a customer has been quiet for the set interval (default 2 hours).", "Interval: Settings → Emails. WhatsApp template: Settings → WhatsApp messages.", "Wishlist Leads"],
-  ["Order is being prepared", "WhatsApp + email", "When an order gets the trigger tag set in Settings → WhatsApp messages. A catch-up check also runs on a schedule, so a missed order is picked up.", "Email: Settings → Emails. WhatsApp: Settings → WhatsApp messages.", "Logs"],
-  ["Refund processed", "WhatsApp", "Automatically when a refund is processed in Shopify. Refunds that come from cancelling an order are skipped.", "Template name: Settings → WhatsApp messages.", "Logs"],
+  ["Gem recommendation result", "WhatsApp + email", "Right after the customer confirms their one-time code and the lead is saved.", "Email: Settings → Emails. WhatsApp: template name in Settings → WhatsApp messages; wording in Interakt.", "Logs (Gem recommendation tab)"],
+  ["Wishlist reminder", "WhatsApp + email", "After a customer has been quiet for the set wait (2 minutes to 24 hours, or 9 AM & 9 PM India time). Every new wishlist gets its own reminder; the exact same list is not sent again within an hour.", "Wait: Settings → Emails. WhatsApp template: Settings → WhatsApp messages.", "Logs (Wishlist tab)"],
+  ["Order is being prepared", "WhatsApp + email", "When an order gets the trigger tag set in Settings → WhatsApp messages. A catch-up check also runs on a schedule, so a missed order is picked up.", "Email: Settings → Emails. WhatsApp: Settings → WhatsApp messages.", "Logs (Order notifications tab)"],
+  ["Refund processed", "WhatsApp", "Automatically when a refund is processed in Shopify. Refunds that come from cancelling an order are skipped.", "Template name: Settings → WhatsApp messages.", "Logs (Order notifications tab)"],
   ["Abandoned checkout reminder", "Email", "Once per checkout, after it has been idle for the wait time you set (default 1 hour). Only for customers who agreed to email marketing, who have not ordered since and have not unsubscribed. A customer with several abandoned checkouts gets one email for each. Switched OFF until you turn it on, and then only for checkouts started after that moment.", "Settings → Emails (switch, wait time, subject, layout, test email).", "Settings → Emails (Latest checkouts handled)"],
   ["GST tax invoice", "Email with PDF", "Only when someone clicks Send. Never automatic.", "Settings → Invoices.", "GST Invoices"],
 ];
@@ -507,8 +523,8 @@ const STATUS_MEANINGS = [
   ["Opened", "Approximate. Some mail apps block tracking images, so a real open may not be counted."],
   ["Clicked", "Exact. Hover it to see which link was clicked."],
   ["Delivered / Read", "Reported by Interakt's webhook, so it only appears once the webhook is set up (Settings → Connections → WhatsApp — advanced)."],
-  ["Failed", "The service returned an error. The Overview's “Needs attention” panel shows the reason and where to fix it."],
-  ["Skipped", "Nothing was sent on purpose, for example the customer has no phone number."],
+  ["Failed", "The service returned an error. System Health and the Overview's “Needs attention” panel show the reason and where to fix it, with a Retry button."],
+  ["Skipped", "Nothing was sent on purpose, for example the customer has no phone number, or the same wishlist was just sent. If the reason can change (Gmail not set, a WhatsApp refusal), the lead shows a Retry button."],
 ];
 
 function AutomationsTab() {
@@ -598,8 +614,25 @@ function FaqTab() {
       </FaqItem>
 
       <FaqItem q="Is the Wishlist reminder instant too?">
-        No. It is debounced on purpose: the interval is set in Settings → Emails, so someone adding several items in one visit gets one reminder
-        later, not one per item.
+        No. It is debounced on purpose: the wait is set in Settings → Emails, so someone adding several items in one visit gets one reminder
+        later, not one per item. A new wishlist after that gets its own reminder.
+      </FaqItem>
+
+      <FaqItem q="A lead did not get its email or WhatsApp. How do I send it again?">
+        On Astro Leads or Wishlist Leads, a message that did not go through shows a <strong>↻ Retry email</strong> or <strong>↻ Retry
+        WhatsApp</strong> button under its status. Use <strong>Retry all unsent</strong> above the table for all of them at once, or tick rows
+        for Retry email / WhatsApp / both. The Overview and System Health also list these under “Needs attention” with the same buttons. If it
+        fails again, hover the button or open System Health to see the reason.
+      </FaqItem>
+
+      <FaqItem q="WhatsApp says “not delivered to maintain healthy ecosystem engagement”.">
+        That refusal comes from WhatsApp itself, not from this app. It limits how many marketing messages one person receives, so repeated tests
+        to the same number get refused. Test with a different number, or wait.
+      </FaqItem>
+
+      <FaqItem q="Why does a test with my own email not send a second time?">
+        The exact same wishlist is not sent again within an hour. Wait an hour, change the product, or use another address (for Gmail, add
+        <code style={codeStyle}>+test2</code> before the @, which still lands in the same inbox).
       </FaqItem>
 
       <FaqItem q="How does the Refund WhatsApp message relate to Shopify's own refund email?">
@@ -627,7 +660,8 @@ function FaqTab() {
       <FaqItem q="Why didn't an abandoned checkout email go out?">
         The reminder is skipped, on purpose, when any of these is true: it is switched off in Settings → Emails; the checkout was started
         before you switched it on; the customer did not agree to email marketing; they placed an order after that checkout; they unsubscribed;
-        or the checkout has not been idle for the wait time yet. Open Settings → Emails →
+        or the checkout has not been idle for the wait time yet. There is no per-address limit: every abandoned checkout gets its own email. A skipped one shows its reason in Logs →
+        Abandoned cart emails, where <strong>Send now</strong> sends it by hand. Open Settings → Emails →
         Abandoned Checkout and press <strong>Check now</strong>. It lists each recent checkout and the exact reason for its decision, and
         sends nothing. If an email failed to send, it appears under “Needs attention” on the Overview with the real error and a Retry button.
       </FaqItem>
