@@ -270,7 +270,7 @@ export default function TeamPage() {
       </div>
 
       <Card style={{ marginTop: "16px" }}>
-        <div style={{ fontSize: "13px", fontWeight: 600, color: brand.ink, marginBottom: "10px" }}>Add people</div>
+        <div style={{ fontSize: "13px", fontWeight: 600, color: brand.ink, marginBottom: "10px" }}>Add a person</div>
         <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
           {staff.length > 0 && (
             <MultiSelect
@@ -281,27 +281,22 @@ export default function TeamPage() {
               onChange={setPicked}
             />
           )}
+          <input type="text" value={emails} onChange={(e) => setEmails(e.target.value)} placeholder="Email (or several, separated by commas)" style={{ ...{ padding: "9px 12px", borderRadius: "10px", border: `1px solid ${brand.border}`, fontSize: "13px", fontFamily: "inherit", background: "#fff" }, flex: "1 1 260px", minWidth: "220px" }} />
+          <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (optional)" style={{ ...{ padding: "9px 12px", borderRadius: "10px", border: `1px solid ${brand.border}`, fontSize: "13px", fontFamily: "inherit", background: "#fff" }, flex: "0 1 190px", minWidth: "140px" }} />
           <MultiSelect label="pages" emptyLabel="Choose pages" options={PAGE_OPTIONS} selected={newPages} onChange={setNewPages} />
           <button
             type="button"
             disabled={busy || (!picked.length && !emails.trim())}
-            style={{ ...primaryBtn, padding: "9px 16px", fontSize: "13px", opacity: busy || (!picked.length && !emails.trim()) ? 0.5 : 1 }}
+            style={{ ...primaryBtn, padding: "9px 18px", fontSize: "13px", opacity: busy || (!picked.length && !emails.trim()) ? 0.5 : 1 }}
             onClick={() => fetcher.submit({ intent: "addMember", emails: [...picked, emails].join("\n"), names: JSON.stringify(Object.fromEntries(staff.filter((u) => picked.includes(u.email) && u.name).map((u) => [u.email, u.name]))), name, pages: JSON.stringify(newPages) }, { method: "post" })}
           >
             Add
           </button>
         </div>
-        {staffNote && (
-          <p style={{ margin: "12px 0 0", fontSize: "12px", color: brand.muted, lineHeight: 1.5 }}>
-            Shopify does not share your store's user list with this app, so type or paste their emails below.
-          </p>
-        )}
-        {!staffNote && staff.length === 0 && <p style={{ margin: "12px 0 0", fontSize: "12px", color: brand.muted }}>Every Shopify user is already on the list.</p>}
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "flex-start", marginTop: "10px" }}>
-          <textarea value={emails} onChange={(e) => setEmails(e.target.value)} rows={2} placeholder={"Or type / paste emails: one per line, or separated by commas"} style={{ padding: "8px 12px", borderRadius: "9px", border: `1px solid ${brand.border}`, fontSize: "13px", minWidth: "320px", fontFamily: "inherit", resize: "vertical" }} />
-          <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (optional, for one typed email)" style={{ padding: "8px 12px", borderRadius: "9px", border: `1px solid ${brand.border}`, fontSize: "13px", minWidth: "240px" }} />
-        </div>
-        <p style={{ margin: "8px 0 0", fontSize: "11.5px", color: brand.muted }}>Everyone added gets the pages chosen above; you can change each person afterwards. They also need a Shopify staff account that is allowed to open this app (Shopify admin → Settings → Users).</p>
+        <p style={{ margin: "10px 0 0", fontSize: "11.5px", color: brand.muted, lineHeight: 1.5 }}>
+          {staffNote ? "Shopify does not share your store's user list with this app, so type the email. " : staff.length === 0 ? "Every Shopify user is already on the list. " : ""}
+          The pages you choose apply to everyone added; you can change each person afterwards. They also need a Shopify staff account that is allowed to open this app (Shopify admin → Settings → Users).
+        </p>
       </Card>
     </PageIn>
   );
