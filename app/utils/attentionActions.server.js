@@ -43,8 +43,8 @@ async function fetchOrder(admin, orderId) {
         email
         statusPageUrl
         customer { firstName lastName email phone }
-        shippingAddress { name phone }
-        billingAddress { phone }
+        shippingAddress { name phone countryCodeV2 }
+        billingAddress { phone countryCodeV2 }
       }
     }`,
     { variables: { id: orderGid(orderId) } }
@@ -55,6 +55,7 @@ async function fetchOrder(admin, orderId) {
   return json.data.order;
 }
 
+const orderCountry = (order) => order?.shippingAddress?.countryCodeV2 || order?.billingAddress?.countryCodeV2 || null;
 const firstPhone = (order) => order?.shippingAddress?.phone || order?.customer?.phone || order?.billingAddress?.phone || null;
 
 // ---- one retry per kind. Each returns a status string ("OK: ..." on success).
@@ -90,12 +91,24 @@ const RETRY = {
   "wishlist-email": ({ admin, id }) => resendWishlistLeadEmail(admin, id),
   "wishlist-whatsapp": ({ id }) => resendWishlistWhatsapp(id),
 
-  async "order-whatsapp"({ id, shop }) {
+  async "order-whatsapp"({ admin, id, shop }) {
     const row = await prisma.orderProcessingNotification.findUnique({ where: { id } });
     if (!row) return "error: notification not found";
-    if (!row.phone) return "skipped: no phone number was saved for this order";
+    // The saved phone may have no country code (e.g. "562544633"); the
+    // order's own country tells us how to read it. If the order can't be
+    // fetched any more, fall back to the saved number as-is.
+    let order = null;
+    try { order = await fetchOrder(admin, row.orderId); } catch { order = null; }
+    const phone = row.phone || firstPhone(order);
+    if (!phone) return "skipped: no phone number was saved for this order";
     const settings = await getAppSettings(row.shop || shop);
-    const status = await sendOrderProcessingWhatsApp(settings, { phone: row.phone, firstName: "there", orderNumber: row.orderName, shop: row.shop || shop });
+    const status = await sendOrderProcessingWhatsApp(settings, {
+      phone,
+      firstName: order?.customer?.firstName || "there",
+      orderNumber: row.orderName,
+      shop: row.shop || shop,
+      countryIso: orderCountry(order),
+    });
     await prisma.orderProcessingNotification.update({ where: { id }, data: { status, notifiedAt: new Date() } });
     return status;
   },
@@ -130,6 +143,7 @@ const RETRY = {
       firstName: order.customer?.firstName || "there",
       orderNumber: order.name,
       orderStatusUrl: order.statusPageUrl,
+      countryIso: orderCountry(order),
     });
     await prisma.orderReturnEmailNotification.update({ where: { id }, data: { orderName: order.name, status } });
     return status;
