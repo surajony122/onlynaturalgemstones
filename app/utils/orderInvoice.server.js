@@ -70,7 +70,8 @@ export const ORDER_INVOICE_PLACEHOLDERS = [
   { token: "delivery_before", description: "Order date + your configured delivery-days setting" },
   { token: "payment_mode", description: "The order's actual payment gateway (e.g. Razorpay)" },
   { token: "line_items_rows", description: "Pre-built HTML table rows: item, HSN, qty, rate, CGST, SGST, IGST, amount" },
-  { token: "subtotal", description: "Sum of all line items before GST" },
+  { token: "subtotal", description: "Taxable value (items after discount + shipping), before GST" },
+  { token: "price_breakup_rows", description: "Pre-built rows: Items Subtotal, Discount, Shipping (place above the Sub Total row)" },
   { token: "total_gst", description: "Total GST amount across all lines" },
   { token: "grand_total", description: "Subtotal + total GST" },
   { token: "total_in_words", description: "Grand total spelled out, e.g. \"Indian Rupee One Only\"" },
@@ -176,8 +177,9 @@ function getDefaultOrderInvoiceTemplate() {
             </td>
             <td style="border:none;width:45%;vertical-align:top;padding:10px;">
               <table style="width:100%;border-collapse:collapse;">
+                {{price_breakup_rows}}
                 <tr>
-                  <td style="border:none;border-bottom:1px solid #ddd;font-size:10px;padding:9px 0;">Sub Total</td>
+                  <td style="border:none;border-bottom:1px solid #ddd;font-size:10px;padding:9px 0;">Taxable Value (excl. GST)</td>
                   <td style="border:none;border-bottom:1px solid #ddd;font-size:10px;padding:9px 0;text-align:right;">{{subtotal}}</td>
                 </tr>
                 <tr>
@@ -856,10 +858,18 @@ export function computeInvoiceGst(order, settings) {
   let totalCgst = 0;
   let totalSgst = 0;
   let totalIgst = 0;
-  let goodsGross = 0;
   let goodsTaxable = 0;
   let goodsGst = 0;
   const itemRows = [];
+  // Order-level discount (e.g. a checkout code) is spread over the goods
+  // pro-rata, so every product row shows its NET value and its GST is
+  // worked out on that. The breakup under the table shows the discount
+  // itself, and shipping, so the total equals what the customer paid.
+  const money = (set) => parseFloat(set?.shopMoney?.amount ?? 0) || 0;
+  const goodsOriginal = (order.lineItems?.nodes || []).reduce(
+    (sum, l) => sum + (parseFloat(l.originalTotalSet?.shopMoney?.amount ?? l.discountedTotalSet?.shopMoney?.amount ?? 0) || 0), 0);
+  const discountTotal = Math.min(money(order.totalDiscountsSet), goodsOriginal);
+  const discountFactor = goodsOriginal > 0 ? discountTotal / goodsOriginal : 0;
 
   for (const line of order.lineItems?.nodes || []) {
     // This is the GROSS amount the customer actually paid for this line
@@ -868,8 +878,7 @@ export function computeInvoiceGst(order, settings) {
     // back-calculated from inside it below, so subtotal + GST on this
     // invoice always reconciles to exactly what Shopify charged, never
     // more.
-    const grossValue = parseFloat(line.originalTotalSet?.shopMoney?.amount ?? line.discountedTotalSet?.shopMoney?.amount ?? 0) || 0;
-    goodsGross += grossValue;
+    const grossValue = (parseFloat(line.originalTotalSet?.shopMoney?.amount ?? line.discountedTotalSet?.shopMoney?.amount ?? 0) || 0) * (1 - discountFactor);
 
     // GST always applies -- domestic or international -- at this line's
     // own rate. The only thing international/different-state-domestic
@@ -1032,44 +1041,23 @@ export function computeInvoiceGst(order, settings) {
     );
   }
 
-  // Order-level discount (e.g. a checkout code) and shipping were never on
-  // the invoice, so its total came out different from what the customer
-  // paid. Both now appear as their own rows: the discount is spread over
-  // the goods pro-rata (so each line's GST scales down with it), and
-  // shipping is taxed at the loose-gemstone rate with GST included in the
-  // charged amount, like every other line.
-  const money = (set) => parseFloat(set?.shopMoney?.amount ?? 0) || 0;
-  const rowTd = (width) => `border:1px solid rgba(0,0,0,0.15);padding:6px 8px;vertical-align:top;font-size:9.5px;width:${width}%;`;
-  const rowPct = (n) => (Number.isInteger(n) ? n : parseFloat(n.toFixed(4))).toString();
-  const extraRow = (label, hsn, taxable, gst, rate) => {
-    const cg = sameState ? gst / 2 : 0, sg = sameState ? gst / 2 : 0, ig = sameState ? 0 : gst;
-    const half = sameState ? rate / 2 : 0;
-    totalCgst += cg; totalSgst += sg; totalIgst += ig; subtotal += taxable;
-    itemRows.push(
-      `<tr>` +
-        `<td style="${rowTd(24)}">${label}</td>` +
-        `<td style="${rowTd(8)}">${esc(hsn)}</td>` +
-        `<td style="${rowTd(6)}"></td>` +
-        `<td style="${rowTd(13)}">${formatMoney(taxable, currency)}</td>` +
-        `<td style="${rowTd(12)}">${formatMoney(cg, currency)}<br><span style="color:#888;font-size:9px;">(${rowPct(half)}%)</span></td>` +
-        `<td style="${rowTd(12)}">${formatMoney(sg, currency)}<br><span style="color:#888;font-size:9px;">(${rowPct(half)}%)</span></td>` +
-        `<td style="${rowTd(12)}">${formatMoney(ig, currency)}<br><span style="color:#888;font-size:9px;">(${rowPct(sameState ? 0 : rate)}%)</span></td>` +
-        `<td style="${rowTd(13)}">${formatMoney(taxable + gst, currency)}</td>` +
-      `</tr>`,
-    );
-  };
-  const discountTotal = Math.min(money(order.totalDiscountsSet), goodsGross);
-  if (discountTotal > 0.005 && goodsGross > 0) {
-    const f = discountTotal / goodsGross;
-    const codes = (order.discountCodes || []).filter(Boolean).join(", ");
-    extraRow(`Discount${codes ? ` (${esc(codes)})` : ""}`, "", -goodsTaxable * f, -goodsGst * f, goodsTaxable > 0 ? (goodsGst / goodsTaxable) * 100 : 0);
-  }
+  // Shipping is taxed at the loose-gemstone rate (zero on exports), GST
+  // included in the charged amount like every other line. It is not a
+  // product row -- it shows in the breakup under the table.
   const shippingTotal = money(order.totalShippingPriceSet);
   if (shippingTotal > 0.005) {
     const shipRate = isDomestic ? rateLoose : 0;
     const shipTaxable = shipRate > 0 ? shippingTotal / (1 + shipRate / 100) : shippingTotal;
-    extraRow(`Shipping${order.shippingLine?.title ? ` - ${esc(order.shippingLine.title)}` : ""}`, "9965", shipTaxable, shippingTotal - shipTaxable, shipRate);
+    const shipGst = shippingTotal - shipTaxable;
+    subtotal += shipTaxable;
+    if (sameState) { totalCgst += shipGst / 2; totalSgst += shipGst / 2; } else { totalIgst += shipGst; }
   }
+  const codes = (order.discountCodes || []).filter(Boolean).join(", ");
+  const bTd = "border:none;border-bottom:1px solid #ddd;font-size:10px;padding:7px 0;";
+  const bRow = (label, value) => `<tr><td style="${bTd}">${label}</td><td style="${bTd}text-align:right;">${value}</td></tr>`;
+  const breakup = [bRow("Items Subtotal", formatMoney(goodsOriginal, currency))];
+  if (discountTotal > 0.005) breakup.push(bRow(`Discount${codes ? ` (${esc(codes)})` : ""}`, "-" + formatMoney(discountTotal, currency)));
+  if (shippingTotal > 0.005) breakup.push(bRow(`Shipping${order.shippingLine?.title ? ` (${esc(order.shippingLine.title)})` : ""}`, formatMoney(shippingTotal, currency)));
 
   const totalGst = totalCgst + totalSgst + totalIgst;
 
@@ -1080,6 +1068,7 @@ export function computeInvoiceGst(order, settings) {
     totalGst,
     grandTotal: subtotal + totalGst,
     lineItemsRowsHtml: itemRows.join(""),
+    priceBreakupRowsHtml: breakup.join(""),
     // Indian standard: same state = CGST+SGST, other state = IGST,
     // export = zero-rated under LUT (no GST charged).
     taxTreatmentNote: isDomestic ? "" : "Supply meant for export under LUT without payment of IGST.",
@@ -1265,7 +1254,17 @@ export async function buildInvoicePdf(admin, settings, shop, orderGid) {
   // right (swapped from the previous left-seller/right-customer order).
   const infoBlockRows = buildInfoBlockRows(customerLines, sellerLines);
 
-  const template = getOrderInvoiceTemplate(settings);
+  let template = getOrderInvoiceTemplate(settings);
+  if (!template.includes("{{price_breakup_rows}}")) {
+    // A PDF template saved from the Settings page before the breakup
+    // existed: put the breakup rows right above its "Sub Total" row.
+    const at = template.indexOf("Sub Total");
+    const trAt = at >= 0 ? template.lastIndexOf("<tr", at) : -1;
+    if (trAt >= 0) {
+      template = template.slice(0, trAt) + "{{price_breakup_rows}}" + template.slice(trAt);
+      template = template.replace("Sub Total", "Taxable Value (excl. GST)");
+    }
+  }
   const html = renderOrderInvoiceTemplate(template, {
     brand_header_html: brandHeaderHtml,
     seal_html: sealHtml,
@@ -1293,6 +1292,7 @@ export async function buildInvoicePdf(admin, settings, shop, orderGid) {
     delivery_before: formatDateDMY(deliveryBeforeDate),
     payment_mode: esc(paymentMode),
     line_items_rows: gst.lineItemsRowsHtml,
+    price_breakup_rows: gst.priceBreakupRowsHtml,
     subtotal: formatMoney(gst.subtotal, gst.currency),
     total_gst: formatMoney(gst.totalGst, gst.currency),
     grand_total: formatMoney(gst.grandTotal, gst.currency),
