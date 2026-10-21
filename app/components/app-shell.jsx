@@ -53,7 +53,7 @@ export const NAV_GROUPS = [
 const ALL_ITEMS = NAV_GROUPS.flatMap((g) => g.items.map((it) => ({ ...it, group: g.label })));
 
 // Which menu items a person may see (Team access). No `access` = show everything.
-const canSee = (access, id) => (!access ? true : id === "team" ? !!access.isAdmin : access.allowed.includes(id));
+const canSee = (access, id) => (!access ? true : id === "team" ? !!(access.canManageTeam ?? access.isAdmin) : access.allowed.includes(id));
 
 function matchPath(pathname, item) {
   if (item.end) return pathname === item.href;
