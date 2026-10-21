@@ -50,6 +50,25 @@ async function fetchShopifyUser(shop, idToken) {
   }
 }
 
+/** The store's Shopify staff, if Shopify lets this app see them (needs the read_users permission, which is
+ * restricted). Never throws: returns { ok: false, reason } when it can't. */
+export async function fetchShopifyStaff(admin) {
+  try {
+    const res = await admin.graphql(`#graphql
+      query StaffForTeamAccess {
+        staffMembers(first: 100) { nodes { id email firstName lastName active } }
+      }`);
+    const json = await res.json();
+    if (json.errors?.length) return { ok: false, staff: [], reason: json.errors.map((e) => e.message).join("; ").slice(0, 160) };
+    const staff = (json.data?.staffMembers?.nodes || [])
+      .filter((n) => n.email && n.active !== false)
+      .map((n) => ({ email: String(n.email).toLowerCase(), name: [n.firstName, n.lastName].filter(Boolean).join(" ") || null }));
+    return { ok: true, staff };
+  } catch (err) {
+    return { ok: false, staff: [], reason: String((err && err.message) || err).slice(0, 160) };
+  }
+}
+
 const fullName = (u) => [u?.first_name, u?.last_name].filter(Boolean).join(" ") || null;
 
 async function resolveMember({ shop, uid, idToken }) {

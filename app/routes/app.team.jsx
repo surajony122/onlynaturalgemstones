@@ -9,9 +9,9 @@ import { useEffect, useState } from "react";
 import { useFetcher, useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import prisma from "../db.server";
-import { authenticatePage } from "../utils/teamAccess.server";
+import { authenticatePage, fetchShopifyStaff } from "../utils/teamAccess.server";
 import { TEAM_PAGES, ASSIGNABLE_IDS } from "../utils/teamPages";
-import { brand, Card, PageHeader, PageIn, Pill, tableWrapStyle, tableStyle, thStyle, tdStyle } from "../components/table-kit";
+import { brand, Card, PageHeader, PageIn, Pill, MultiSelect, tableWrapStyle, tableStyle, thStyle, tdStyle } from "../components/table-kit";
 import { useToast } from "../components/toast";
 
 // Opened like any other page: everyone can while access control is off, and afterwards only
@@ -24,15 +24,19 @@ async function adminGuard(request) {
 }
 
 export const loader = async ({ request }) => {
-  const { shop, access, adminCount, viewerIsAdmin } = await adminGuard(request);
-  const [members, settings] = await Promise.all([
+  const { shop, access, adminCount, viewerIsAdmin, admin } = await adminGuard(request);
+  const [members, settings, staffRes] = await Promise.all([
     prisma.teamMember.findMany({ where: { shop }, orderBy: [{ isOwner: "desc" }, { lastSeenAt: "desc" }, { createdAt: "asc" }] }),
     prisma.teamSettings.findUnique({ where: { shop } }),
+    fetchShopifyStaff(admin),
   ]);
+  const listed = new Set(members.map((m) => (m.email || "").toLowerCase()));
   return {
     me: access.member ? access.member.id : null,
     canClaim: adminCount === 0 && !!access.member,
     viewerIsAdmin,
+    staff: staffRes.staff.filter((s) => !listed.has(s.email)),
+    staffNote: staffRes.ok ? null : staffRes.reason,
     enforce: !!settings?.enforce,
     identityError: access.identityError,
     members: members.map((m) => ({
@@ -76,7 +80,9 @@ export const action = async ({ request }) => {
     if (intent === "addMember") {
       // one or several emails (separated by new lines, commas, semicolons or spaces), all given the same pages
       const emails = [...new Set(String(form.get("emails") || form.get("email") || "").split(/[\s,;]+/).map((e) => e.trim().toLowerCase()).filter(Boolean))];
-      const name = emails.length === 1 ? String(form.get("name") || "").trim() || null : null;
+      let nameMap = {};
+      try { nameMap = JSON.parse(String(form.get("names") || "{}")); } catch { nameMap = {}; }
+      const typedName = emails.length === 1 ? String(form.get("name") || "").trim() || null : null;
       const pages = cleanPages(form.get("pages"));
       if (!emails.length) return { ok: false, intent, error: "Enter at least one email address." };
       const bad = emails.filter((e) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e));
@@ -86,7 +92,7 @@ export const action = async ({ request }) => {
       for (const email of emails) {
         const exists = await prisma.teamMember.findFirst({ where: { shop, email: { equals: email, mode: "insensitive" } } });
         if (exists) { skipped.push(email); continue; }
-        await prisma.teamMember.create({ data: { shop, email, name, pages } });
+        await prisma.teamMember.create({ data: { shop, email, name: nameMap[email] || typedName, pages } });
         added++;
       }
       if (!added) return { ok: false, intent, error: "Already on the list: " + skipped.join(", ") };
@@ -118,6 +124,8 @@ export const action = async ({ request }) => {
   return { ok: false, intent, error: "Unknown action" };
 };
 
+const PAGE_OPTIONS = TEAM_PAGES.map((pg) => ({ value: pg.id, label: pg.label }));
+
 const smallBtn = { padding: "6px 12px", borderRadius: "8px", border: `1px solid ${brand.border}`, background: "#fff", color: brand.body, fontSize: "12px", fontWeight: 600, cursor: "pointer" };
 const primaryBtn = { ...smallBtn, border: `1px solid ${brand.accent}`, background: brand.accent, color: "#fff" };
 
@@ -137,7 +145,6 @@ function MemberRow({ m, isMe, enforce, viewerIsAdmin }) {
   // the owner is always locked; people who may manage the team but are not admins cannot edit admins or themselves
   const locked = m.isOwner || (!viewerIsAdmin && (m.isAdmin || isMe));
   const dirty = isAdmin !== m.isAdmin || [...pages].sort().join(",") !== [...m.pages].sort().join(",");
-  const toggle = (id) => setPages((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
   const save = () => fetcher.submit({ intent: "saveMember", id: m.id, pages: JSON.stringify(pages), isAdmin: String(isAdmin) }, { method: "post" });
   const remove = () => window.confirm(`Remove ${m.email || m.name || "this person"} from the list?`) && fetcher.submit({ intent: "removeMember", id: m.id }, { method: "post" });
 
@@ -161,17 +168,7 @@ function MemberRow({ m, isMe, enforce, viewerIsAdmin }) {
           <span style={{ fontSize: "12.5px", color: brand.body }}>Full access (admin)</span>
         ) : (
           <>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "5px" }}>
-              {TEAM_PAGES.map((p) => {
-                const on = pages.includes(p.id);
-                return (
-                  <button key={p.id} type="button" onClick={() => toggle(p.id)} disabled={busy}
-                    style={{ padding: "4px 10px", borderRadius: "999px", fontSize: "11.5px", fontWeight: 600, cursor: "pointer", border: `1px solid ${on ? brand.accent : brand.border}`, background: on ? brand.accentTint : "#fff", color: on ? brand.accent : brand.muted }}>
-                    {on ? "✓ " : ""}{p.label}
-                  </button>
-                );
-              })}
-            </div>
+            <MultiSelect label="pages" emptyLabel="No pages" options={PAGE_OPTIONS} selected={pages} onChange={setPages} />
           </>
         )}
       </td>
@@ -192,17 +189,18 @@ function MemberRow({ m, isMe, enforce, viewerIsAdmin }) {
 }
 
 export default function TeamPage() {
-  const { members, enforce, me, canClaim, identityError, viewerIsAdmin } = useLoaderData();
+  const { members, enforce, me, canClaim, identityError, viewerIsAdmin, staff, staffNote } = useLoaderData();
   const fetcher = useFetcher();
   const toast = useToast();
   const [emails, setEmails] = useState("");
+  const [picked, setPicked] = useState([]); // emails chosen from the Shopify staff dropdown
   const [name, setName] = useState("");
   const [newPages, setNewPages] = useState([]);
   const res = fetcher.state === "idle" ? fetcher.data : null;
   useEffect(() => {
     if (!res) return;
     toast.show(res.ok ? res.message || "Done" : res.error || "Could not save", { isError: !res.ok });
-    if (res.ok && res.intent === "addMember") { setEmails(""); setName(""); setNewPages([]); }
+    if (res.ok && res.intent === "addMember") { setEmails(""); setName(""); setNewPages([]); setPicked([]); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [res]);
   const busy = fetcher.state !== "idle";
@@ -272,27 +270,36 @@ export default function TeamPage() {
       </div>
 
       <Card style={{ marginTop: "16px" }}>
-        <div style={{ fontSize: "13px", fontWeight: 600, color: brand.ink, marginBottom: "8px" }}>Add people by email</div>
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "flex-start" }}>
-          <textarea value={emails} onChange={(e) => setEmails(e.target.value)} rows={3} placeholder={"Their Shopify login emails: one per line, or separated by commas"} style={{ padding: "8px 12px", borderRadius: "9px", border: `1px solid ${brand.border}`, fontSize: "13px", minWidth: "300px", fontFamily: "inherit", resize: "vertical" }} />
-          <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (optional, for one person)" style={{ padding: "8px 12px", borderRadius: "9px", border: `1px solid ${brand.border}`, fontSize: "13px", minWidth: "230px" }} />
+        <div style={{ fontSize: "13px", fontWeight: 600, color: brand.ink, marginBottom: "10px" }}>Add people</div>
+        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+          <MultiSelect
+            label="Shopify users"
+            emptyLabel={staff.length ? "Choose Shopify users" : "No Shopify users to choose"}
+            options={staff.map((u) => ({ value: u.email, label: u.name ? `${u.name} (${u.email})` : u.email }))}
+            selected={picked}
+            onChange={setPicked}
+          />
+          <MultiSelect label="pages" emptyLabel="Choose pages" options={PAGE_OPTIONS} selected={newPages} onChange={setNewPages} />
+          <button
+            type="button"
+            disabled={busy || (!picked.length && !emails.trim())}
+            style={{ ...primaryBtn, padding: "9px 16px", fontSize: "13px", opacity: busy || (!picked.length && !emails.trim()) ? 0.5 : 1 }}
+            onClick={() => fetcher.submit({ intent: "addMember", emails: [...picked, emails].join("\n"), names: JSON.stringify(Object.fromEntries(staff.filter((u) => picked.includes(u.email) && u.name).map((u) => [u.email, u.name]))), name, pages: JSON.stringify(newPages) }, { method: "post" })}
+          >
+            Add
+          </button>
         </div>
-        <div style={{ fontSize: "12px", color: brand.muted, margin: "10px 0 6px" }}>Pages they can open:</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "5px" }}>
-          {TEAM_PAGES.map((pg) => {
-            const on = newPages.includes(pg.id);
-            return (
-              <button key={pg.id} type="button" onClick={() => setNewPages((cur) => (cur.includes(pg.id) ? cur.filter((x) => x !== pg.id) : [...cur, pg.id]))} disabled={busy}
-                style={{ padding: "4px 10px", borderRadius: "999px", fontSize: "11.5px", fontWeight: 600, cursor: "pointer", border: `1px solid ${on ? brand.accent : brand.border}`, background: on ? brand.accentTint : "#fff", color: on ? brand.accent : brand.muted }}>
-                {on ? "✓ " : ""}{pg.label}
-              </button>
-            );
-          })}
+        {staffNote && (
+          <p style={{ margin: "10px 0 0", fontSize: "11.5px", color: brand.muted }}>
+            Shopify is not giving this app the list of your store's users, so the dropdown is empty. Type or paste their emails below instead. (Shopify keeps that list closed to most apps.)
+          </p>
+        )}
+        {!staffNote && staff.length === 0 && <p style={{ margin: "10px 0 0", fontSize: "11.5px", color: brand.muted }}>Every Shopify user is already on the list.</p>}
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "flex-start", marginTop: "10px" }}>
+          <textarea value={emails} onChange={(e) => setEmails(e.target.value)} rows={2} placeholder={"Or type / paste emails: one per line, or separated by commas"} style={{ padding: "8px 12px", borderRadius: "9px", border: `1px solid ${brand.border}`, fontSize: "13px", minWidth: "320px", fontFamily: "inherit", resize: "vertical" }} />
+          <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (optional, for one typed email)" style={{ padding: "8px 12px", borderRadius: "9px", border: `1px solid ${brand.border}`, fontSize: "13px", minWidth: "240px" }} />
         </div>
-        <div style={{ marginTop: "10px" }}>
-          <button type="button" disabled={busy || !emails.trim()} style={{ ...primaryBtn, padding: "8px 14px", fontSize: "13px", opacity: busy || !emails.trim() ? 0.5 : 1 }} onClick={() => fetcher.submit({ intent: "addMember", emails, name, pages: JSON.stringify(newPages) }, { method: "post" })}>Add</button>
-        </div>
-        <p style={{ margin: "8px 0 0", fontSize: "11.5px", color: brand.muted }}>Everyone listed gets the pages ticked above; you can change each person afterwards. They also need a Shopify staff account that is allowed to open this app (Shopify admin → Settings → Users).</p>
+        <p style={{ margin: "8px 0 0", fontSize: "11.5px", color: brand.muted }}>Everyone added gets the pages chosen above; you can change each person afterwards. They also need a Shopify staff account that is allowed to open this app (Shopify admin → Settings → Users).</p>
       </Card>
     </PageIn>
   );

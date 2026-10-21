@@ -380,7 +380,7 @@ export const tdStyle = {
 // meaning "All"/"Any status" had as the native <select>'s default
 // option -- callers' match functions just check
 // `selected.length === 0 || selected.includes(x)`.
-export function MultiSelect({ label, options, selected, onChange }) {
+export function MultiSelect({ label, options, selected, onChange, emptyLabel }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -399,7 +399,7 @@ export function MultiSelect({ label, options, selected, onChange }) {
 
   const summary =
     selected.length === 0
-      ? `Any ${label}`
+      ? emptyLabel || `Any ${label}`
       : selected.length === 1
       ? options.find((o) => o.value === selected[0])?.label || `1 selected`
       : `${selected.length} ${label} selected`;
