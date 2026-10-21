@@ -10,7 +10,7 @@ import { useFetcher, useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import prisma from "../db.server";
 import { authenticatePage } from "../utils/teamAccess.server";
-import { TEAM_PAGES, TEAM_PRESETS, ASSIGNABLE_IDS } from "../utils/teamPages";
+import { TEAM_PAGES, ASSIGNABLE_IDS } from "../utils/teamPages";
 import { brand, Card, PageHeader, PageIn, Pill, tableWrapStyle, tableStyle, thStyle, tdStyle } from "../components/table-kit";
 import { useToast } from "../components/toast";
 
@@ -74,14 +74,23 @@ export const action = async ({ request }) => {
       return { ok: true, intent, message: value ? "Access control is ON. People now see only their pages." : "Access control is OFF. Everyone can open every page again." };
     }
     if (intent === "addMember") {
-      const email = String(form.get("email") || "").trim().toLowerCase();
-      const name = String(form.get("name") || "").trim() || null;
-      const preset = String(form.get("preset") || "");
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { ok: false, intent, error: "Enter a valid email address." };
-      const exists = await prisma.teamMember.findFirst({ where: { shop, email: { equals: email, mode: "insensitive" } } });
-      if (exists) return { ok: false, intent, error: "That email is already on the list." };
-      await prisma.teamMember.create({ data: { shop, email, name, pages: TEAM_PRESETS[preset] || [] } });
-      return { ok: true, intent, message: `${email} added. They are matched when they next open the app.` };
+      // one or several emails (separated by new lines, commas, semicolons or spaces), all given the same pages
+      const emails = [...new Set(String(form.get("emails") || form.get("email") || "").split(/[\s,;]+/).map((e) => e.trim().toLowerCase()).filter(Boolean))];
+      const name = emails.length === 1 ? String(form.get("name") || "").trim() || null : null;
+      const pages = cleanPages(form.get("pages"));
+      if (!emails.length) return { ok: false, intent, error: "Enter at least one email address." };
+      const bad = emails.filter((e) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e));
+      if (bad.length) return { ok: false, intent, error: `Not a valid email: ${bad.slice(0, 3).join(", ")}` };
+      let added = 0;
+      const skipped = [];
+      for (const email of emails) {
+        const exists = await prisma.teamMember.findFirst({ where: { shop, email: { equals: email, mode: "insensitive" } } });
+        if (exists) { skipped.push(email); continue; }
+        await prisma.teamMember.create({ data: { shop, email, name, pages } });
+        added++;
+      }
+      if (!added) return { ok: false, intent, error: "Already on the list: " + skipped.join(", ") };
+      return { ok: true, intent, message: `${added} added${skipped.length ? `, ${skipped.length} already on the list` : ""}. They are matched when they next open the app.` };
     }
     const id = String(form.get("id") || "");
     const target = id ? await prisma.teamMember.findFirst({ where: { id, shop } }) : null;
@@ -163,13 +172,6 @@ function MemberRow({ m, isMe, enforce, viewerIsAdmin }) {
                 );
               })}
             </div>
-            <div style={{ marginTop: "7px" }}>
-              <select defaultValue="" onChange={(e) => { if (e.target.value) setPages(TEAM_PRESETS[e.target.value]); e.target.value = ""; }}
-                style={{ padding: "4px 8px", borderRadius: "8px", border: `1px solid ${brand.border}`, fontSize: "11.5px", background: "#fff", color: brand.body }}>
-                <option value="">Fill from a preset…</option>
-                {Object.keys(TEAM_PRESETS).map((k) => <option key={k} value={k}>{k}</option>)}
-              </select>
-            </div>
           </>
         )}
       </td>
@@ -193,14 +195,14 @@ export default function TeamPage() {
   const { members, enforce, me, canClaim, identityError, viewerIsAdmin } = useLoaderData();
   const fetcher = useFetcher();
   const toast = useToast();
-  const [email, setEmail] = useState("");
+  const [emails, setEmails] = useState("");
   const [name, setName] = useState("");
-  const [preset, setPreset] = useState("");
+  const [newPages, setNewPages] = useState([]);
   const res = fetcher.state === "idle" ? fetcher.data : null;
   useEffect(() => {
     if (!res) return;
     toast.show(res.ok ? res.message || "Done" : res.error || "Could not save", { isError: !res.ok });
-    if (res.ok && res.intent === "addMember") { setEmail(""); setName(""); setPreset(""); }
+    if (res.ok && res.intent === "addMember") { setEmails(""); setName(""); setNewPages([]); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [res]);
   const busy = fetcher.state !== "idle";
@@ -270,17 +272,27 @@ export default function TeamPage() {
       </div>
 
       <Card style={{ marginTop: "16px" }}>
-        <div style={{ fontSize: "13px", fontWeight: 600, color: brand.ink, marginBottom: "8px" }}>Add someone by email</div>
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Their Shopify login email" style={{ padding: "8px 12px", borderRadius: "9px", border: `1px solid ${brand.border}`, fontSize: "13px", minWidth: "240px" }} />
-          <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (optional)" style={{ padding: "8px 12px", borderRadius: "9px", border: `1px solid ${brand.border}`, fontSize: "13px" }} />
-          <select value={preset} onChange={(e) => setPreset(e.target.value)} style={{ padding: "8px 10px", borderRadius: "9px", border: `1px solid ${brand.border}`, fontSize: "13px", background: "#fff" }}>
-            <option value="">No pages yet</option>
-            {Object.keys(TEAM_PRESETS).map((k) => <option key={k} value={k}>{k}</option>)}
-          </select>
-          <button type="button" disabled={busy || !email} style={{ ...primaryBtn, padding: "8px 14px", fontSize: "13px", opacity: busy || !email ? 0.5 : 1 }} onClick={() => fetcher.submit({ intent: "addMember", email, name, preset }, { method: "post" })}>Add</button>
+        <div style={{ fontSize: "13px", fontWeight: 600, color: brand.ink, marginBottom: "8px" }}>Add people by email</div>
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "flex-start" }}>
+          <textarea value={emails} onChange={(e) => setEmails(e.target.value)} rows={3} placeholder={"Their Shopify login emails: one per line, or separated by commas"} style={{ padding: "8px 12px", borderRadius: "9px", border: `1px solid ${brand.border}`, fontSize: "13px", minWidth: "300px", fontFamily: "inherit", resize: "vertical" }} />
+          <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (optional, for one person)" style={{ padding: "8px 12px", borderRadius: "9px", border: `1px solid ${brand.border}`, fontSize: "13px", minWidth: "230px" }} />
         </div>
-        <p style={{ margin: "8px 0 0", fontSize: "11.5px", color: brand.muted }}>The person also needs a Shopify staff account that is allowed to open this app (Shopify admin → Settings → Users).</p>
+        <div style={{ fontSize: "12px", color: brand.muted, margin: "10px 0 6px" }}>Pages they can open:</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "5px" }}>
+          {TEAM_PAGES.map((pg) => {
+            const on = newPages.includes(pg.id);
+            return (
+              <button key={pg.id} type="button" onClick={() => setNewPages((cur) => (cur.includes(pg.id) ? cur.filter((x) => x !== pg.id) : [...cur, pg.id]))} disabled={busy}
+                style={{ padding: "4px 10px", borderRadius: "999px", fontSize: "11.5px", fontWeight: 600, cursor: "pointer", border: `1px solid ${on ? brand.accent : brand.border}`, background: on ? brand.accentTint : "#fff", color: on ? brand.accent : brand.muted }}>
+                {on ? "✓ " : ""}{pg.label}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ marginTop: "10px" }}>
+          <button type="button" disabled={busy || !emails.trim()} style={{ ...primaryBtn, padding: "8px 14px", fontSize: "13px", opacity: busy || !emails.trim() ? 0.5 : 1 }} onClick={() => fetcher.submit({ intent: "addMember", emails, name, pages: JSON.stringify(newPages) }, { method: "post" })}>Add</button>
+        </div>
+        <p style={{ margin: "8px 0 0", fontSize: "11.5px", color: brand.muted }}>Everyone listed gets the pages ticked above; you can change each person afterwards. They also need a Shopify staff account that is allowed to open this app (Shopify admin → Settings → Users).</p>
       </Card>
     </PageIn>
   );
