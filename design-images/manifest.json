@@ -1,0 +1,567 @@
+{
+ "createdAt": "2026-10-21T10:30:50.954Z",
+ "note": "Backup of every design image the theme uses (snippets/shubh-gems-global-designs.liquid). Restore by uploading each file to Shopify Files with exactly this filename.",
+ "count": 80,
+ "files": [
+  {
+   "file": "br01.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/br01.jpg",
+   "bytes": 4734,
+   "format": "jpeg",
+   "sha256": "565393678ff0f58d2cb6e44609c293723a9601522e79cce4561522d002763101"
+  },
+  {
+   "file": "br02.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/br02.jpg",
+   "bytes": 7191,
+   "format": "jpeg",
+   "sha256": "a15cb9a712461c04025cec85b0b2797bc9f1ef6584a418d42d044f1fa4f120f8"
+  },
+  {
+   "file": "br08.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/br08.jpg",
+   "bytes": 4302,
+   "format": "jpeg",
+   "sha256": "c6f464f3cd73764b25afd8c5e3386ae2c3748b4da326fa61b1eb4854deb63e0c"
+  },
+  {
+   "file": "custom_design.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/custom_design.jpg",
+   "bytes": 4907,
+   "format": "jpeg",
+   "sha256": "de80035094ca07cc7a72419c8e2022b0270a8efa03764c5a0e2ef7e4584c7aac"
+  },
+  {
+   "file": "PD01-gold.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD01-gold.jpg",
+   "bytes": 7579,
+   "format": "jpeg",
+   "sha256": "1bb086b6faebb12663e1b22a85e77f8fda3ab26fb1d8271e10badc18e1042ed9"
+  },
+  {
+   "file": "PD01-silver.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD01-silver.jpg",
+   "bytes": 4993,
+   "format": "jpeg",
+   "sha256": "c5e32c33568739b1feb14e52611746b9ca429ae4e044d67553bdcfcf403e3954"
+  },
+  {
+   "file": "PD02-copper.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD02-copper.jpg",
+   "bytes": 6781,
+   "format": "jpeg",
+   "sha256": "26bd3fcdf8fed8e4b749354325df85ffeb81fa321a81e01bb4ae69c4b010ca7b"
+  },
+  {
+   "file": "PD02-gold.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD02-gold.jpg",
+   "bytes": 7706,
+   "format": "jpeg",
+   "sha256": "a304c532c890e6eb94370ec8433f75a29287a58fff72747ac899845981a19924"
+  },
+  {
+   "file": "PD02-silver.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD02-silver.jpg",
+   "bytes": 6092,
+   "format": "jpeg",
+   "sha256": "0fe90f7f581c7addc9a87eb679bed2962f0ea20f7f75ffefb15e6fe7f6de6241"
+  },
+  {
+   "file": "PD03-copper.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD03-copper.jpg",
+   "bytes": 8900,
+   "format": "jpeg",
+   "sha256": "352740aa9e74817bdaed76c01be846f99825d77d18e6b90c917fe39d535ec5f3"
+  },
+  {
+   "file": "PD03-gold.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD03-gold.jpg",
+   "bytes": 8397,
+   "format": "jpeg",
+   "sha256": "f771e29c879c43c462c60c9690825bffc0c890ed09fdfce8eb1ff16438913c8d"
+  },
+  {
+   "file": "PD03-silver.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD03-silver.jpg",
+   "bytes": 7721,
+   "format": "jpeg",
+   "sha256": "97105202761a18c9af624c6e13a47d12be8a9333ffea1c194869aed1d7c7c8a3"
+  },
+  {
+   "file": "PD04-gold.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD04-gold.jpg",
+   "bytes": 8469,
+   "format": "jpeg",
+   "sha256": "58e77effa5654fcfad6e1017f4e16b68356648fce5417ea4a5e9f31602000899"
+  },
+  {
+   "file": "PD04-silver.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD04-silver.jpg",
+   "bytes": 6981,
+   "format": "jpeg",
+   "sha256": "d5c67aa026e6966d196cf9559ef57cc3b63ef15c8bcf017d6be001e0d345429f"
+  },
+  {
+   "file": "PD05-gold.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD05-gold.jpg",
+   "bytes": 7083,
+   "format": "jpeg",
+   "sha256": "40cde5590ed6ca744ef82be892b0139c1d66ebd4a7b20e50bd13a782756c87f5"
+  },
+  {
+   "file": "PD05-silver.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD05-silver.jpg",
+   "bytes": 5460,
+   "format": "jpeg",
+   "sha256": "43c1c28687614f406f99ad28464a532ae9398add5dc684dfe3b7ae12343861b7"
+  },
+  {
+   "file": "PD06-gold.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD06-gold.jpg",
+   "bytes": 8754,
+   "format": "jpeg",
+   "sha256": "960b8845426919017a54e4cf80c07074b34f1b87929dd8cc3a3732c818a8b55d"
+  },
+  {
+   "file": "PD06-silver.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD06-silver.jpg",
+   "bytes": 6970,
+   "format": "jpeg",
+   "sha256": "481cbf3610465eae9605545338da293561d482a5850d93052f3f75bab96ffc92"
+  },
+  {
+   "file": "PD08-gold.jpg",
+   "source": "theme asset (converted from the uploaded .jxl)",
+   "bytes": 6812,
+   "format": "jpeg",
+   "sha256": "885342c9f581aa14d8be08d1b36159f4f56d8e8a4af9854aaf82873938f7e0c9"
+  },
+  {
+   "file": "PD08-silver.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD08-silver.jpg",
+   "bytes": 5700,
+   "format": "jpeg",
+   "sha256": "9d912a061f22b8cc66a0f5207687e491bccd223f73710936959e918222039c76"
+  },
+  {
+   "file": "PD11-gold.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD11-gold.jpg",
+   "bytes": 6673,
+   "format": "jpeg",
+   "sha256": "9a1381fe6a9eefba5c3f4de813b118f91694f32ce3bb71a65b65c626941a2e04"
+  },
+  {
+   "file": "PD11-silver.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD11-silver.jpg",
+   "bytes": 3810,
+   "format": "jpeg",
+   "sha256": "22d7fac383fd24b415362520265cd08a56864ab487eecaadce70363aea9bbba1"
+  },
+  {
+   "file": "PD12-gold.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD12-gold.jpg",
+   "bytes": 6854,
+   "format": "jpeg",
+   "sha256": "c9aff2f918615218bddd8e5ea52fc4dc87d7182ae09b33e34c9eeb5a156b93e9"
+  },
+  {
+   "file": "PD12-silver.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD12-silver.jpg",
+   "bytes": 4038,
+   "format": "jpeg",
+   "sha256": "71731582badb10390ebe3c05133013e1c3fc2b1371246d83eee599e9eeadf71a"
+  },
+  {
+   "file": "PD13-gold.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD13-gold.jpg",
+   "bytes": 6410,
+   "format": "jpeg",
+   "sha256": "3884b57885e102a03133948214009adaa67b6093bc26922561ceb07faaeb31ab"
+  },
+  {
+   "file": "PD13-silver.jpg",
+   "source": "theme asset (converted from the uploaded .jxl)",
+   "bytes": 3570,
+   "format": "jpeg",
+   "sha256": "7a9deebef91bcc41c20e7dfbed251f3768b72966156fb96ef63649b1944ac904"
+  },
+  {
+   "file": "PD14-gold.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD14-gold.jpg",
+   "bytes": 7391,
+   "format": "jpeg",
+   "sha256": "b5c506213860469e924e27ea99ecdf9c50388a296d68a7caf7080fcbc1ac75da"
+  },
+  {
+   "file": "PD14-silver.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD14-silver.jpg",
+   "bytes": 4306,
+   "format": "jpeg",
+   "sha256": "dce03353f2c3d1c0fcae912ae20af2a6276300e597293d37fe7e78c45c284380"
+  },
+  {
+   "file": "PD15-gold.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD15-gold.jpg",
+   "bytes": 8415,
+   "format": "jpeg",
+   "sha256": "b160377dc7c345fc3b8e6182d938a173b7c3f0d40248793a72b6e876303edd6a"
+  },
+  {
+   "file": "PD15-silver.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD15-silver.jpg",
+   "bytes": 5106,
+   "format": "jpeg",
+   "sha256": "24ff39fe61d174abd0445a8b127c21d6fcdf57130e6dddc1a26d5223afea30e6"
+  },
+  {
+   "file": "PD16-gold.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD16-gold.jpg",
+   "bytes": 8442,
+   "format": "jpeg",
+   "sha256": "881f2187f19db0290e14a84875e445f4d6dfd0fe2d004637220ca0c556f1cff7"
+  },
+  {
+   "file": "PD16-silver.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD16-silver.jpg",
+   "bytes": 4792,
+   "format": "jpeg",
+   "sha256": "9f5376dddef4877afa1f1e2af6e0cf2133de67f183959888187fd5373cf763b6"
+  },
+  {
+   "file": "PD17-gold.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD17-gold.jpg",
+   "bytes": 8376,
+   "format": "jpeg",
+   "sha256": "73d8517cde4611cdaa293b7c5998f4a063679be2719be1abdc0e03b4a039d6db"
+  },
+  {
+   "file": "PD17-silver.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/PD17-silver.jpg",
+   "bytes": 4869,
+   "format": "jpeg",
+   "sha256": "9778a9a560684915a6dace41fd2e65917525597e8406ca57164f8da5f4bf1892"
+  },
+  {
+   "file": "RD1-gold-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD1-gold-ong.jpg",
+   "bytes": 11398,
+   "format": "jpeg",
+   "sha256": "d13625b6e9986b2af936a36de55d62bedd50afe943da4d3a8392d3c4f79affb2"
+  },
+  {
+   "file": "RD1-silver-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD1-silver-ong.jpg",
+   "bytes": 6559,
+   "format": "jpeg",
+   "sha256": "e608bf222b1ac9fbd8fbfdbeb0f9e494fc7a1916a88d55e1cd232f15fce673bb"
+  },
+  {
+   "file": "RD11-gold-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD11-gold-ong.jpg",
+   "bytes": 13841,
+   "format": "jpeg",
+   "sha256": "fc097e752b89aedb6f611542f7bce9dd87c524964c86e9fc1094c003948e7a9f"
+  },
+  {
+   "file": "RD11-silver-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD11-silver-ong.jpg",
+   "bytes": 8798,
+   "format": "jpeg",
+   "sha256": "ad730aa12f68cb20c2f361b5fde848504e02e04357a63793c8610884f6bbf56a"
+  },
+  {
+   "file": "RD2-gold-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD2-gold-ong.jpg",
+   "bytes": 12483,
+   "format": "jpeg",
+   "sha256": "4b9908763f6715845bed28a203fe4f3e5772049e25a924990a973676a685ed62"
+  },
+  {
+   "file": "RD2-silver-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD2-silver-ong.jpg",
+   "bytes": 7354,
+   "format": "jpeg",
+   "sha256": "a7aa1ba79be5d51bd94ebf069a4ff981195f730b894200aba48ba72643d8d71f"
+  },
+  {
+   "file": "RD21_gold_ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD21_gold_ong.jpg?v=1792572713",
+   "bytes": 14541,
+   "format": "jpeg",
+   "sha256": "c8e901471c2138a83728d986acdf5ba8b37c70ce127a3558546f87ac63509824"
+  },
+  {
+   "file": "RD21-silver-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD21-silver-ong.jpg",
+   "bytes": 8545,
+   "format": "jpeg",
+   "sha256": "2f55bba128b6df87f6bf38b802b4c571f2f8f839a9ee793865aa826ee13962a7"
+  },
+  {
+   "file": "RD23-gold-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD23-gold-ong.jpg",
+   "bytes": 11861,
+   "format": "jpeg",
+   "sha256": "4629a379887764b6eb2080bfc49c9a09ff91e32179019cb00abc9d4eb2b2c95c"
+  },
+  {
+   "file": "RD23-silver-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD23-silver-ong.jpg",
+   "bytes": 7156,
+   "format": "jpeg",
+   "sha256": "c983e9fda4b12c385cbaa8ac2d1b7f3e2d2d6738c3a74572ecdb51519cebf460"
+  },
+  {
+   "file": "RD24-gold-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD24-gold-ong.jpg",
+   "bytes": 14678,
+   "format": "jpeg",
+   "sha256": "017745f57023b534adaf01d4f6c775752c5c0fb410b51f82d65ef64525f63fde"
+  },
+  {
+   "file": "RD24-silver-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD24-silver-ong.jpg",
+   "bytes": 7315,
+   "format": "jpeg",
+   "sha256": "5885afec3e8c92204f0515e248df017645e576041267ca0ce7b50904a6807427"
+  },
+  {
+   "file": "RD25-copper-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD25-copper-ong.jpg",
+   "bytes": 11015,
+   "format": "jpeg",
+   "sha256": "62aae08ac9a5215cccfcf6087343c4b08b502cb5f25af92a0f83eef1bd2e9e9e"
+  },
+  {
+   "file": "RD25-gold-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD25-gold-ong.jpg",
+   "bytes": 12256,
+   "format": "jpeg",
+   "sha256": "5253e37709bea4bf6eb7f2b8d72698accdb48136b4b6efefcfe9014d0d953504"
+  },
+  {
+   "file": "RD25-silver-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD25-silver-ong.jpg",
+   "bytes": 7635,
+   "format": "jpeg",
+   "sha256": "aff57585a0a245b57ce3513ba4331d520711d00bde9bcf27a03162f7112f4077"
+  },
+  {
+   "file": "RD26-gold-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD26-gold-ong.jpg",
+   "bytes": 14494,
+   "format": "jpeg",
+   "sha256": "4c7427b4f1e4e36a433846e4d483dd2c80ba074e7fa2bea3332408d23ce79bb6"
+  },
+  {
+   "file": "RD26-silver-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD26-silver-ong.jpg",
+   "bytes": 9171,
+   "format": "jpeg",
+   "sha256": "af7d6ecd481ae5aac2a85e33673d63c100482a77c7eafe728bc0c03dca3cf7a7"
+  },
+  {
+   "file": "RD27-gold-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD27-gold-ong.jpg",
+   "bytes": 14116,
+   "format": "jpeg",
+   "sha256": "e1c970fc1d562504b225fb1bfb8e0e0586ae177b3967df7a64036620c057e79a"
+  },
+  {
+   "file": "RD27-silver-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD27-silver-ong.jpg",
+   "bytes": 9261,
+   "format": "jpeg",
+   "sha256": "6d42f7482bae1a2c5ae9b6d939c28ecf336fb2b3ab3951e9957ecb78d2282253"
+  },
+  {
+   "file": "RD3-gold-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD3-gold-ong.jpg",
+   "bytes": 12151,
+   "format": "jpeg",
+   "sha256": "0841ec8fc5554924d531334ca2100bfdc80f847ba983f6c92140d01845a7a881"
+  },
+  {
+   "file": "RD3-silver-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD3-silver-ong.jpg",
+   "bytes": 7286,
+   "format": "jpeg",
+   "sha256": "22ef9536c904627255651ada19d7fcb49c046d524595d2eb15ed45b842ba1645"
+  },
+  {
+   "file": "RD30-gold-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD30-gold-ong.jpg",
+   "bytes": 14221,
+   "format": "jpeg",
+   "sha256": "e8e70f0518a74196dcb3b4a021ee64ed03e35240a8f3caf6212dd6f8eacc65b1"
+  },
+  {
+   "file": "RD30-silver-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD30-silver-ong.jpg",
+   "bytes": 8761,
+   "format": "jpeg",
+   "sha256": "7cea7c4d200e65b10e9ada388ad963d6b7867b611b03e824de0661cfef931e4d"
+  },
+  {
+   "file": "RD31-gold-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD31-gold-ong.jpg",
+   "bytes": 16342,
+   "format": "jpeg",
+   "sha256": "d05aed9c923cd6d80c846ccba070a74411e20a208c3ad05b962dfd734a324086"
+  },
+  {
+   "file": "RD31-silver-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD31-silver-ong.jpg",
+   "bytes": 9398,
+   "format": "jpeg",
+   "sha256": "f7da5c04a0605b66afc66f28b6ab7c6993a2a50953c456e6e27c1197a69175f2"
+  },
+  {
+   "file": "RD32-gold-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD32-gold-ong.jpg",
+   "bytes": 12490,
+   "format": "jpeg",
+   "sha256": "46013416e7000eeda7b578b12c5a73f11a144c2af900d96519b4249588bf63cc"
+  },
+  {
+   "file": "RD32-silver-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD32-silver-ong.jpg",
+   "bytes": 7608,
+   "format": "jpeg",
+   "sha256": "6cad92ea8bc94f6881b5f5d699d5f94e15d35be9c5edb5d626ce21e7a0fbbc91"
+  },
+  {
+   "file": "RD34-gold-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD34-gold-ong.jpg",
+   "bytes": 11693,
+   "format": "jpeg",
+   "sha256": "06b7c136221095266178aa7419d404cc6d4d76df5f52e77fc6ba1f27762210e6"
+  },
+  {
+   "file": "RD34-silver-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD34-silver-ong.jpg",
+   "bytes": 6831,
+   "format": "jpeg",
+   "sha256": "78e986f4b439b873579d302edaea0aa1d3e3dfbcea93a92395c57384f4da9cd8"
+  },
+  {
+   "file": "RD36-gold-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD36-gold-ong.jpg",
+   "bytes": 15988,
+   "format": "jpeg",
+   "sha256": "e6ceae861b0849d3a285645d21558385bf15136a06b125ff864add80b38054f5"
+  },
+  {
+   "file": "RD36-silver-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD36-silver-ong.jpg",
+   "bytes": 9963,
+   "format": "jpeg",
+   "sha256": "a57815aedc16e29edc6987a32b3c1c578ae76dba55bbae83c4ece19a4d74855a"
+  },
+  {
+   "file": "RD37-gold-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD37-gold-ong.jpg",
+   "bytes": 15952,
+   "format": "jpeg",
+   "sha256": "d3057924a0993ac33f9d7a6f5617e1a954c7c9706dca48c7798144db0e14811d"
+  },
+  {
+   "file": "RD37-silver-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD37-silver-ong.jpg",
+   "bytes": 11821,
+   "format": "jpeg",
+   "sha256": "710670134afdbb880439019c2ef84ec3ab13ac9b74b3cfca593b6b6bb3a07bc4"
+  },
+  {
+   "file": "RD39-gold-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD39-gold-ong.jpg",
+   "bytes": 13280,
+   "format": "jpeg",
+   "sha256": "78f62ef87f870aa4ef12d8e53687e9a49f2ed8439063cca4887a8a68f26c3ad9"
+  },
+  {
+   "file": "RD39-silver-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD39-silver-ong.jpg",
+   "bytes": 9235,
+   "format": "jpeg",
+   "sha256": "e3717a96685f203be133f82a8e4911c4795b206be4fdcc9ccb8cb40702d148f9"
+  },
+  {
+   "file": "RD4-gold-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD4-gold-ong.jpg",
+   "bytes": 11946,
+   "format": "jpeg",
+   "sha256": "8c98dbcbc3992650353128d59ec388ea1ea4c93b4b05ece2783cd5e9eaf7abe9"
+  },
+  {
+   "file": "RD4-silver-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD4-silver-ong.jpg",
+   "bytes": 6277,
+   "format": "jpeg",
+   "sha256": "a3250800ec1a0993f9dfd1f88a17d2f1972a46ae72da33214bdeeac174e4be99"
+  },
+  {
+   "file": "RD40-copper-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD40-copper-ong.jpg",
+   "bytes": 12597,
+   "format": "jpeg",
+   "sha256": "003f2eff1ad4dd48ce26911bd263f99c2b7bf74bb0937506c316a653d968c09c"
+  },
+  {
+   "file": "RD40-gold-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD40-gold-ong.jpg",
+   "bytes": 13740,
+   "format": "jpeg",
+   "sha256": "c89b9b3bf7e1513ed513dea5b1fa411326f138a075f223d79dc251cb1f9635cc"
+  },
+  {
+   "file": "RD40-silver-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD40-silver-ong.jpg",
+   "bytes": 7638,
+   "format": "jpeg",
+   "sha256": "5f812fd3ef9ead639647581a9432f25c8a9373869ab04b1ce7cfd32244b57a64"
+  },
+  {
+   "file": "RD5-gold-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD5-gold-ong.jpg",
+   "bytes": 11682,
+   "format": "jpeg",
+   "sha256": "65fad79a3b979275aaf466c3b06ae772c4adf69d5b38cb3e9488e465d7597148"
+  },
+  {
+   "file": "RD5-silver-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD5-silver-ong.jpg",
+   "bytes": 6904,
+   "format": "jpeg",
+   "sha256": "7ef5fcd1e9e6b98311ed02c31910cc7b4c7d6a027662cde19e46425e6a0c2943"
+  },
+  {
+   "file": "RD6-gold-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD6-gold-ong.jpg",
+   "bytes": 13203,
+   "format": "jpeg",
+   "sha256": "036230855c913a8dfe8ef3e07dcb19e18a56d008391219edab1c549bbee48ba9"
+  },
+  {
+   "file": "RD6-silver-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD6-silver-ong.jpg",
+   "bytes": 7075,
+   "format": "jpeg",
+   "sha256": "449381cf7c3553b8e4b60996df336d6881942471098ee8a4e9f38f9d276adc06"
+  },
+  {
+   "file": "RD7-gold-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD7-gold-ong.jpg",
+   "bytes": 13189,
+   "format": "jpeg",
+   "sha256": "db0183afb61efa64450b84921ba00b13998ba5361e3abcc05f62c1699dc49422"
+  },
+  {
+   "file": "RD7-silver-ong.jpg",
+   "source": "https://cdn.shopify.com/s/files/1/0992/9929/5531/files/RD7-silver-ong.jpg",
+   "bytes": 7789,
+   "format": "jpeg",
+   "sha256": "dcabcc36418fa61c79f473f49935a40eed1c62b60d953116f58f6fb338f7a018"
+  }
+ ]
+}
