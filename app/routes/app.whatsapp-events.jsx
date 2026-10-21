@@ -91,6 +91,13 @@ export const action = async ({ request }) => {
     }
   }
 
+  // "Retry" on an order card's WhatsApp row: re-sends using the order's own
+  // country (see "order-whatsapp" in attentionActions.server.js).
+  if (intent === "retryOrderNotification") {
+    const r = await runAttentionAction({ admin, shop: session.shop, intent: "retry", kind: "order-whatsapp", id: String(formData.get("notificationId") || "") });
+    return { intent, ok: !!r.ok, status: r.status, error: r.ok ? undefined : r.status || r.error };
+  }
+
   if (intent === "retryOrderProcessing") {
     const phone = formData.get("phone")?.trim();
     const orderNumber = formData.get("orderNumber")?.trim();
@@ -340,7 +347,7 @@ export const loader = async ({ request }) => {
   for (const n of waNotifications) {
     const g = ensureGroup(n.orderId, n.orderName);
     if (n.phone) g.phone = n.phone;
-    g.timeline.push({ channel: "WhatsApp", notifiedAt: n.notifiedAt.toISOString(), status: n.status, triggerKey: n.triggerKey });
+    g.timeline.push({ channel: "WhatsApp", notifiedAt: n.notifiedAt.toISOString(), status: n.status, triggerKey: n.triggerKey, notificationId: n.id });
   }
   for (const n of emailNotifications) {
     const g = ensureGroup(n.orderId, n.orderName);
@@ -641,6 +648,11 @@ function TimelineRow({ t, isFirst }) {
   const dismissed = fetcher.data?.intent === "dismissRefundFailure" && fetcher.data?.ok;
   const s = timelineStatusInfo(dismissed ? "dismissed by staff" : t.status);
   const canDismiss = t.channel === "Refund WhatsApp" && t.notificationId && s.label === "Failed" && !dismissed;
+  const retried = fetcher.data?.intent === "retryOrderNotification" ? fetcher.data : null;
+  const canRetry = t.channel === "WhatsApp" && t.notificationId && !/^(OK|sending)/i.test(String(t.status || "").trim()) && !retried?.ok;
+  const retry = () => {
+    fetcher.submit({ intent: "retryOrderNotification", notificationId: t.notificationId }, { method: "POST" });
+  };
 
   const dismiss = () => {
     fetcher.submit({ intent: "dismissRefundFailure", notificationId: t.notificationId }, { method: "POST" });
@@ -661,6 +673,16 @@ function TimelineRow({ t, isFirst }) {
       <span style={{ fontSize: "11.5px", color: brand.faint, flex: 1, wordBreak: "break-word" }}>
         {dismissed ? `dismissed by staff (was: ${t.status})` : t.status}
       </span>
+      {canRetry && (
+        <button
+          type="button"
+          onClick={retry}
+          disabled={busy}
+          style={{ flexShrink: 0, padding: "4px 10px", borderRadius: "7px", border: `1px solid ${brand.border}`, background: "#fff", color: brand.body, fontSize: "11px", cursor: busy ? "default" : "pointer" }}
+        >
+          {busy ? "Sending…" : "Retry"}
+        </button>
+      )}
       {canDismiss && (
         <button
           type="button"
