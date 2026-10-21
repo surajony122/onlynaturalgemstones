@@ -457,9 +457,13 @@ function LeadRow({ lead, selected, onToggleSelect, now }) {
       <td style={tdStyle}>
         <input type="checkbox" checked={selected} onChange={onToggleSelect} style={{ cursor: "pointer" }} />
       </td>
-      <td style={tdStyle}>{new Date(lead.createdAt).toLocaleString()}</td>
-      <td style={tdStyle}>{lead.email || "—"}</td>
-      <td style={tdStyle}>{lead.phone || "—"}</td>
+      <td style={{ ...tdStyle, minWidth: "190px" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+          <span style={{ fontSize: "11px", color: brand.muted }}>{new Date(lead.createdAt).toLocaleString()}</span>
+          <span style={{ fontWeight: 600, color: brand.ink, wordBreak: "break-all" }}>{lead.email || "—"}</span>
+          <span style={{ fontSize: "12px", color: brand.body }}>{lead.phone || "—"}</span>
+        </div>
+      </td>
       <td style={{ ...tdStyle, whiteSpace: "normal", minWidth: "280px" }}>
         {lead.products.length ? (
           <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
@@ -492,7 +496,8 @@ function LeadRow({ lead, selected, onToggleSelect, now }) {
           "—"
         )}
       </td>
-      <td style={{ ...tdStyle, minWidth: "160px" }}>
+      <td style={{ ...tdStyle, minWidth: "250px" }}>
+        <div style={{ marginBottom: "8px" }}>
         {(() => {
           const currentOpt = LEAD_STATUS_OPTIONS.find((o) => o.value === statusVal) || LEAD_STATUS_OPTIONS[0];
           return (
@@ -521,11 +526,13 @@ function LeadRow({ lead, selected, onToggleSelect, now }) {
             </select>
           );
         })()}
-      </td>
-      <td style={tdStyle}>
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px", marginBottom: "7px" }}>
+          <span style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: brand.faint, minWidth: "52px" }}>Next send</span>
         <SendCountdown schedule={lead.schedule} now={now} />
-      </td>
-      <td style={tdStyle} title={lead.emailSendStatus || "pending — not due yet"}>
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px", marginBottom: "7px" }} title={lead.emailSendStatus || "pending — not due yet"}>
+          <span style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: brand.faint, minWidth: "52px" }}>Email</span>
         <Pill label="Sent" active={lead.emailStatus.sent > 0} color={brand.success} />
         <Pill
           label={"Opened" + (lead.emailStatus.opened > 1 ? ` ×${lead.emailStatus.opened}` : "")}
@@ -544,8 +551,9 @@ function LeadRow({ lead, selected, onToggleSelect, now }) {
             </button>
           </div>
         )}
-      </td>
-      <td style={tdStyle} title={lead.whatsappSendStatus || "pending — not due yet"}>
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px", marginBottom: "7px" }} title={lead.whatsappSendStatus || "pending — not due yet"}>
+          <span style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: brand.faint, minWidth: "52px" }}>WhatsApp</span>
         {lead.whatsappSendStatus?.startsWith("OK") ? (
           <Pill label="Sent" active color={brand.success} />
         ) : lead.whatsappSendStatus?.startsWith("skipped") ? (
@@ -562,8 +570,9 @@ function LeadRow({ lead, selected, onToggleSelect, now }) {
             </button>
           </div>
         )}
-      </td>
-      <td style={{ ...tdStyle, whiteSpace: "normal", minWidth: "180px" }}>
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px", marginBottom: "0" }}>
+          <span style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: brand.faint, minWidth: "52px" }}>Clicked</span>
         {lead.emailStatus.clickedLinks?.length
           ? lead.emailStatus.clickedLinks.map((link, i) => (
               <span key={i} style={{ display: "inline-block", fontSize: "11px", color: brand.accent, background: brand.accentTint, padding: "2px 7px", borderRadius: "8px", margin: "1px 3px 1px 0" }}>
@@ -571,8 +580,9 @@ function LeadRow({ lead, selected, onToggleSelect, now }) {
               </span>
             ))
           : "—"}
+        </div>
       </td>
-      <td style={{ ...tdStyle, minWidth: "150px", textAlign: "right" }}>
+      <td style={{ ...tdStyle, minWidth: "90px", textAlign: "right" }}>
         {confirming ? (
           <div style={{ display: "inline-flex", alignItems: "center", gap: "8px", animation: "ongFade 0.15s ease both" }}>
             <span style={{ fontSize: "12px", color: brand.danger, fontWeight: 600 }}>Delete?</span>
@@ -873,15 +883,9 @@ export default function WishlistLeadsPage() {
               <thead>
                 <tr>
                   <SelectAllTh checked={bulk.allSelected} indeterminate={bulk.count > 0 && !bulk.allSelected} onChange={bulk.toggleAll} />
-                  <SortTh label="When" sortKey="createdAt" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
-                  <SortTh label="Email" sortKey="email" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
-                  <SortTh label="Phone" sortKey="phone" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                  <SortTh label="Contact & date" sortKey="createdAt" activeKey={sortKey} sortDir={sortDir} onSort={onSort} />
                   <th style={thStyle}>Wishlist Items &amp; SKUs</th>
-                  <th style={thStyle}>Lead Status</th>
-                  <th style={thStyle}>Next send</th>
-                  <th style={thStyle}>Email</th>
-                  <th style={thStyle}>WhatsApp</th>
-                  <th style={thStyle}>Clicked Links</th>
+                  <th style={thStyle}>Status &amp; delivery</th>
                   <th style={thStyle}></th>
                 </tr>
               </thead>
