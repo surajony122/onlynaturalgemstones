@@ -103,15 +103,11 @@ async function resolveMember({ shop, uid, idToken }) {
   });
 }
 
-export function buildAccess({ enforce, member, identityError, noAdminYet = false }) {
+export function buildAccess({ enforce, member, identityError }) {
   const isAdmin = !!(member && (member.isOwner || member.isAdmin));
-  // The Team access page is open to admins, and to anyone while no admin exists yet
-  // (so the first person can claim it even if Shopify did not say who the owner is).
-  const canManageTeam = isAdmin || noAdminYet;
   const pages = new Set(member?.pages || []);
   const canOpen = (pageId) => {
     if (!pageId) return true;
-    if (pageId === "team") return canManageTeam; // admin-only, even before enforcement
     if (!enforce) return true;
     if (isAdmin) return true;
     if (ADMIN_ONLY_PAGES.includes(pageId)) return false;
@@ -119,17 +115,15 @@ export function buildAccess({ enforce, member, identityError, noAdminYet = false
     return pages.has(pageId);
   };
   const everyId = [...ASSIGNABLE_IDS, ...ADMIN_ONLY_PAGES, ...OPEN_PAGES];
-  return { enforce, isAdmin, canManageTeam, member, identityError: identityError || null, canOpen, allowed: everyId.filter(canOpen) };
+  return { enforce, isAdmin, member, identityError: identityError || null, canOpen, allowed: everyId.filter(canOpen) };
 }
 
 export async function getAccess({ request, shop, sessionToken }) {
   let enforce = false;
   let member = null;
   let identityError = null;
-  let noAdminYet = false;
   try {
     const settings = await prisma.teamSettings.findUnique({ where: { shop } });
-    noAdminYet = (await prisma.teamMember.count({ where: { shop, OR: [{ isAdmin: true }, { isOwner: true }] } })) === 0;
     enforce = !!settings?.enforce;
     const uid = sessionToken?.sub != null ? String(sessionToken.sub) : null;
     if (uid) member = await resolveMember({ shop, uid, idToken: getEncodedSessionToken(request) });
@@ -138,7 +132,7 @@ export async function getAccess({ request, shop, sessionToken }) {
     identityError = String((err && err.message) || err);
     console.error("[teamAccess] could not identify the user:", err);
   }
-  return buildAccess({ enforce, member, identityError, noAdminYet });
+  return buildAccess({ enforce, member, identityError });
 }
 
 /**

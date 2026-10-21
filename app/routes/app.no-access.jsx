@@ -10,7 +10,7 @@ import { brand, Card, PageHeader, PageIn } from "../components/table-kit";
 
 const ROUTES = {
   overview: "/app/overview", astro: "/app/astro-leads", wishlist: "/app/wishlist-leads", contact: "/app/contact-leads", invoices: "/app/invoices",
-  pricing: "/app/pricing", gemdetails: "/app/gemstone-details", currency: "/app/currency-countries", designimages: "/app/design-images", whatsapp: "/app/whatsapp-events",
+  pricing: "/app/pricing", gemdetails: "/app/gemstone-details", currency: "/app/currency-countries", designimages: "/app/design-images", whatsapp: "/app/whatsapp-events", team: "/app/team",
 };
 
 export const loader = async ({ request }) => {

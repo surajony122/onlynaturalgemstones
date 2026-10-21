@@ -22,7 +22,7 @@ export const loader = async ({ request }) => {
   }
 
   // eslint-disable-next-line no-undef
-  return { apiKey: process.env.SHOPIFY_API_KEY || "", attention, access: { allowed: access.allowed, isAdmin: access.isAdmin, canManageTeam: access.canManageTeam, enforce: access.enforce } };
+  return { apiKey: process.env.SHOPIFY_API_KEY || "", attention, access: { allowed: access.allowed, isAdmin: access.isAdmin, enforce: access.enforce } };
 };
 
 export default function App() {

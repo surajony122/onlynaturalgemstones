@@ -14,20 +14,17 @@ import { TEAM_PAGES, TEAM_PRESETS, ASSIGNABLE_IDS } from "../utils/teamPages";
 import { brand, Card, PageHeader, PageIn, Pill, tableWrapStyle, tableStyle, thStyle, tdStyle } from "../components/table-kit";
 import { useToast } from "../components/toast";
 
+// Opened like any other page: everyone can while access control is off, and afterwards only
+// admins and people ticked for "Team access". Some things stay admin-only (see viewerIsAdmin).
 async function adminGuard(request) {
-  const ctx = await authenticatePage(request, null);
+  const ctx = await authenticatePage(request, "team");
   const shop = ctx.session.shop;
   const adminCount = await prisma.teamMember.count({ where: { shop, OR: [{ isAdmin: true }, { isOwner: true }] } });
-  // Until the first admin exists, anyone who opens this page may claim it (see "claimAdmin").
-  if (!ctx.access.isAdmin && adminCount > 0) {
-    if (request.method === "GET") throw ctx.redirect("/app/no-access?page=team");
-    throw Response.json({ ok: false, error: "Only an admin can do this." }, { status: 403 });
-  }
-  return { ...ctx, shop, adminCount };
+  return { ...ctx, shop, adminCount, viewerIsAdmin: ctx.access.isAdmin };
 }
 
 export const loader = async ({ request }) => {
-  const { shop, access, adminCount } = await adminGuard(request);
+  const { shop, access, adminCount, viewerIsAdmin } = await adminGuard(request);
   const [members, settings] = await Promise.all([
     prisma.teamMember.findMany({ where: { shop }, orderBy: [{ isOwner: "desc" }, { lastSeenAt: "desc" }, { createdAt: "asc" }] }),
     prisma.teamSettings.findUnique({ where: { shop } }),
@@ -35,6 +32,7 @@ export const loader = async ({ request }) => {
   return {
     me: access.member ? access.member.id : null,
     canClaim: adminCount === 0 && !!access.member,
+    viewerIsAdmin,
     enforce: !!settings?.enforce,
     identityError: access.identityError,
     members: members.map((m) => ({
@@ -51,7 +49,7 @@ export const loader = async ({ request }) => {
 };
 
 export const action = async ({ request }) => {
-  const { shop, access } = await adminGuard(request);
+  const { shop, access, viewerIsAdmin } = await adminGuard(request);
   const form = await request.formData();
   const intent = String(form.get("intent") || "");
   const cleanPages = (raw) => {
@@ -70,6 +68,7 @@ export const action = async ({ request }) => {
       return { ok: true, intent, message: "You are now an admin." };
     }
     if (intent === "setEnforce") {
+      if (!viewerIsAdmin) return { ok: false, intent, error: "Only an admin can turn access control on or off." };
       const value = String(form.get("value")) === "true";
       await prisma.teamSettings.upsert({ where: { shop }, create: { shop, enforce: value }, update: { enforce: value } });
       return { ok: true, intent, message: value ? "Access control is ON. People now see only their pages." : "Access control is OFF. Everyone can open every page again." };
@@ -89,13 +88,16 @@ export const action = async ({ request }) => {
     if (!target) return { ok: false, intent, error: "That person was not found." };
     if (intent === "saveMember") {
       if (target.isOwner) return { ok: false, intent, error: "The shop owner always has full access." };
-      const isAdmin = String(form.get("isAdmin")) === "true";
+      if (!viewerIsAdmin && target.isAdmin) return { ok: false, intent, error: "Only an admin can change an admin's access." };
+      if (!viewerIsAdmin && access.member && target.id === access.member.id) return { ok: false, intent, error: "Ask an admin to change your own access." };
+      const isAdmin = viewerIsAdmin ? String(form.get("isAdmin")) === "true" : target.isAdmin;
       if (target.isAdmin && !isAdmin && (await otherAdmins(target.id)) === 0) return { ok: false, intent, error: "There must be at least one admin." };
       await prisma.teamMember.update({ where: { id: target.id }, data: { pages: cleanPages(form.get("pages")), isAdmin } });
       return { ok: true, intent, message: "Saved." };
     }
     if (intent === "removeMember") {
       if (target.isOwner) return { ok: false, intent, error: "The shop owner can't be removed." };
+      if (!viewerIsAdmin && target.isAdmin) return { ok: false, intent, error: "Only an admin can remove an admin." };
       if (access.member && target.id === access.member.id) return { ok: false, intent, error: "You can't remove yourself." };
       if ((target.isAdmin) && (await otherAdmins(target.id)) === 0) return { ok: false, intent, error: "There must be at least one admin." };
       await prisma.teamMember.delete({ where: { id: target.id } });
@@ -110,7 +112,7 @@ export const action = async ({ request }) => {
 const smallBtn = { padding: "6px 12px", borderRadius: "8px", border: `1px solid ${brand.border}`, background: "#fff", color: brand.body, fontSize: "12px", fontWeight: 600, cursor: "pointer" };
 const primaryBtn = { ...smallBtn, border: `1px solid ${brand.accent}`, background: brand.accent, color: "#fff" };
 
-function MemberRow({ m, isMe, enforce }) {
+function MemberRow({ m, isMe, enforce, viewerIsAdmin }) {
   const fetcher = useFetcher();
   const toast = useToast();
   const [pages, setPages] = useState(m.pages);
@@ -123,7 +125,8 @@ function MemberRow({ m, isMe, enforce }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [res]);
   const busy = fetcher.state !== "idle";
-  const locked = m.isOwner;
+  // the owner is always locked; people who may manage the team but are not admins cannot edit admins or themselves
+  const locked = m.isOwner || (!viewerIsAdmin && (m.isAdmin || isMe));
   const dirty = isAdmin !== m.isAdmin || [...pages].sort().join(",") !== [...m.pages].sort().join(",");
   const toggle = (id) => setPages((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
   const save = () => fetcher.submit({ intent: "saveMember", id: m.id, pages: JSON.stringify(pages), isAdmin: String(isAdmin) }, { method: "post" });
@@ -144,7 +147,7 @@ function MemberRow({ m, isMe, enforce }) {
       </td>
       <td style={{ ...tdStyle, minWidth: "340px" }}>
         {locked ? (
-          <span style={{ fontSize: "12.5px", color: brand.body }}>Full access (shop owner)</span>
+          <span style={{ fontSize: "12.5px", color: brand.body }}>{m.isOwner ? "Full access (shop owner)" : m.isAdmin ? "Full access (admin)" : "Only an admin can change your own access"}</span>
         ) : isAdmin ? (
           <span style={{ fontSize: "12.5px", color: brand.body }}>Full access (admin)</span>
         ) : (
@@ -171,7 +174,7 @@ function MemberRow({ m, isMe, enforce }) {
         )}
       </td>
       <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>
-        {!locked && (
+        {!locked && viewerIsAdmin && (
           <label style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "12px", color: brand.body, cursor: "pointer" }}>
             <input type="checkbox" checked={isAdmin} onChange={(e) => setIsAdmin(e.target.checked)} disabled={busy || isMe} />
             Admin
@@ -187,7 +190,7 @@ function MemberRow({ m, isMe, enforce }) {
 }
 
 export default function TeamPage() {
-  const { members, enforce, me, canClaim, identityError } = useLoaderData();
+  const { members, enforce, me, canClaim, identityError, viewerIsAdmin } = useLoaderData();
   const fetcher = useFetcher();
   const toast = useToast();
   const [email, setEmail] = useState("");
@@ -214,7 +217,7 @@ export default function TeamPage() {
         title="Team access"
         description="Everyone who has opened the app is listed here. Choose which pages each person may open."
         stats={[{ label: "People", value: members.length }, { label: "Access control", value: enforce ? "ON" : "OFF", tone: enforce ? "success" : undefined }]}
-        info={<p style={{ margin: 0 }}>People appear here the first time they open the app from their own Shopify login. They start with no pages. Nothing is blocked until you turn access control on. The shop owner and admins always see everything; Settings and System Health are admin-only.</p>}
+        info={<p style={{ margin: 0 }}>People appear here the first time they open the app from their own Shopify login. They start with no pages. Nothing is blocked until you turn access control on. The shop owner and admins always see everything; Settings and System Health are admin-only. Team access is a page like the others: tick it for anyone who may manage the team (they can assign pages to others, but only admins can make admins or turn access control on).</p>}
       />
 
       {identityError && (
@@ -236,9 +239,13 @@ export default function TeamPage() {
               ? "Access control is ON: each person sees only the pages ticked for them."
               : "Access control is OFF: everyone can still open every page. Fill in the list below, then turn it on."}
           </p>
-          <button type="button" disabled={busy} style={enforce ? smallBtn : primaryBtn} onClick={() => setEnforce(!enforce)}>
-            {enforce ? "Turn off access control" : "Turn on access control"}
-          </button>
+          {viewerIsAdmin ? (
+            <button type="button" disabled={busy} style={enforce ? smallBtn : primaryBtn} onClick={() => setEnforce(!enforce)}>
+              {enforce ? "Turn off access control" : "Turn on access control"}
+            </button>
+          ) : (
+            <span style={{ fontSize: "12px", color: brand.muted }}>Only an admin can change this.</span>
+          )}
         </div>
       </Card>
 
@@ -256,7 +263,7 @@ export default function TeamPage() {
             {members.length === 0 ? (
               <tr><td style={tdStyle} colSpan={4}>No one yet. People appear here when they open the app.</td></tr>
             ) : (
-              members.map((m) => <MemberRow key={m.id} m={m} isMe={m.id === me} enforce={enforce} />)
+              members.map((m) => <MemberRow key={m.id} m={m} isMe={m.id === me} enforce={enforce} viewerIsAdmin={viewerIsAdmin} />)
             )}
           </tbody>
         </table>

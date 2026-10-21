@@ -15,10 +15,11 @@ export const TEAM_PAGES = [
   { id: "currency", label: "Currency by country" },
   { id: "designimages", label: "Design images" },
   { id: "whatsapp", label: "Logs" },
+  { id: "team", label: "Team access" },
 ];
 
-// Pages only an admin can open (they hold keys / system controls / this very page).
-export const ADMIN_ONLY_PAGES = ["settings", "server", "team"];
+// Pages only an admin can open (they hold keys / system controls).
+export const ADMIN_ONLY_PAGES = ["settings", "server"];
 // Informational page every signed-in team member can read.
 export const OPEN_PAGES = ["documentation"];
 
