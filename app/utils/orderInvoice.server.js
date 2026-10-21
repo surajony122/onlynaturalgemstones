@@ -729,12 +729,23 @@ export async function fetchShopSellerInfo(admin) {
  * order by id. Powers the /app/invoices page's "show every order with
  * its tax already computed" list -- per explicit request, a merchant
  * shouldn't have to search for an order before seeing anything. */
-export async function fetchRecentOrdersForInvoice(admin, first = 30, after = null) {
+/** Total number of orders (Shopify caps the exact count at 10,000: "precision" says so). */
+export async function fetchOrdersCount(admin) {
+  const res = await admin.graphql(`#graphql
+    query OrdersCountForInvoices { ordersCount { count precision } }`);
+  const json = await res.json();
+  if (json.errors?.length) throw new Error("ordersCount failed: " + JSON.stringify(json.errors).slice(0, 200));
+  return { count: json.data?.ordersCount?.count ?? null, atLeast: json.data?.ordersCount?.precision === "AT_LEAST" };
+}
+
+/** One page of recent orders, newest first. Pass `after` for the next page or `before`
+ * for the previous one (cursors come from the previous result's pageInfo). */
+export async function fetchRecentOrdersForInvoice(admin, first = 30, after = null, before = null) {
   const res = await admin.graphql(
     `#graphql
-    query RecentOrdersForInvoice($first: Int!, $after: String) {
-      orders(first: $first, after: $after, sortKey: CREATED_AT, reverse: true) {
-        pageInfo { hasNextPage endCursor }
+    query RecentOrdersForInvoice($first: Int, $after: String, $last: Int, $before: String) {
+      orders(first: $first, after: $after, last: $last, before: $before, sortKey: CREATED_AT, reverse: true) {
+        pageInfo { hasNextPage hasPreviousPage startCursor endCursor }
         nodes {
           id
           name
@@ -773,7 +784,7 @@ export async function fetchRecentOrdersForInvoice(admin, first = 30, after = nul
         }
       }
     }`,
-    { variables: { first, after } },
+    { variables: before ? { first: null, after: null, last: first, before } : { first, after, last: null, before: null } },
   );
   const json = await res.json();
   if (json.errors?.length) {
@@ -781,7 +792,7 @@ export async function fetchRecentOrdersForInvoice(admin, first = 30, after = nul
   }
   return {
     orders: json.data?.orders?.nodes || [],
-    pageInfo: json.data?.orders?.pageInfo || { hasNextPage: false, endCursor: null },
+    pageInfo: json.data?.orders?.pageInfo || { hasNextPage: false, hasPreviousPage: false, startCursor: null, endCursor: null },
   };
 }
 

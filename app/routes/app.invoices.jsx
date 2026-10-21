@@ -17,16 +17,16 @@
  * per explicit request ("it show all order with items and tax appied
  * and a button to send mail"), not a search-first flow. Each row has
  * its own "Send" button; a small text filter narrows the visible list
- * client-side (name/customer) without a server round trip. "Load more"
- * pages further back with a real GraphQL cursor for shops with more
- * orders than fit in one page.
+ * client-side (name/customer) without a server round trip. Previous / Next
+ * move through the orders 25 at a time (a real GraphQL cursor per page), with
+ * "Showing x-y of N orders (Page p of T)" like the other pages.
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link, useFetcher, useLoaderData, useRevalidator, useSearchParams } from "react-router";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { getAppSettings } from "../utils/appSettings.server";
-import { sendOrderInvoiceEmail, fetchRecentOrdersForInvoice, computeInvoiceGst } from "../utils/orderInvoice.server";
+import { sendOrderInvoiceEmail, fetchRecentOrdersForInvoice, fetchOrdersCount, computeInvoiceGst } from "../utils/orderInvoice.server";
 import { brand, Card, PageHeader, PageIn, tableWrapStyle, tableStyle, thStyle, tdStyle, Pill, RowMenu, useBulkSelect, SelectAllTh, BulkBar } from "../components/table-kit";
 import { useToast } from "../components/toast";
 
@@ -35,13 +35,25 @@ const PAGE_SIZE = 25;
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const url = new URL(request.url);
-  const after = url.searchParams.get("cursor") || null;
+  const cursor = url.searchParams.get("cursor") || null;
+  const goingBack = url.searchParams.get("dir") === "prev";
+  const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10) || 1);
 
   const settings = await getAppSettings(session.shop);
   const gstConfigured = !!settings.invoiceGstin;
   const gmailConfigured = !!(settings.gmailUser && settings.gmailAppPassword);
 
-  const { orders, pageInfo } = await fetchRecentOrdersForInvoice(admin, PAGE_SIZE, after);
+  const { orders, pageInfo } = await fetchRecentOrdersForInvoice(admin, PAGE_SIZE, goingBack ? null : cursor, goingBack ? cursor : null);
+  // Total for "Showing x-y of N"; the page still works if Shopify can't give it.
+  let total = null;
+  let totalAtLeast = false;
+  try {
+    const c = await fetchOrdersCount(admin);
+    total = c.count;
+    totalAtLeast = c.atLeast;
+  } catch (err) {
+    console.error("[invoices] order count unavailable:", err);
+  }
 
   // One query for every OrderInvoice row touching the orders on this
   // page, rather than one query per row -- keyed by orderId so the
@@ -80,7 +92,13 @@ export const loader = async ({ request }) => {
 
   return {
     rows,
+    page,
+    pageSize: PAGE_SIZE,
+    total,
+    totalAtLeast,
     hasNextPage: pageInfo.hasNextPage,
+    hasPreviousPage: pageInfo.hasPreviousPage,
+    startCursor: pageInfo.startCursor,
     endCursor: pageInfo.endCursor,
     gstConfigured,
     gmailConfigured,
@@ -242,21 +260,28 @@ export default function InvoicesPage() {
     }
   };
 
-  // In-app navigation (a plain <a href> reloads the whole page outside the embedded
-  // admin's login, which showed an error). Keeps the existing URL parameters.
-  const loadMoreHref = (() => {
-    if (!data.endCursor) return null;
+  // Pager links: in-app navigation (a plain <a href> reloads the whole page outside the
+  // embedded admin's login, which showed an error). Keeps the existing URL parameters.
+  const pagerHref = (cursor, dir, page) => {
     const next = new URLSearchParams(searchParams);
-    next.set("cursor", data.endCursor);
+    next.delete("cursor"); next.delete("dir"); next.delete("page");
+    if (cursor) { next.set("cursor", cursor); next.set("dir", dir); next.set("page", String(page)); }
     return "?" + next.toString();
-  })();
+  };
+  const page = data.page;
+  const firstShown = (page - 1) * data.pageSize + 1;
+  const lastShown = firstShown + data.rows.length - 1;
+  const totalPages = data.total != null ? Math.max(1, Math.ceil(data.total / data.pageSize)) : null;
+  const prevHref = data.hasPreviousPage && page > 1 ? (page - 1 <= 1 ? pagerHref(null) : pagerHref(data.startCursor, "prev", page - 1)) : null;
+  const nextHref = data.hasNextPage && data.endCursor ? pagerHref(data.endCursor, "next", page + 1) : null;
+  const pagerBtn = (enabled) => ({ display: "inline-block", padding: "6px 14px", borderRadius: "9px", border: `1px solid ${brand.border}`, background: "#fff", color: brand.body, fontSize: "12.5px", fontWeight: 500, textDecoration: "none", opacity: enabled ? 1 : 0.5, cursor: enabled ? "pointer" : "default" });
 
   return (
     <PageIn>
       <PageHeader
         title="GST Invoices"
         description="Every recent order, with GST already computed."
-        stats={[{ label: "Orders shown", value: data.rows.length }]}
+        stats={[{ label: "On this page", value: data.rows.length }, ...(data.total != null ? [{ label: "Total orders", value: data.totalAtLeast ? data.total.toLocaleString("en-IN") + "+" : data.total.toLocaleString("en-IN") }] : [])]}
         info={
           <p style={{ margin: 0 }}>
             Click Send to email a customer their invoice PDF, or Download PDF to save it yourself. Nothing sends automatically.
@@ -388,14 +413,17 @@ export default function InvoicesPage() {
         </table>
       </div>
 
-      {loadMoreHref && (
-        <div style={{ marginTop: "14px", textAlign: "center" }}>
-          <Link
-            to={loadMoreHref}
-            style={{ display: "inline-block", padding: "9px 18px", borderRadius: "9px", border: `1px solid ${brand.border}`, color: brand.body, fontSize: "13px", fontWeight: 500, textDecoration: "none" }}
-          >
-            Load more orders
-          </Link>
+      {data.rows.length > 0 && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", marginTop: "16px", padding: "12px 16px", background: "#fff", border: `1px solid ${brand.border}`, borderRadius: "10px" }}>
+          <span style={{ fontSize: "12.5px", color: brand.muted }}>
+            Showing {firstShown}–{lastShown}
+            {data.total != null ? ` of ${data.totalAtLeast ? data.total.toLocaleString("en-IN") + "+" : data.total.toLocaleString("en-IN")} orders (Page ${page} of ${totalPages}${data.totalAtLeast ? "+" : ""})` : " orders"}
+          </span>
+          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            {prevHref ? <Link to={prevHref} style={pagerBtn(true)}>← Previous</Link> : <span style={pagerBtn(false)}>← Previous</span>}
+            <span style={{ fontSize: "12.5px", fontWeight: 600, color: brand.ink, padding: "0 6px" }}>Page {page}{totalPages ? ` of ${totalPages}` : ""}</span>
+            {nextHref ? <Link to={nextHref} style={pagerBtn(true)}>Next →</Link> : <span style={pagerBtn(false)}>Next →</span>}
+          </div>
         </div>
       )}
     </PageIn>
