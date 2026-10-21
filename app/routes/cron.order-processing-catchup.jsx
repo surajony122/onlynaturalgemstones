@@ -89,8 +89,8 @@ export const loader = async ({ request }) => {
             cancelledAt
             displayFulfillmentStatus
             customer { firstName phone email }
-            shippingAddress { phone }
-            billingAddress { phone }
+            shippingAddress { phone countryCodeV2 }
+            billingAddress { phone countryCodeV2 }
           }
         }
       }`,
@@ -123,8 +123,8 @@ export const loader = async ({ request }) => {
         fulfillment_status: (o.displayFulfillmentStatus || "").toLowerCase(),
         cancelled_at: o.cancelledAt || null,
         customer: o.customer ? { first_name: o.customer.firstName, phone: o.customer.phone, email: o.customer.email } : null,
-        shipping_address: o.shippingAddress ? { phone: o.shippingAddress.phone } : null,
-        billing_address: o.billingAddress ? { phone: o.billingAddress.phone } : null,
+        shipping_address: o.shippingAddress ? { phone: o.shippingAddress.phone, country_code: o.shippingAddress.countryCodeV2 } : null,
+        billing_address: o.billingAddress ? { phone: o.billingAddress.phone, country_code: o.billingAddress.countryCodeV2 } : null,
       };
 
       // Same unconditional-receipt pattern as the webhook, so this

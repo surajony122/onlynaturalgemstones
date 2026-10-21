@@ -81,33 +81,70 @@ const GEM_TAGLINE = {
   Opal: "for Marital Bliss, Luxury & Pleasure",
 };
 
+// ISO country -> calling code. Used to split an international number
+// correctly instead of guessing "last 10 digits are the number" (wrong for
+// every country whose local numbers are not 10 digits, e.g. UAE/Singapore).
+const CALLING_CODES = {
+  IN: "91", US: "1", CA: "1", GB: "44", AU: "61", NZ: "64", AE: "971", SA: "966", QA: "974", KW: "965", BH: "973", OM: "968",
+  SG: "65", MY: "60", ID: "62", TH: "66", VN: "84", PH: "63", HK: "852", CN: "86", JP: "81", KR: "82", TW: "886", MO: "853",
+  LK: "94", NP: "977", BD: "880", PK: "92", AF: "93", MM: "95", MV: "960", BT: "975", KH: "855", LA: "856", MN: "976",
+  DE: "49", FR: "33", IT: "39", ES: "34", NL: "31", BE: "32", CH: "41", AT: "43", SE: "46", NO: "47", DK: "45", FI: "358",
+  IE: "353", PT: "351", PL: "48", CZ: "420", SK: "421", HU: "36", RO: "40", BG: "359", GR: "30", TR: "90", RU: "7", KZ: "7",
+  UA: "380", IL: "972", JO: "962", LB: "961", IQ: "964", IR: "98", EG: "20", MA: "212", ZA: "27", NG: "234", KE: "254",
+  GH: "233", TZ: "255", UG: "256", ET: "251", MU: "230", ZW: "263", ZM: "260", BW: "267", NA: "264", SC: "248",
+  BR: "55", MX: "52", AR: "54", CL: "56", CO: "57", PE: "51", VE: "58", EC: "593", UY: "598", PA: "507", CR: "506",
+  LU: "352", IS: "354", MT: "356", CY: "357", EE: "372", LV: "371", LT: "370", HR: "385", SI: "386", RS: "381", FJ: "679",
+};
+const ALL_CODES = new Set(Object.values(CALLING_CODES));
+
 /**
  * Splits a phone number into Interakt's separate countryCode/phoneNumber
- * fields. This store's customers are assumed India-based (+91) by
- * default, same assumption normalizePhoneForShopify makes elsewhere in
- * this file's sibling module — good enough for now, revisit if the
- * store ever ships internationally.
+ * fields. `countryIso` (the order's shipping-address country, e.g. "AE")
+ * is optional but makes international numbers reliable: a number typed
+ * without its country code is read as local to that country. Without it,
+ * a "+" or "00" number is matched against the real calling-code list, and
+ * an unprefixed 10-digit / 91-prefixed number is assumed to be India.
  *
  * Returns null (meaning: skip the WhatsApp send) if the number is too
  * short/malformed to confidently split rather than guess wrong.
  */
-export function splitPhoneForInterakt(phone) {
+export function splitPhoneForInterakt(phone, countryIso) {
   if (!phone) return null;
-  let raw = String(phone).replace(/[^\d+]/g, "");
-  if (raw.charAt(0) === "+") raw = raw.slice(1);
-  else if (raw.length === 11 && raw.charAt(0) === "0") raw = raw.slice(1);
+  let raw = String(phone).trim();
+  const hadPlus = raw.charAt(0) === "+";
+  raw = raw.replace(/[^0-9]/g, "");
+  let international = hadPlus;
+  if (!hadPlus && raw.indexOf("00") === 0) {
+    raw = raw.slice(2);
+    international = true;
+  }
+  const iso = String(countryIso || "").toUpperCase();
+  const isoCode = CALLING_CODES[iso] || null;
+  const ok = (cc, num) => (num.length >= 6 && num.length <= 12 ? { countryCode: "+" + cc, phoneNumber: num } : null);
 
-  if (raw.length === 12 && raw.indexOf("91") === 0) {
-    return { countryCode: "+91", phoneNumber: raw.slice(2) };
+  const byPrefix = () => {
+    for (const len of [1, 2, 3]) {
+      const cc = raw.slice(0, len);
+      if (ALL_CODES.has(cc)) return ok(cc, raw.slice(len));
+    }
+    return null;
+  };
+
+  if (international) return byPrefix() || (raw.length > 10 ? { countryCode: "+" + raw.slice(0, raw.length - 10), phoneNumber: raw.slice(-10) } : null);
+
+  // No "+" -- use the order's country when we know it.
+  if (isoCode) {
+    if (raw.indexOf(isoCode) === 0 && raw.length - isoCode.length >= 6 && raw.length - isoCode.length <= 12 && !(isoCode === "1" && raw.length === 10)) {
+      return ok(isoCode, raw.slice(isoCode.length));
+    }
+    return ok(isoCode, raw.replace(/^0+/, ""));
   }
-  if (raw.length === 10) {
-    return { countryCode: "+91", phoneNumber: raw };
-  }
-  if (raw.length > 10) {
-    // Best-effort for a non-India number: everything but the last 10
-    // digits is treated as the country code.
-    return { countryCode: "+" + raw.slice(0, raw.length - 10), phoneNumber: raw.slice(-10) };
-  }
+
+  // Legacy behaviour (no country known): India-first.
+  if (raw.length === 11 && raw.charAt(0) === "0") raw = raw.slice(1);
+  if (raw.length === 12 && raw.indexOf("91") === 0) return { countryCode: "+91", phoneNumber: raw.slice(2) };
+  if (raw.length === 10) return { countryCode: "+91", phoneNumber: raw };
+  if (raw.length > 10) return byPrefix() || { countryCode: "+" + raw.slice(0, raw.length - 10), phoneNumber: raw.slice(-10) };
   return null;
 }
 
@@ -439,13 +476,13 @@ export async function sendGemRecommendationWhatsApp(settings, data, recommendati
  *  {{2}} order number (Shopify's own order.name, minus the leading "#" —
  *        the template text already supplies "#" before {{2}})
  */
-export async function sendOrderProcessingWhatsApp(settings, { phone, firstName, orderNumber, shop, headerImageUrl }) {
+export async function sendOrderProcessingWhatsApp(settings, { phone, firstName, orderNumber, shop, headerImageUrl, countryIso }) {
   if (!settings.interaktApiKey) {
     return "skipped: Interakt API key not set (Settings page or INTERAKT_API_KEY env var)";
   }
-  const split = splitPhoneForInterakt(phone);
+  const split = splitPhoneForInterakt(phone, countryIso);
   if (!split) {
-    return "skipped: no usable phone number on this order";
+    return `skipped: no usable phone number on this order (phone: ${phone || "none"}, country: ${countryIso || "unknown"})`;
   }
 
   const templateName = settings.interaktOrderTemplateName || DEFAULT_INTERAKT_ORDER_TEMPLATE_NAME;
@@ -523,11 +560,11 @@ export async function sendOrderProcessingWhatsApp(settings, { phone, firstName, 
  * for tracking (see webhooks.refunds.create.jsx) — it's just not part
  * of this particular WhatsApp template's body.
  */
-export async function sendRefundProcessedWhatsApp(settings, { phone, firstName, orderNumber, orderStatusUrl, headerImageUrl }) {
+export async function sendRefundProcessedWhatsApp(settings, { phone, firstName, orderNumber, orderStatusUrl, headerImageUrl, countryIso }) {
   if (!settings.interaktApiKey) {
     return "skipped: Interakt API key not set (Settings page or INTERAKT_API_KEY env var)";
   }
-  const split = splitPhoneForInterakt(phone);
+  const split = splitPhoneForInterakt(phone, countryIso);
   if (!split) {
     return "skipped: no usable phone number on this order";
   }

@@ -31,7 +31,7 @@
  */
 import prisma from "../db.server";
 import { getAppSettings, DEFAULT_ORDER_PROCESSING_TRIGGER_TAG } from "./appSettings.server";
-import { sendOrderProcessingWhatsApp } from "./interakt.server";
+import { sendOrderProcessingWhatsApp, splitPhoneForInterakt } from "./interakt.server";
 import { sendOrderProcessingEmail } from "./orderProcessingEmail.server";
 
 export async function checkAndNotifyOrderProcessing({ admin, shop, payload, setDetail }) {
@@ -175,6 +175,14 @@ export async function checkAndNotifyOrderProcessing({ admin, shop, payload, setD
     phone = payload.phone;
     phoneSource = "order.phone (top-level -- least reliable, used only because nothing else was set)";
   }
+  // The order's country decides how an international number is read. The
+  // phone is stored (and sent) in full "+<country code><number>" form so a
+  // later Retry from the dashboard sends to exactly the same number.
+  const countryIso = payload?.shipping_address?.country_code || payload?.billing_address?.country_code || payload?.customer?.default_address?.country_code || null;
+  if (phone) {
+    const sp = splitPhoneForInterakt(phone, countryIso);
+    if (sp) phone = sp.countryCode + sp.phoneNumber;
+  }
   const emailAddr = payload?.email || payload?.customer?.email || payload?.contact_email || null;
 
   // --- Channel 1: WhatsApp -------------------------------------------
@@ -197,7 +205,7 @@ export async function checkAndNotifyOrderProcessing({ admin, shop, payload, setD
   if (waClaim) {
     detailParts.whatsapp = `sending to ${phone || "(none found)"} (source: ${phoneSource})...`;
     // Fire-and-forget -- see Channel 2's note below for why.
-    sendOrderProcessingWhatsApp(settings, { phone, firstName, orderNumber, shop })
+    sendOrderProcessingWhatsApp(settings, { phone, firstName, orderNumber, shop, countryIso })
       .catch((err) => "threw: " + String((err && err.message) || err))
       .then(async (waStatus) => {
         await prisma.orderProcessingNotification.update({ where: { id: waClaim.id }, data: { status: waStatus } }).catch(() => {});

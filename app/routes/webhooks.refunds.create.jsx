@@ -75,8 +75,8 @@ async function fetchOrderForRefundWhatsapp(admin, orderGid) {
         statusPageUrl
         cancelledAt
         customer { firstName phone }
-        shippingAddress { phone }
-        billingAddress { phone }
+        shippingAddress { phone countryCodeV2 }
+        billingAddress { phone countryCodeV2 }
       }
     }`,
     { variables: { id: orderGid } }
@@ -172,7 +172,7 @@ export const action = async ({ request }) => {
     const phone = resolvePhone(order);
     const orderNumber = order.name;
 
-    const result = await sendRefundProcessedWhatsApp(settings, { phone, firstName, orderNumber, orderStatusUrl: order.statusPageUrl });
+    const result = await sendRefundProcessedWhatsApp(settings, { phone, firstName, orderNumber, orderStatusUrl: order.statusPageUrl, countryIso: order?.shippingAddress?.countryCodeV2 || order?.billingAddress?.countryCodeV2 || null });
 
     await prisma.orderReturnEmailNotification.update({
       where: { id: claim.id },
