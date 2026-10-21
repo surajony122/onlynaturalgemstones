@@ -35,6 +35,7 @@ export const NAV_GROUPS = [
       { id: "pricing", href: "/app/pricing", label: "Jewelry Pricing", icon: "rupee" },
       { id: "gemdetails", href: "/app/gemstone-details", label: "Gemstone details", icon: "diamond" },
       { id: "currency", href: "/app/currency-countries", label: "Currency by country", icon: "globe" },
+      { id: "designimages", href: "/app/design-images", label: "Design images", icon: "image" },
     ],
   },
   {
