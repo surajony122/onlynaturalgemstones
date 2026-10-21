@@ -12,7 +12,7 @@
  */
 import crypto from "node:crypto";
 import { useEffect, useState } from "react";
-import { useFetcher, useLoaderData } from "react-router";
+import { Link, useFetcher, useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import {
@@ -1369,7 +1369,7 @@ export default function SettingsPage() {
         info={
           <p style={{ margin: 0 }}>
             Live status, checked just now. These are the same checks the{" "}
-            <a href="/app/server-health" style={{ color: brand.accent }}>System Health</a> page runs. Reload this page any time to
+            <Link to="/app/server-health" style={{ color: brand.accent }}>System Health</Link> page runs. Reload this page any time to
             re-check. Hover a status to see why.
           </p>
         }
@@ -1517,7 +1517,7 @@ export default function SettingsPage() {
           <Explain summary="Where to register the webhook URL">
             Interakt has no API to fetch campaign stats — register this URL in Interakt → Settings → Developer
             Setting → Webhooks (pick any secret, match it above) to see real sent/delivered/read status on{" "}
-            <a href="/app/whatsapp-events?tab=gem" style={{ color: brand.accent }}>Logs</a>:
+            <Link to="/app/whatsapp-events?tab=gem" style={{ color: brand.accent }}>Logs</Link>:
             <br />
             <code>https://shubh-gems-customizer-app.onrender.com/public/interakt-webhook</code>
           </Explain>
@@ -1633,7 +1633,7 @@ export default function SettingsPage() {
           <TemplateCard icon={<Icon name="heart" size={15} color={brand.accent} />} title="Wishlist Reminder">
             <p style={{ ...hintStyle, marginTop: 0 }}>
               Sends alongside the wishlist reminder email, on the timing set below. Per-lead status on{" "}
-              <a href="/app/wishlist-leads" style={{ color: brand.accent }}>Wishlist Leads</a>.
+              <Link to="/app/wishlist-leads" style={{ color: brand.accent }}>Wishlist Leads</Link>.
             </p>
             <label style={labelStyle} htmlFor="interaktWishlistTemplateName">Template name</label>
             <input
@@ -1669,7 +1669,7 @@ export default function SettingsPage() {
             email and WhatsApp — each new change pushes this out again, so someone actively adding items gets one
             message once they've gone quiet, not one per add. The app checks every minute, so messages go out within
             about a minute of the wait ending. The{" "}
-            <a href="/app/wishlist-leads" style={{ color: brand.accent }}>Wishlist Leads</a> page shows a countdown for
+            <Link to="/app/wishlist-leads" style={{ color: brand.accent }}>Wishlist Leads</Link> page shows a countdown for
             each waiting customer.
           </Explain>
           <label style={labelStyle} htmlFor="wishlistInterval">Send the reminder after</label>
@@ -1950,7 +1950,7 @@ export default function SettingsPage() {
 
             <div style={{ marginTop: "18px", paddingTop: "14px", borderTop: `1px solid ${brand.divider}` }}>
               <div style={{ fontSize: "13px", fontWeight: 600, color: brand.ink, marginBottom: "4px" }}>Check who would get an email right now</div>
-              <p style={abNote}>Looks at your recent abandoned checkouts and shows what would happen to each one. It sends nothing and works even while this is switched off. Every email that was sent is listed under <a href="/app/whatsapp-events?tab=abandoned" style={{ color: brand.accent, fontWeight: 600 }}>Logs</a>, where a failed one can be retried and a sent one resent.</p>
+              <p style={abNote}>Looks at your recent abandoned checkouts and shows what would happen to each one. It sends nothing and works even while this is switched off. Every email that was sent is listed under <Link to="/app/whatsapp-events?tab=abandoned" style={{ color: brand.accent, fontWeight: 600 }}>Logs</Link>, where a failed one can be retried and a sent one resent.</p>
               <button
                 type="button"
                 disabled={abDryRunFetcher.state !== "idle"}
@@ -2004,7 +2004,7 @@ export default function SettingsPage() {
         <h2 style={{ fontSize: "14px", fontWeight: 700, margin: "0 0 8px", color: brand.ink }}>Where this data goes</h2>
         <p style={{ fontSize: "13px", color: brand.body, margin: 0 }}>
           Leads and email open/click/sent events are viewable on the{" "}
-          <a href="/app/astro-leads" style={{ color: brand.accent }}>Astro Leads</a> page.
+          <Link to="/app/astro-leads" style={{ color: brand.accent }}>Astro Leads</Link> page.
         </p>
       </Card>
           </>
@@ -2018,7 +2018,7 @@ export default function SettingsPage() {
           <TemplateCard icon={<Icon name="receipt" size={15} color={brand.accent} />} title="GST Tax Invoice">
             <p style={{ ...hintStyle, marginTop: 0 }}>
               Never sends automatically — only when someone clicks "Send Invoice" on an order's page in Shopify
-              Admin (or from the <a href="/app/invoices" style={{ color: brand.accent }}>GST Invoices</a> page).
+              Admin (or from the <Link to="/app/invoices" style={{ color: brand.accent }}>GST Invoices</Link> page).
               Generates a GST invoice PDF and emails it to the customer.
             </p>
 

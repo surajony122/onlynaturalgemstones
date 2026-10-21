@@ -25,7 +25,7 @@
  * needed.
  */
 import { useEffect, useState } from "react";
-import { useFetcher, useLoaderData, useRevalidator, useSearchParams } from "react-router";
+import { Link, useFetcher, useLoaderData, useRevalidator, useSearchParams } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -993,7 +993,7 @@ export default function WhatsAppEventsPage() {
           <>
             <p style={{ margin: "0 0 8px" }}>Delivered and read status comes straight from Interakt's webhook.</p>
             <p style={{ margin: "0 0 8px" }}>
-              Nothing shows here until the webhook is set up (see <a href="/app/settings" style={{ color: brand.accent }}>Settings → Connections → WhatsApp — advanced</a>).
+              Nothing shows here until the webhook is set up (see <Link to="/app/settings" style={{ color: brand.accent }}>Settings → Connections → WhatsApp — advanced</Link>).
             </p>
             <p style={{ margin: 0 }}>A row's "…" menu can retry the message or delete its log entry.</p>
           </>

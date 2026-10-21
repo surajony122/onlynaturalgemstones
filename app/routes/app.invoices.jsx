@@ -22,7 +22,7 @@
  * orders than fit in one page.
  */
 import { useEffect, useMemo, useState } from "react";
-import { useFetcher, useLoaderData, useRevalidator } from "react-router";
+import { Link, useFetcher, useLoaderData, useRevalidator, useSearchParams } from "react-router";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { getAppSettings } from "../utils/appSettings.server";
@@ -140,6 +140,7 @@ function formatMoney(amount, currency) {
 
 export default function InvoicesPage() {
   const data = useLoaderData();
+  const [searchParams] = useSearchParams();
   const sendFetcher = useFetcher();
   const bulkFetcher = useFetcher();
   const revalidator = useRevalidator();
@@ -241,7 +242,14 @@ export default function InvoicesPage() {
     }
   };
 
-  const loadMoreHref = data.endCursor ? `?cursor=${encodeURIComponent(data.endCursor)}` : null;
+  // In-app navigation (a plain <a href> reloads the whole page outside the embedded
+  // admin's login, which showed an error). Keeps the existing URL parameters.
+  const loadMoreHref = (() => {
+    if (!data.endCursor) return null;
+    const next = new URLSearchParams(searchParams);
+    next.set("cursor", data.endCursor);
+    return "?" + next.toString();
+  })();
 
   return (
     <PageIn>
@@ -260,7 +268,7 @@ export default function InvoicesPage() {
         <Card style={{ marginBottom: "16px", background: "#fff8ec", borderColor: "#e8c98a" }}>
           <p style={{ margin: 0, fontSize: "13px", color: brand.body }}>
             GSTIN isn't set yet, so GST can't be computed below — set it on the{" "}
-            <a href="/app/settings" style={{ color: brand.accent }}>Settings page</a> (GST Tax Invoice section) first.
+            <Link to="/app/settings" style={{ color: brand.accent }}>Settings page</Link> (GST Tax Invoice section) first.
           </p>
         </Card>
       )}
@@ -268,7 +276,7 @@ export default function InvoicesPage() {
         <Card style={{ marginBottom: "16px", background: "#fff8ec", borderColor: "#e8c98a" }}>
           <p style={{ margin: 0, fontSize: "13px", color: brand.body }}>
             Gmail isn't connected yet, so invoices can't be emailed — connect it on the{" "}
-            <a href="/app/settings" style={{ color: brand.accent }}>Settings page</a> first.
+            <Link to="/app/settings" style={{ color: brand.accent }}>Settings page</Link> first.
           </p>
         </Card>
       )}
@@ -382,12 +390,12 @@ export default function InvoicesPage() {
 
       {loadMoreHref && (
         <div style={{ marginTop: "14px", textAlign: "center" }}>
-          <a
-            href={loadMoreHref}
+          <Link
+            to={loadMoreHref}
             style={{ display: "inline-block", padding: "9px 18px", borderRadius: "9px", border: `1px solid ${brand.border}`, color: brand.body, fontSize: "13px", fontWeight: 500, textDecoration: "none" }}
           >
             Load more orders
-          </a>
+          </Link>
         </div>
       )}
     </PageIn>
