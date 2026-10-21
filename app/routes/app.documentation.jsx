@@ -198,26 +198,30 @@ const FIRST_STEPS = [
   ["mail", "Check the email wording and send yourself a test", "Settings → Emails: review the two email templates, then use “Send a test email” to receive a real sample at your own address. Nothing goes to customers."],
   ["receipt", "Fill in your invoice details", "Settings → Invoices: GSTIN, seller details, GST rates per collection, invoice number prefix and the PDF layout."],
   ["rupee", "Set today's metal rates", "Jewelry Pricing: enter the rates and press “Save Rates & Rebuild Customisation Matrix”. Customisation prices on the storefront follow these rates."],
+  ["image", "Check the design pictures", "Design images: confirms every picture in the design chooser loads and that a saved copy of each exists. If one is missing, upload its saved copy to Shopify Files under the same name."],
+  ["users", "Set up your team", "System → Team access: everyone who opens the app is listed. Choose the pages each person may open, then press “Turn on access control”. Until you do, nobody is blocked."],
   ["check-circle", "Confirm everything is healthy", "Open Overview. “All clear” means no failed or unsent messages, leads or invoices in the last 7 days. System Health shows the same list with fix buttons, and runs a live check of every connection."],
 ];
 
 const SIDEBAR_GROUPS = [
   ["home", "Home", "Overview", "The page the app opens on: what needs attention, today's numbers, and a panel for every part of the app."],
-  ["diamond", "Store setup", "Jewelry Pricing · Gemstone details · Currency by country", "What customers see on the storefront: prices, stone details, currencies."],
+  ["diamond", "Store setup", "Jewelry Pricing · Gemstone details · Currency by country · Design images", "What customers see on the storefront: prices, stone details, currencies and the design pictures."],
   ["users", "Customers & leads", "Astro Leads · Wishlist Leads · Contact Leads · GST Invoices", "Everyone who used the recommendation form, saved a wishlist or wrote to you, and the tax invoices for their orders."],
-  ["gear", "System", "System Health · Logs · Settings · Documentation", "Connections, message templates, live checks, the log of everything the app sent, and this guide."],
+  ["gear", "System", "System Health · Logs · Settings · Team access · Documentation", "Connections, message templates, live checks, the log of everything the app sent, who on your team can open which page, and this guide."],
 ];
 
 function StartTab() {
   return (
     <>
-      <Block icon="sparkle" title="What this app does" hint="Four jobs, all connected to your Shopify store.">
+      <Block icon="sparkle" title="What this app does" hint="Six jobs, all connected to your Shopify store.">
         <ul style={{ margin: 0, paddingLeft: "18px" }}>
           {[
             "Prices the Gemstone Customisation add-on (rings, pendants, bracelets) from the metal rates you set.",
             "Follows every customer who used the gem recommendation form or saved a wishlist, and sends them WhatsApp and email messages.",
             "Sends order, refund, wishlist and abandoned-cart messages automatically, and creates GST tax invoices when you ask.",
             "Shows you, in one place, what worked, what failed and why.",
+            "Watches the design pictures on your product pages and emails you if one stops loading.",
+            "Lets you choose which pages each team member can open.",
           ].map((t) => (
             <li key={t} style={{ fontSize: "13.5px", color: brand.body, lineHeight: 1.7, marginBottom: "3px" }}>
               {t}
@@ -325,6 +329,19 @@ function PagesTab() {
           ]}
           tags={["Display only", "Publish to a theme"]}
         />
+        <PageEntry
+          icon="image"
+          title="Design images"
+          route="/app/design-images"
+          purpose="Checks every picture in the product page's design chooser, and whether the app keeps a saved copy of it."
+          points={[
+            "Reads the design list from your published theme and tests each picture, so a missing one shows up here instead of as a broken image on a product page.",
+            "Broken pictures are listed first. Each row shows where the picture is stored (Shopify Files or inside the theme), which designs use it, and whether a saved copy exists.",
+            "To fix a missing picture, upload its saved copy (kept in the app's design-images folder) to Shopify admin → Content → Files under exactly the same name, then press Check again.",
+            "A daily check emails you if any picture stops loading (see Scheduled jobs on the Automations tab). The page only reads; it never changes your theme or files.",
+          ]}
+          tags={["Read-only", "Daily email alert"]}
+        />
       </GroupCard>
 
       <GroupCard icon="users" title="Customers & leads" navPath="Sidebar → Customers & leads">
@@ -339,6 +356,7 @@ function PagesTab() {
             "Each row shows the recommended stones and whether the email and WhatsApp went out. A status that did not go through shows a visible ↻ Retry email or ↻ Retry WhatsApp button; hover it to see the last result.",
             "Above the table, “Retry all unsent” sends the missing message to every lead that never got it. Tick rows to Retry email, Retry WhatsApp or Retry both for just those leads (they are sent again even if sent before). Up to 40 leads per click.",
             "Links in the email are tracked: whether it was opened (approximate) and which link was clicked (exact).",
+            "The table has six columns: Contact & date, Birth details, Stones, Status & delivery (the lead status plus email, WhatsApp and clicked-link results together) and a “…” menu with Send now, Retry WhatsApp and Delete. 50 leads show per page, with Previous / Next. Tick rows to Delete Selected.",
           ]}
           tags={["Sends immediately", "Email + WhatsApp", "Export to CSV"]}
         />
@@ -352,6 +370,7 @@ function PagesTab() {
             "Every new wishlist gets its own reminder, even if the customer was reminded earlier the same day. The only skip is the exact same list reminded within the last hour. Each customer is handled on their own timer, so one stuck send never holds up the others.",
             "The header shows a countdown to the next check, which runs every minute. A backup check also runs every 5 minutes.",
             "Each row shows the saved products with their SKUs (kept on the lead), and the reminder's status. A status that did not go through shows ↻ Retry email / ↻ Retry WhatsApp, and the bar above the table has Retry all unsent (newest save per customer) and retry for ticked rows.",
+            "Columns: Contact & date, Wishlist items & SKUs, Status & delivery (lead status, next send, email, WhatsApp and clicked links together) and a “…” menu. 50 leads show per page, with Previous / Next.",
           ]}
           tags={["Per-customer timer", "Email + WhatsApp", "Export to CSV"]}
         />
@@ -364,6 +383,7 @@ function PagesTab() {
             "Each message is saved here with name, email, phone and message. Shopify's own contact email still goes out as before.",
             "Set a status on each lead with the same choices as Astro Leads (New, Follow Up, Qualified, Junk and so on). Search, filter by status, and Export CSV.",
             "After sending, the visitor sees a green confirmation under the form that fades away on its own. The same address can save up to 5 messages an hour.",
+            "Tick rows to set one status for all of them, Export selected, or Delete selected. Each row's “…” menu has Reply by email (opens your mail app) and Delete.",
           ]}
           tags={["From the Contact us form", "Export to CSV"]}
         />
@@ -374,10 +394,15 @@ function PagesTab() {
           purpose="Generate and email a GST tax invoice PDF for any order, on request."
           points={[
             "Seller GSTIN, name, address and per-collection GST rates come from Settings → Invoices, never from Shopify's own tax settings.",
-            "Invoice numbering, the PDF layout and the covering email are all editable templates.",
+            "GST is worked out from inside the price the customer paid, so the invoice total always equals what they paid. The table lists the products (with any discount spread across them) and the breakup under it shows Items Subtotal, Discount (with the code), Shipping, Taxable Value, GST and Total.",
+            "Inside India: CGST + SGST when the buyer is in the seller's state, IGST for another state. Outside India the order is treated as an export, zero-rated under LUT (no GST charged), with the line “Supply meant for export under LUT without payment of IGST”. The Place of Supply (buyer's state, or country) is printed on the invoice.",
+            "The invoice number is your prefix plus the order's number (for example INV-1032). Sending an invoice again reuses the same number.",
+            "Orders show 25 per page with Previous / Next and the total number of orders. Each order's Amount column shows the total with subtotal, GST and item count.",
+            "Tick orders to Send invoices (up to 10 at a time) or Download PDFs. A row's “…” menu has Send / Resend invoice and Download PDF.",
+            "Invoice numbering, the PDF layout and the covering email are all editable templates. If you saved your own PDF template, the discount and shipping breakup is added automatically; add the Place of Supply line with the {{place_of_supply}} field.",
             "Never sends on its own. It sends only when someone clicks Send here, or on the order's page in Shopify admin.",
           ]}
-          tags={["Manual only", "PDF + Email"]}
+          tags={["Manual only", "PDF + Email", "Bulk send"]}
         />
       </GroupCard>
 
@@ -404,6 +429,7 @@ function PagesTab() {
             "The Gem recommendation and Wishlist tabs list the WhatsApp messages with Delivered / Read status, with search and a status filter.",
             "Delivered and read statuses come from Interakt's webhook, so nothing shows until the webhook is set up (Settings → Connections → WhatsApp — advanced).",
             "A row's “…” menu can retry the message or delete its log entry.",
+            "On an order's card, an order WhatsApp that was skipped or failed has a Retry button. It sends again using the order's own country (so a number typed without its country code is read correctly) and the customer's first name.",
             "The Abandoned cart emails tab lists every email the app sent through Gmail, with the reason for any failure or skip. A failed one can be retried, a sent one resent, and a skipped one sent by hand with Send now (consent, unsubscribe and later orders are re-checked first).",
           ]}
         />
@@ -417,6 +443,20 @@ function PagesTab() {
             "Service status (Gmail, WhatsApp, Google Sheets, Google Places) shows as chips in the top bar. Hover one to see why.",
             "The Settings tab has its own guide, in the next tab of this page.",
           ]}
+        />
+        <PageEntry
+          icon="users"
+          title="Team access"
+          route="/app/team"
+          purpose="Choose which team member can open which page."
+          points={[
+            "Everyone who opens the app from their own Shopify login is listed with their name and email, and starts with no pages. You can also add people by email before their first visit; they are matched when they open the app.",
+            "Pick each person's pages from the dropdown and press Save. The shop owner and admins always see everything. Settings and System Health are admin-only.",
+            "Nothing is blocked until you press “Turn on access control”. After that each person sees only their pages in the menu and search, and any other page shows “No access to this page”. You can turn it off again at any time.",
+            "Team access is itself a page you can give to a trusted person: they can assign pages to others, but only an admin can make someone an admin or turn access control on or off.",
+            "Shopify does not share your store's user list with the app, so type or paste emails. Each person also needs a Shopify staff account that is allowed to open this app (Shopify admin → Settings → Users).",
+          ]}
+          tags={["Off until you turn it on", "Pages per person"]}
         />
         <PageEntry icon="file-text" title="Documentation" route="/app/documentation" purpose="This guide." points={["Five tabs: Start here, Pages, Settings, Automations and FAQ."]} />
       </GroupCard>
@@ -444,7 +484,7 @@ const SETTINGS_TAB_DOCS = [
     title: "WhatsApp messages",
     hint: "Choose which approved Interakt template each message uses. The wording is edited in Interakt.",
     rows: [
-      ["Gem Recommendation", "Template name for the recommendation result message, with a test send.", "WhatsApp"],
+      ["Gem Recommendation", "Template names for the recommendation result message and for its one-time-code message, with a test send.", "WhatsApp"],
       ["Order Processing", "The order tag that triggers “your order is being prepared”, and the template name.", "WhatsApp"],
       ["Refund WhatsApp", "Template name for the automatic “your refund has been processed” message, with a test send.", "WhatsApp"],
       ["Wishlist Reminder", "Template name for the wishlist follow-up.", "WhatsApp"],
@@ -515,6 +555,7 @@ const AUTOMATIONS = [
   ["Order is being prepared", "WhatsApp + email", "When an order gets the trigger tag set in Settings → WhatsApp messages. A catch-up check also runs on a schedule, so a missed order is picked up.", "Email: Settings → Emails. WhatsApp: Settings → WhatsApp messages.", "Logs (Order notifications tab)"],
   ["Refund processed", "WhatsApp", "Automatically when a refund is processed in Shopify. Refunds that come from cancelling an order are skipped.", "Template name: Settings → WhatsApp messages.", "Logs (Order notifications tab)"],
   ["Abandoned checkout reminder", "Email", "Once per checkout, after it has been idle for the wait time you set (default 1 hour). Only for customers who agreed to email marketing, who have not ordered since and have not unsubscribed. A customer with several abandoned checkouts gets one email for each. Switched OFF until you turn it on, and then only for checkouts started after that moment.", "Settings → Emails (switch, wait time, subject, layout, test email).", "Settings → Emails (Latest checkouts handled)"],
+  ["One-time codes", "WhatsApp (+ email on the recommendation form)", "When a customer asks for a code on the recommendation form or on the My Account login page.", "Recommendation form code: template name in Settings → WhatsApp messages (Gem Recommendation). The My Account login code uses a fixed template.", "Logs (Gem recommendation tab)"],
   ["GST tax invoice", "Email with PDF", "Only when someone clicks Send. Never automatic.", "Settings → Invoices.", "GST Invoices"],
 ];
 
@@ -535,6 +576,21 @@ function AutomationsTab() {
         <p style={{ ...hintStyle, marginTop: "12px" }}>
           WhatsApp requires every business-started message to use a template that Meta has approved. This app lets you pick which approved
           template to use and send a test. The wording itself is edited in Interakt.
+        </p>
+      </Block>
+
+      <Block icon="clock" title="Scheduled jobs" hint="A free outside scheduler (cron-job.org) calls these addresses. Each needs your CRON_SECRET after ?secret=.">
+        <DocTable head={["Address", "What it does", "How often"]} rows={[
+          ["/cron/order-processing-catchup", "Finds orders whose “being prepared” message was missed, and also runs the abandoned-checkout sweep.", "Every 5 minutes"],
+          ["/cron/wishlist-email", "Sends wishlist reminders that have come due (a backup to the app's own timer).", "Every 5 minutes"],
+          ["/cron/whatsapp-queue", "Sends the optional follow-up WhatsApp to recommendation leads once your delay has passed.", "Every 30 minutes (only if follow-ups are on)"],
+          ["/cron/health-check", "Runs the System Health checks and emails you a plain summary if something is wrong.", "Once a day"],
+          ["/cron/design-images", "Tests every design picture and emails you if one is not loading.", "Once a day"],
+          ["/cron/cleanup", "Removes abandoned customisation variants left behind by unfinished orders.", "Once a day"],
+        ].map(([a, b, c]) => [<code key={a} style={codeStyle}>{a}</code>, b, c])} />
+        <p style={{ ...hintStyle, marginTop: "12px" }}>
+          The addresses have no screen of their own. They answer with a short status and never show customer data. If a job stops running, the matching feature
+          quietly stops too, so check the scheduler's run history first.
         </p>
       </Block>
 
@@ -671,6 +727,34 @@ function FaqTab() {
         click stops further cart reminders to that address. It does not change their Shopify marketing subscription.
       </FaqItem>
 
+      <FaqItem q="Why does an international order's invoice show no GST?">
+        Orders shipped outside India are treated as exports and zero-rated under LUT, the usual Indian rule, so no GST is charged and the invoice says so. Orders inside India show CGST + SGST (buyer in your state) or IGST (another state). If your accountant wants exports invoiced differently, tell your developer; the rule lives in one place.
+      </FaqItem>
+
+      <FaqItem q="Why is the invoice total different from the item price?">
+        The invoice shows the whole order: the products, then Items Subtotal, any Discount (with its code) and Shipping. The Total equals what the customer paid. The Taxable Value is that total with GST taken out.
+      </FaqItem>
+
+      <FaqItem q="How are invoice numbers made, and can an invoice be sent twice?">
+        The number is your prefix plus the order's number, for example INV-1032, and it is saved the first time. Sending the same order's invoice again reuses that number and emails it again; it never creates a second invoice number. Use the order's row “…” menu or tick several orders to send up to 10 at once.
+      </FaqItem>
+
+      <FaqItem q="A design picture shows as broken on a product page. What do I do?">
+        Open Design images. It lists every picture and marks the ones not loading. Upload the saved copy to Shopify admin → Content → Files with exactly the same name and press Check again. Shopify sometimes takes several minutes to show a newly uploaded file everywhere.
+      </FaqItem>
+
+      <FaqItem q="A team member says “No access to this page”. How do I fix it?">
+        Open System → Team access, find their name, choose the page in their pages dropdown and press Save. They see it after they reload the app. If they are not in the list yet, ask them to open the app once, or add their email. While access control is off, nobody is blocked.
+      </FaqItem>
+
+      <FaqItem q="I turned on access control and I can't see Team access. What now?">
+        Admins and the shop owner always keep every page, including Team access. If you are not an admin, ask an admin to tick Team access for you, or to make you an admin.
+      </FaqItem>
+
+      <FaqItem q="Does WhatsApp work for customers outside India?">
+        Yes. The app reads the number with its country code (for example +971 for the UAE, +1 for the US). A number typed without a code is read using the order's own country. If a message was skipped for “no usable phone number”, the Logs page shows the number and country it saw; fix the number in Shopify and press Retry.
+      </FaqItem>
+
       <FaqItem q="What is the “i” button at the top of a page?">
         It opens a longer explanation for that page, so the page itself stays clean. Click it again, click elsewhere, or press Escape to close it.
       </FaqItem>
@@ -688,9 +772,9 @@ export default function DocumentationPage() {
         title="Documentation"
         description="What every page, setting and automatic message in this app does."
         stats={[
-          { label: "Pages", value: 12 },
-          { label: "Settings sections", value: 14 },
-          { label: "Automatic messages", value: 5 },
+          { label: "Pages", value: 14 },
+          { label: "Settings sections", value: 15 },
+          { label: "Automatic messages", value: 6 },
         ]}
       />
 
