@@ -74,7 +74,8 @@ export const ORDER_INVOICE_PLACEHOLDERS = [
   { token: "total_gst", description: "Total GST amount across all lines" },
   { token: "grand_total", description: "Subtotal + total GST" },
   { token: "total_in_words", description: "Grand total spelled out, e.g. \"Indian Rupee One Only\"" },
-  { token: "tax_treatment_note", description: "Reserved, currently always blank (GST applies even internationally, as IGST)" },
+  { token: "tax_treatment_note", description: "Export note for international orders (supply under LUT, no IGST charged); blank for India" },
+  { token: "place_of_supply", description: "Buyer's state for India, country for exports" },
   { token: "shop_name", description: "Store name" },
   { token: "shop_url", description: "Store URL" },
 ];
@@ -169,7 +170,9 @@ function getDefaultOrderInvoiceTemplate() {
             <td style="border:none;width:55%;vertical-align:top;padding:10px;font-size:10px;">
               Total In Words<br>
               <b>{{total_in_words}}</b><br><br>
-              Payment Mode : {{payment_mode}}
+              Payment Mode : {{payment_mode}}<br>
+              Place of Supply : {{place_of_supply}}<br>
+              <span style="font-size:9px;color:#555;">{{tax_treatment_note}}</span>
             </td>
             <td style="border:none;width:45%;vertical-align:top;padding:10px;">
               <table style="width:100%;border-collapse:collapse;">
@@ -644,6 +647,9 @@ export async function fetchOrderForInvoice(admin, orderGid) {
         billingAddress { name address1 address2 city province provinceCode zip country countryCodeV2 phone }
         shippingAddress { name address1 address2 city province provinceCode zip country countryCodeV2 phone }
         currentSubtotalPriceSet { shopMoney { amount currencyCode } }
+        totalDiscountsSet { shopMoney { amount currencyCode } }
+        totalShippingPriceSet { shopMoney { amount currencyCode } }
+        discountCodes
         lineItems(first: 100) {
           nodes {
             id
@@ -738,6 +744,9 @@ export async function fetchRecentOrdersForInvoice(admin, first = 30, after = nul
           billingAddress { name address1 address2 city province provinceCode zip country countryCodeV2 phone }
           shippingAddress { name address1 address2 city province provinceCode zip country countryCodeV2 phone }
           currentSubtotalPriceSet { shopMoney { amount currencyCode } }
+        totalDiscountsSet { shopMoney { amount currencyCode } }
+        totalShippingPriceSet { shopMoney { amount currencyCode } }
+        discountCodes
           lineItems(first: 100) {
             nodes {
               id
@@ -847,6 +856,9 @@ export function computeInvoiceGst(order, settings) {
   let totalCgst = 0;
   let totalSgst = 0;
   let totalIgst = 0;
+  let goodsGross = 0;
+  let goodsTaxable = 0;
+  let goodsGst = 0;
   const itemRows = [];
 
   for (const line of order.lineItems?.nodes || []) {
@@ -856,7 +868,8 @@ export function computeInvoiceGst(order, settings) {
     // back-calculated from inside it below, so subtotal + GST on this
     // invoice always reconciles to exactly what Shopify charged, never
     // more.
-    const grossValue = parseFloat(line.discountedTotalSet?.shopMoney?.amount ?? line.originalTotalSet?.shopMoney?.amount ?? 0) || 0;
+    const grossValue = parseFloat(line.originalTotalSet?.shopMoney?.amount ?? line.discountedTotalSet?.shopMoney?.amount ?? 0) || 0;
+    goodsGross += grossValue;
 
     // GST always applies -- domestic or international -- at this line's
     // own rate. The only thing international/different-state-domestic
@@ -869,7 +882,9 @@ export function computeInvoiceGst(order, settings) {
       : null;
 
     let rate;
-    if (isCustomisation) {
+    if (!isDomestic) {
+      rate = 0;
+    } else if (isCustomisation) {
       rate = linkedGemstoneId && gemstoneOverrideByVariantId[linkedGemstoneId] !== undefined
         ? gemstoneOverrideByVariantId[linkedGemstoneId]
         : rateCustomisation;
@@ -884,6 +899,8 @@ export function computeInvoiceGst(order, settings) {
     const taxableValue = rate > 0 ? grossValue / (1 + rate / 100) : grossValue;
     const gstAmount = grossValue - taxableValue;
     subtotal += taxableValue;
+    goodsTaxable += taxableValue;
+    goodsGst += gstAmount;
 
     // Same bucketing decision for every line on the order (it's driven by
     // one shipping address, not per-line) -- only the RATE varies line to
@@ -1015,6 +1032,45 @@ export function computeInvoiceGst(order, settings) {
     );
   }
 
+  // Order-level discount (e.g. a checkout code) and shipping were never on
+  // the invoice, so its total came out different from what the customer
+  // paid. Both now appear as their own rows: the discount is spread over
+  // the goods pro-rata (so each line's GST scales down with it), and
+  // shipping is taxed at the loose-gemstone rate with GST included in the
+  // charged amount, like every other line.
+  const money = (set) => parseFloat(set?.shopMoney?.amount ?? 0) || 0;
+  const rowTd = (width) => `border:1px solid rgba(0,0,0,0.15);padding:6px 8px;vertical-align:top;font-size:9.5px;width:${width}%;`;
+  const rowPct = (n) => (Number.isInteger(n) ? n : parseFloat(n.toFixed(4))).toString();
+  const extraRow = (label, hsn, taxable, gst, rate) => {
+    const cg = sameState ? gst / 2 : 0, sg = sameState ? gst / 2 : 0, ig = sameState ? 0 : gst;
+    const half = sameState ? rate / 2 : 0;
+    totalCgst += cg; totalSgst += sg; totalIgst += ig; subtotal += taxable;
+    itemRows.push(
+      `<tr>` +
+        `<td style="${rowTd(24)}">${label}</td>` +
+        `<td style="${rowTd(8)}">${esc(hsn)}</td>` +
+        `<td style="${rowTd(6)}"></td>` +
+        `<td style="${rowTd(13)}">${formatMoney(taxable, currency)}</td>` +
+        `<td style="${rowTd(12)}">${formatMoney(cg, currency)}<br><span style="color:#888;font-size:9px;">(${rowPct(half)}%)</span></td>` +
+        `<td style="${rowTd(12)}">${formatMoney(sg, currency)}<br><span style="color:#888;font-size:9px;">(${rowPct(half)}%)</span></td>` +
+        `<td style="${rowTd(12)}">${formatMoney(ig, currency)}<br><span style="color:#888;font-size:9px;">(${rowPct(sameState ? 0 : rate)}%)</span></td>` +
+        `<td style="${rowTd(13)}">${formatMoney(taxable + gst, currency)}</td>` +
+      `</tr>`,
+    );
+  };
+  const discountTotal = Math.min(money(order.totalDiscountsSet), goodsGross);
+  if (discountTotal > 0.005 && goodsGross > 0) {
+    const f = discountTotal / goodsGross;
+    const codes = (order.discountCodes || []).filter(Boolean).join(", ");
+    extraRow(`Discount${codes ? ` (${esc(codes)})` : ""}`, "", -goodsTaxable * f, -goodsGst * f, goodsTaxable > 0 ? (goodsGst / goodsTaxable) * 100 : 0);
+  }
+  const shippingTotal = money(order.totalShippingPriceSet);
+  if (shippingTotal > 0.005) {
+    const shipRate = isDomestic ? rateLoose : 0;
+    const shipTaxable = shipRate > 0 ? shippingTotal / (1 + shipRate / 100) : shippingTotal;
+    extraRow(`Shipping${order.shippingLine?.title ? ` - ${esc(order.shippingLine.title)}` : ""}`, "9965", shipTaxable, shippingTotal - shipTaxable, shipRate);
+  }
+
   const totalGst = totalCgst + totalSgst + totalIgst;
 
   return {
@@ -1024,9 +1080,12 @@ export function computeInvoiceGst(order, settings) {
     totalGst,
     grandTotal: subtotal + totalGst,
     lineItemsRowsHtml: itemRows.join(""),
-    // No special export/zero-rated note -- GST is charged on
-    // international orders here too (as IGST), not exempted.
-    taxTreatmentNote: "",
+    // Indian standard: same state = CGST+SGST, other state = IGST,
+    // export = zero-rated under LUT (no GST charged).
+    taxTreatmentNote: isDomestic ? "" : "Supply meant for export under LUT without payment of IGST.",
+    placeOfSupply: isDomestic ? (shipTo?.province || "") : (shipTo?.country || "Outside India"),
+    isDomestic,
+    sameState,
   };
 }
 
@@ -1239,6 +1298,7 @@ export async function buildInvoicePdf(admin, settings, shop, orderGid) {
     grand_total: formatMoney(gst.grandTotal, gst.currency),
     total_in_words: esc(totalInWords(gst.grandTotal, gst.currency)),
     tax_treatment_note: esc(gst.taxTreatmentNote),
+    place_of_supply: esc(gst.placeOfSupply || "—"),
     shop_name: esc(settings.invoiceSellerLegalName || "Only Natural Gemstones"),
     shop_url: esc(shopInfo.url),
   });
