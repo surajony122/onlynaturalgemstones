@@ -272,13 +272,15 @@ export default function TeamPage() {
       <Card style={{ marginTop: "16px" }}>
         <div style={{ fontSize: "13px", fontWeight: 600, color: brand.ink, marginBottom: "10px" }}>Add people</div>
         <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
-          <MultiSelect
-            label="Shopify users"
-            emptyLabel={staff.length ? "Choose Shopify users" : "No Shopify users to choose"}
-            options={staff.map((u) => ({ value: u.email, label: u.name ? `${u.name} (${u.email})` : u.email }))}
-            selected={picked}
-            onChange={setPicked}
-          />
+          {staff.length > 0 && (
+            <MultiSelect
+              label="Shopify users"
+              emptyLabel="Choose Shopify users"
+              options={staff.map((u) => ({ value: u.email, label: u.name ? `${u.name} (${u.email})` : u.email }))}
+              selected={picked}
+              onChange={setPicked}
+            />
+          )}
           <MultiSelect label="pages" emptyLabel="Choose pages" options={PAGE_OPTIONS} selected={newPages} onChange={setNewPages} />
           <button
             type="button"
@@ -290,11 +292,11 @@ export default function TeamPage() {
           </button>
         </div>
         {staffNote && (
-          <p style={{ margin: "10px 0 0", fontSize: "11.5px", color: brand.muted }}>
-            Shopify is not giving this app the list of your store's users, so the dropdown is empty. Type or paste their emails below instead. (Shopify keeps that list closed to most apps.)
+          <p style={{ margin: "12px 0 0", fontSize: "12px", color: brand.muted, lineHeight: 1.5 }}>
+            Shopify does not share your store's user list with this app, so type or paste their emails below.
           </p>
         )}
-        {!staffNote && staff.length === 0 && <p style={{ margin: "10px 0 0", fontSize: "11.5px", color: brand.muted }}>Every Shopify user is already on the list.</p>}
+        {!staffNote && staff.length === 0 && <p style={{ margin: "12px 0 0", fontSize: "12px", color: brand.muted }}>Every Shopify user is already on the list.</p>}
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "flex-start", marginTop: "10px" }}>
           <textarea value={emails} onChange={(e) => setEmails(e.target.value)} rows={2} placeholder={"Or type / paste emails: one per line, or separated by commas"} style={{ padding: "8px 12px", borderRadius: "9px", border: `1px solid ${brand.border}`, fontSize: "13px", minWidth: "320px", fontFamily: "inherit", resize: "vertical" }} />
           <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (optional, for one typed email)" style={{ padding: "8px 12px", borderRadius: "9px", border: `1px solid ${brand.border}`, fontSize: "13px", minWidth: "240px" }} />
