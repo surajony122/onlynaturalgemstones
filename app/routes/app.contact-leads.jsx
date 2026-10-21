@@ -1,13 +1,13 @@
 /**
  * Contact Leads: messages sent through the storefront "Contact us" form.
- * Staff can search, set a status and export to CSV.
+ * Staff can search, set a status, reply by email, export to CSV or delete (one row, or several at once).
  */
 import { useEffect, useMemo, useState } from "react";
 import { useFetcher, useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { LEAD_STATUS_OPTIONS } from "../utils/leadStatuses";
-import { brand, Icon, Card, PageHeader, PageIn, MultiSelect, tableWrapStyle, tableStyle, thStyle, tdStyle } from "../components/table-kit";
+import { brand, Icon, Card, PageHeader, PageIn, MultiSelect, RowMenu, useBulkSelect, SelectAllTh, BulkBar, tableWrapStyle, tableStyle, thStyle, tdStyle } from "../components/table-kit";
 import { useToast } from "../components/toast";
 
 export const loader = async ({ request }) => {
@@ -27,6 +27,24 @@ export const action = async ({ request }) => {
       if (!LEAD_STATUS_OPTIONS.some((o) => o.value === status)) return { intent, ok: false, error: "Unknown status" };
       await prisma.contactLead.update({ where: { id }, data: { status } });
       return { intent, ok: true };
+    }
+    if (intent === "delete") {
+      await prisma.contactLead.delete({ where: { id } });
+      return { intent, ok: true };
+    }
+    if (intent === "bulkDelete") {
+      const ids = JSON.parse(String(form.get("ids") || "[]"));
+      if (!ids.length) return { intent, ok: false, error: "No leads selected" };
+      await prisma.contactLead.deleteMany({ where: { id: { in: ids } } });
+      return { intent, ok: true, count: ids.length };
+    }
+    if (intent === "bulkStatus") {
+      const ids = JSON.parse(String(form.get("ids") || "[]"));
+      const status = String(form.get("status") || "");
+      if (!LEAD_STATUS_OPTIONS.some((o) => o.value === status)) return { intent, ok: false, error: "Unknown status" };
+      if (!ids.length) return { intent, ok: false, error: "No leads selected" };
+      await prisma.contactLead.updateMany({ where: { id: { in: ids } }, data: { status } });
+      return { intent, ok: true, count: ids.length, status };
     }
   } catch (err) {
     return { intent, ok: false, error: String((err && err.message) || err) };
@@ -53,7 +71,7 @@ function exportCsv(rows) {
   URL.revokeObjectURL(url);
 }
 
-function Row({ r }) {
+function Row({ r, selected, onToggleSelect }) {
   const fetcher = useFetcher();
   const toast = useToast();
   const busy = fetcher.state !== "idle";
@@ -66,7 +84,10 @@ function Row({ r }) {
   const known = LEAD_STATUS_OPTIONS.find((o) => o.value === status);
   const tone = known || { color: brand.body, bg: "#fff" }; // an older status that is no longer in the list still shows as it was
   return (
-    <tr>
+    <tr className="dt-row" style={{ opacity: fetcher.formData?.get("intent") === "delete" ? 0.4 : 1 }}>
+      <td style={tdStyle}>
+        <input type="checkbox" checked={selected} onChange={onToggleSelect} style={{ cursor: "pointer" }} />
+      </td>
       <td style={{ ...tdStyle, whiteSpace: "nowrap", fontSize: "12px", color: brand.muted }}>{new Date(r.createdAt).toLocaleString()}</td>
       <td style={tdStyle}>
         <div style={{ fontWeight: 600, color: brand.ink }}>{r.name || "No name"}</div>
@@ -87,6 +108,14 @@ function Row({ r }) {
           ))}
         </select>
       </td>
+      <td style={{ ...tdStyle, minWidth: "90px", textAlign: "right" }}>
+        <RowMenu
+          items={[
+            r.email ? { label: "Reply by email", onClick: () => { window.location.href = `mailto:${r.email}?subject=${encodeURIComponent("Re: your message to Only Natural Gemstones")}`; } } : null,
+            { label: "Delete", tone: "danger", disabled: busy, onClick: () => window.confirm("Delete this contact lead?") && fetcher.submit({ intent: "delete", id: r.id }, { method: "post" }) },
+          ]}
+        />
+      </td>
     </tr>
   );
 }
@@ -95,6 +124,9 @@ export default function ContactLeadsPage() {
   const { rows } = useLoaderData();
   const [statusFilter, setStatusFilter] = useState([]);
   const [search, setSearch] = useState("");
+  const bulkFetcher = useFetcher();
+  const toast = useToast();
+  const [bulkStatus, setBulkStatus] = useState("");
   const counts = useMemo(() => {
     const c = { all: rows.length };
     rows.forEach((r) => (c[r.status] = (c[r.status] || 0) + 1));
@@ -104,6 +136,30 @@ export default function ContactLeadsPage() {
     const q = search.trim().toLowerCase();
     return rows.filter((r) => (statusFilter.length === 0 || statusFilter.includes(r.status)) && (!q || [r.name, r.email, r.phone, r.message].join(" ").toLowerCase().includes(q)));
   }, [rows, statusFilter, search]);
+
+  const bulk = useBulkSelect(shown, "id");
+  const bulkBusy = bulkFetcher.state !== "idle";
+  useEffect(() => {
+    const d = bulkFetcher.data;
+    if (!d || (d.intent !== "bulkDelete" && d.intent !== "bulkStatus")) return;
+    if (d.ok) {
+      toast.show(d.intent === "bulkDelete" ? `${d.count} lead${d.count === 1 ? "" : "s"} deleted` : `${d.count} lead${d.count === 1 ? "" : "s"} set to "${d.status}"`);
+      bulk.clear();
+      setBulkStatus("");
+    } else {
+      toast.show(d.error || "Could not save", { isError: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bulkFetcher.data]);
+  const selectedRows = shown.filter((r) => bulk.selectedIds.includes(r.id));
+  const handleBulkDelete = () => {
+    if (!window.confirm(`Delete ${bulk.count} selected lead${bulk.count === 1 ? "" : "s"}? This can't be undone.`)) return;
+    bulkFetcher.submit({ intent: "bulkDelete", ids: JSON.stringify(bulk.selectedIds) }, { method: "post" });
+  };
+  const handleBulkStatus = () => {
+    if (!bulkStatus) return;
+    bulkFetcher.submit({ intent: "bulkStatus", ids: JSON.stringify(bulk.selectedIds), status: bulkStatus }, { method: "post" });
+  };
 
   return (
     <PageIn>
@@ -138,6 +194,29 @@ export default function ContactLeadsPage() {
           style={{ marginLeft: "auto", minWidth: "240px", padding: "8px 12px", borderRadius: "9px", border: `1px solid ${brand.border}`, fontSize: "13px", fontFamily: "inherit" }}
         />
       </div>
+      <BulkBar count={bulk.count} noun="lead">
+        <select
+          value={bulkStatus}
+          onChange={(e) => setBulkStatus(e.target.value)}
+          disabled={bulkBusy}
+          style={{ padding: "5px 8px", borderRadius: "8px", border: `1px solid ${brand.border}`, background: "#fff", fontSize: "12px", fontFamily: "inherit" }}
+        >
+          <option value="">Set status…</option>
+          {LEAD_STATUS_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+        <button type="button" onClick={handleBulkStatus} disabled={bulkBusy || !bulkStatus} style={{ ...btn, border: `1px solid ${brand.accent}`, background: brand.accent, color: "#fff", opacity: bulkBusy || !bulkStatus ? 0.5 : 1 }}>
+          Apply
+        </button>
+        <button type="button" onClick={() => exportCsv(selectedRows)} style={{ ...btn, border: `1px solid ${brand.border}`, background: "#fff", color: brand.body }}>
+          <Icon name="download" size={12} color="currentColor" />
+          Export selected
+        </button>
+        <button type="button" onClick={handleBulkDelete} disabled={bulkBusy} style={{ ...btn, border: "none", background: brand.danger, color: "#fff", opacity: bulkBusy ? 0.6 : 1 }}>
+          {bulkBusy ? "Working…" : `Delete selected (${bulk.count})`}
+        </button>
+      </BulkBar>
       {shown.length === 0 ? (
         <Card>
           <p style={{ margin: 0, fontSize: "13px", color: brand.muted }}>
@@ -149,15 +228,17 @@ export default function ContactLeadsPage() {
           <table style={tableStyle}>
             <thead>
               <tr>
+                <SelectAllTh checked={bulk.allSelected} indeterminate={bulk.count > 0 && !bulk.allSelected} onChange={bulk.toggleAll} />
                 <th style={thStyle}>Received</th>
                 <th style={thStyle}>Customer</th>
                 <th style={thStyle}>Message</th>
                 <th style={thStyle}>Status</th>
+                <th style={thStyle}></th>
               </tr>
             </thead>
             <tbody>
               {shown.map((r) => (
-                <Row key={r.id} r={r} />
+                <Row key={r.id} r={r} selected={bulk.isSelected(r.id)} onToggleSelect={() => bulk.toggle(r.id)} />
               ))}
             </tbody>
           </table>

@@ -22,12 +22,12 @@
  * orders than fit in one page.
  */
 import { useEffect, useMemo, useState } from "react";
-import { useFetcher, useLoaderData } from "react-router";
+import { useFetcher, useLoaderData, useRevalidator } from "react-router";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { getAppSettings } from "../utils/appSettings.server";
 import { sendOrderInvoiceEmail, fetchRecentOrdersForInvoice, computeInvoiceGst } from "../utils/orderInvoice.server";
-import { brand, Card, PageHeader, PageIn, tableWrapStyle, tableStyle, thStyle, tdStyle, Pill } from "../components/table-kit";
+import { brand, Card, PageHeader, PageIn, tableWrapStyle, tableStyle, thStyle, tdStyle, Pill, RowMenu, useBulkSelect, SelectAllTh, BulkBar } from "../components/table-kit";
 import { useToast } from "../components/toast";
 
 const PAGE_SIZE = 25;
@@ -107,6 +107,25 @@ export const action = async ({ request }) => {
     }
   }
 
+  // Send the invoice email for several orders in one go. Capped (each one
+  // renders a PDF in a headless browser), and run one after another so a
+  // slow render never overlaps another.
+  if (intent === "bulkSend") {
+    const ids = JSON.parse(formData.get("orderIds") || "[]").slice(0, 10);
+    if (!ids.length) return { intent, ok: false, error: "No orders selected" };
+    const settings = await getAppSettings(session.shop);
+    const results = [];
+    for (const orderId of ids) {
+      try {
+        const status = await sendOrderInvoiceEmail(admin, settings, session.shop, orderId);
+        results.push({ orderId, ok: status.startsWith("OK:"), status });
+      } catch (err) {
+        results.push({ orderId, ok: false, status: "threw: " + String((err && err.message) || err) });
+      }
+    }
+    return { intent, ok: results.every((x) => x.ok), results, sent: results.filter((x) => x.ok).length, failed: results.filter((x) => !x.ok).length };
+  }
+
   return { ok: false, error: "Unknown intent" };
 };
 
@@ -122,6 +141,8 @@ function formatMoney(amount, currency) {
 export default function InvoicesPage() {
   const data = useLoaderData();
   const sendFetcher = useFetcher();
+  const bulkFetcher = useFetcher();
+  const revalidator = useRevalidator();
   const toast = useToast();
 
   const [filter, setFilter] = useState("");
@@ -151,6 +172,31 @@ export default function InvoicesPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sendFetcher.data]);
+
+  const bulk = useBulkSelect(filteredRows, "id");
+  const bulkSending = bulkFetcher.state !== "idle";
+  const [bulkDownloading, setBulkDownloading] = useState(false);
+  useEffect(() => {
+    const d = bulkFetcher.data;
+    if (d?.intent !== "bulkSend") return;
+    toast.show(d.error || `${d.sent} invoice${d.sent === 1 ? "" : "s"} sent${d.failed ? `, ${d.failed} failed` : ""}`, { isError: !d.ok });
+    bulk.clear();
+    revalidator.revalidate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bulkFetcher.data]);
+  const handleBulkSend = () => {
+    const ids = bulk.selectedIds.slice(0, 10);
+    const extra = bulk.count > 10 ? ` Only the first 10 of ${bulk.count} will be sent; select the rest afterwards.` : "";
+    if (!window.confirm(`Email the invoice to ${ids.length} customer${ids.length === 1 ? "" : "s"}? Invoices already sent will be sent again.${extra}`)) return;
+    bulkFetcher.submit({ intent: "bulkSend", orderIds: JSON.stringify(ids) }, { method: "POST" });
+  };
+  const handleBulkDownload = async () => {
+    setBulkDownloading(true);
+    for (const row of filteredRows.filter((x) => bulk.selectedIds.includes(x.id))) {
+      await handleDownload(row);
+    }
+    setBulkDownloading(false);
+  };
 
   const handleSend = (row) => {
     setSendingId(row.id);
@@ -237,16 +283,36 @@ export default function InvoicesPage() {
         />
       </Card>
 
+      <BulkBar count={bulk.count} noun="order">
+        <button
+          type="button"
+          onClick={handleBulkSend}
+          disabled={bulkSending || !data.gstConfigured || !data.gmailConfigured}
+          style={{ fontSize: "12px", fontWeight: 600, color: "#fff", background: brand.accent, border: "none", borderRadius: "8px", padding: "6px 14px", cursor: bulkSending ? "default" : "pointer", opacity: bulkSending ? 0.6 : 1 }}
+        >
+          {bulkSending ? "Sending…" : `Send invoices (${Math.min(bulk.count, 10)})`}
+        </button>
+        <button
+          type="button"
+          onClick={handleBulkDownload}
+          disabled={bulkDownloading || !data.gstConfigured}
+          style={{ fontSize: "12px", fontWeight: 600, color: brand.body, background: "#fff", border: `1px solid ${brand.border}`, borderRadius: "8px", padding: "6px 14px", cursor: bulkDownloading ? "default" : "pointer", opacity: bulkDownloading ? 0.6 : 1 }}
+        >
+          {bulkDownloading ? "Downloading…" : "Download PDFs"}
+        </button>
+        <button type="button" onClick={bulk.clear} style={{ marginLeft: "auto", fontSize: "12px", color: brand.muted, background: "none", border: "none", cursor: "pointer" }}>
+          Clear selection
+        </button>
+      </BulkBar>
+
       <div style={tableWrapStyle}>
         <table style={tableStyle}>
           <thead>
             <tr>
+              <SelectAllTh checked={bulk.allSelected} indeterminate={bulk.count > 0 && !bulk.allSelected} onChange={bulk.toggleAll} />
               <th style={thStyle}>Order</th>
               <th style={thStyle}>Customer</th>
-              <th style={thStyle}>Items</th>
-              <th style={thStyle}>Subtotal</th>
-              <th style={thStyle}>GST</th>
-              <th style={thStyle}>Total</th>
+              <th style={thStyle}>Amount</th>
               <th style={thStyle}>Invoice</th>
               <th style={thStyle}></th>
             </tr>
@@ -254,7 +320,7 @@ export default function InvoicesPage() {
           <tbody>
             {filteredRows.length === 0 ? (
               <tr>
-                <td style={tdStyle} colSpan={8}>
+                <td style={tdStyle} colSpan={6}>
                   {data.rows.length === 0 ? "No orders found." : "No orders match this filter."}
                 </td>
               </tr>
@@ -264,21 +330,27 @@ export default function InvoicesPage() {
                 const isDownloading = downloadingId === row.id;
                 const alreadySent = row.invoiceStatus?.startsWith("OK");
                 return (
-                  <tr key={row.id}>
+                  <tr key={row.id} className="dt-row">
+                    <td style={tdStyle}>
+                      <input type="checkbox" checked={bulk.isSelected(row.id)} onChange={() => bulk.toggle(row.id)} style={{ cursor: "pointer" }} />
+                    </td>
                     <td style={tdStyle}>
                       <div style={{ fontWeight: 600, color: brand.heading }}>{row.name}</div>
                       <div style={{ fontSize: "11px", color: brand.muted }}>{new Date(row.createdAt).toLocaleDateString("en-IN")}</div>
                     </td>
                     <td style={tdStyle}>
                       <div>{row.customerName}</div>
-                      <div style={{ fontSize: "11px", color: brand.muted }}>{row.customerEmail}</div>
+                      <div style={{ fontSize: "11px", color: brand.muted, wordBreak: "break-all" }}>{row.customerEmail}</div>
                     </td>
-                    <td style={{ ...tdStyle, maxWidth: "220px" }} title={row.itemTitles}>
-                      {row.itemCount} {row.itemCount === 1 ? "item" : "items"}
+                    <td style={{ ...tdStyle, minWidth: "170px" }} title={row.itemTitles}>
+                      <div style={{ fontWeight: 600, color: brand.ink }}>{formatMoney(row.grandTotal, row.currency)}</div>
+                      <div style={{ fontSize: "11px", color: brand.muted }}>
+                        Subtotal {formatMoney(row.subtotal, row.currency)} · GST {formatMoney(row.totalGst, row.currency)}
+                      </div>
+                      <div style={{ fontSize: "11px", color: brand.muted }}>
+                        {row.itemCount} {row.itemCount === 1 ? "item" : "items"}
+                      </div>
                     </td>
-                    <td style={tdStyle}>{formatMoney(row.subtotal, row.currency)}</td>
-                    <td style={tdStyle}>{formatMoney(row.totalGst, row.currency)}</td>
-                    <td style={{ ...tdStyle, fontWeight: 600 }}>{formatMoney(row.grandTotal, row.currency)}</td>
                     <td style={tdStyle}>
                       {row.invoiceNumber ? (
                         <>
@@ -289,56 +361,16 @@ export default function InvoicesPage() {
                         <span style={{ color: brand.muted, fontSize: "12px" }}>Not invoiced yet</span>
                       )}
                     </td>
-                    <td style={tdStyle}>
-                      <div style={{ display: "flex", gap: "8px" }}>
-                        <button
-                          type="button"
-                          onClick={() => handleSend(row)}
-                          disabled={isSending || !data.gstConfigured || !data.gmailConfigured}
-                          style={{
-                            padding: "7px 14px",
-                            borderRadius: "8px",
-                            border: "none",
-                            background: alreadySent ? brand.panel : brand.accent,
-                            color: alreadySent ? brand.body : "#fff",
-                            fontSize: "12.5px",
-                            fontWeight: 600,
-                            cursor: "pointer",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {isSending ? "Sending…" : alreadySent ? "Resend" : "Send Invoice"}
-                        </button>
-                        {/* Downloads the same PDF sendOrderInvoiceEmail would attach --
-                            doesn't require Gmail to be configured, only GSTIN. A plain
-                            <a href target="_blank"> here (the first version of this)
-                            navigated straight to the Render domain OUTSIDE the embedded
-                            admin iframe's authenticated context, so it hit Shopify's own
-                            auth "bounce" page instead of the PDF -- confirmed live. A
-                            same-origin fetch from handleDownload (same auth context as
-                            sendFetcher's already-working POST above) fixes that, and
-                            also means clicking this never opens or navigates to any URL
-                            at all -- just a background fetch + an immediate file save,
-                            per explicit request. */}
-                        <button
-                          type="button"
-                          onClick={() => handleDownload(row)}
-                          disabled={isDownloading || !data.gstConfigured}
-                          style={{
-                            padding: "7px 14px",
-                            borderRadius: "8px",
-                            border: `1px solid ${brand.border}`,
-                            background: "#fff",
-                            color: data.gstConfigured ? brand.body : brand.muted,
-                            fontSize: "12.5px",
-                            fontWeight: 600,
-                            cursor: data.gstConfigured ? "pointer" : "not-allowed",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {isDownloading ? "Downloading…" : "Download PDF"}
-                        </button>
-                      </div>
+                    <td style={{ ...tdStyle, minWidth: "90px", textAlign: "right" }}>
+                      {/* Download runs a same-origin fetch from handleDownload (a plain link
+                          would leave the embedded admin's authenticated context and hit
+                          Shopify's auth bounce page instead of the PDF -- see handleDownload). */}
+                      <RowMenu
+                        items={[
+                          { label: isSending ? "Sending…" : alreadySent ? "Resend invoice" : "Send invoice", onClick: () => handleSend(row), disabled: isSending || !data.gstConfigured || !data.gmailConfigured },
+                          { label: isDownloading ? "Downloading…" : "Download PDF", onClick: () => handleDownload(row), disabled: isDownloading || !data.gstConfigured },
+                        ]}
+                      />
                     </td>
                   </tr>
                 );

@@ -764,6 +764,21 @@ export function BulkActionsBar({ count, onDelete, busy, noun = "lead" }) {
   );
 }
 
+/** Generic bulk bar: "N selected" plus whatever action buttons the page passes
+ * as children. Shown only once something is selected. */
+export function BulkBar({ count, noun = "row", children }) {
+  if (count === 0) return null;
+  return (
+    <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "10px", padding: "10px 14px", background: brand.accentTint, border: `1px solid ${brand.accent}`, borderRadius: "10px", marginBottom: "12px" }}>
+      <span style={{ fontSize: "12.5px", fontWeight: 600, color: brand.heading }}>
+        {count} {noun}
+        {count === 1 ? "" : "s"} selected
+      </span>
+      {children}
+    </div>
+  );
+}
+
 // ---- Icons -----------------------------------------------------------
 
 // Stroke-based line icons, one consistent style, replacing every emoji
