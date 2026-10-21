@@ -53,7 +53,7 @@ embedded = true
 #   capped at the first 250 -- confirmed live to silently drop Bracelet
 #   entirely and part of Pendant once the catalog grew past that cap.
 #   Requires the merchant to re-approve once, same as read_locations above.
-scopes = "write_products,read_products,read_themes,write_themes,write_inventory,read_orders,write_metaobjects,write_metaobject_definitions,write_publications,write_customers,read_customers,read_merchant_managed_fulfillment_orders,read_locations"
+scopes = "write_products,read_products,read_themes,write_themes,write_inventory,read_orders,write_metaobjects,write_metaobject_definitions,write_publications,write_customers,read_customers,read_merchant_managed_fulfillment_orders,read_locations,read_files"
 
 # Lets the theme call https://<store-domain>/apps/customize , which Shopify
 # signs and proxies to this app's /proxy route — see app/routes/proxy.jsx.
@@ -119,6 +119,25 @@ api_version = "2026-10"
   [[webhooks.subscriptions]]
   uri = "/webhooks/refunds/create"
   topics = [ "refunds/create" ]
+
+  # Store activity log (app/routes/app.store-activity.jsx): record deletions
+  # Shopify reports. Files have no delete webhook -- those are found by the
+  # scheduled /cron/store-snapshot check, which needs the read_files scope.
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/products/delete"
+  topics = [ "products/delete" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/collections/delete"
+  topics = [ "collections/delete" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/customers/delete"
+  topics = [ "customers/delete" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/themes/delete"
+  topics = [ "themes/delete" ]
 
 [auth]
 redirect_urls = [ "https://shubh-gems-customizer-app.onrender.com/api/auth" ]
