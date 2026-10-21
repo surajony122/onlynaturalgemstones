@@ -24,6 +24,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useFetcher, useLoaderData, useRevalidator, useSearchParams } from "react-router";
 import { authenticate } from "../shopify.server";
+import { authenticatePage } from "../utils/teamAccess.server";
 import prisma from "../db.server";
 import { getAppSettings } from "../utils/appSettings.server";
 import { sendOrderInvoiceEmail, fetchRecentOrdersForInvoice, fetchOrdersCount, computeInvoiceGst } from "../utils/orderInvoice.server";
@@ -33,7 +34,7 @@ import { useToast } from "../components/toast";
 const PAGE_SIZE = 25;
 
 export const loader = async ({ request }) => {
-  const { admin, session } = await authenticate.admin(request);
+  const { admin, session } = await authenticatePage(request, "invoices");
   const url = new URL(request.url);
   const cursor = url.searchParams.get("cursor") || null;
   const goingBack = url.searchParams.get("dir") === "prev";
@@ -106,7 +107,7 @@ export const loader = async ({ request }) => {
 };
 
 export const action = async ({ request }) => {
-  const { admin, session } = await authenticate.admin(request);
+  const { admin, session } = await authenticatePage(request, "invoices");
   const formData = await request.formData();
   const intent = formData.get("intent");
 

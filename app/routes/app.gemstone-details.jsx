@@ -9,17 +9,18 @@ import { useEffect, useState } from "react";
 import { useFetcher, useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
+import { authenticatePage } from "../utils/teamAccess.server";
 import { getGemStoneRows, getHiddenStones, saveGemStoneDetails, addGemStone, removeGemStone } from "../utils/gemStoneDetails.server";
 import { Card, PageHeader, PageIn, brand } from "../components/table-kit";
 import { useToast } from "../components/toast";
 
 export const loader = async ({ request }) => {
-  const { session } = await authenticate.admin(request);
+  const { session } = await authenticatePage(request, "gemdetails");
   return { rows: await getGemStoneRows(session.shop), hidden: await getHiddenStones(session.shop) };
 };
 
 export const action = async ({ request }) => {
-  const { session } = await authenticate.admin(request);
+  const { session } = await authenticatePage(request, "gemdetails");
   const form = await request.formData();
   const intent = form.get("intent");
   if (intent === "add" || intent === "remove") {

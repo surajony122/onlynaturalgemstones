@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useFetcher, useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
+import { authenticatePage } from "../utils/teamAccess.server";
 import {
   fetchCustomisationStatus,
   buildGemstoneCustomisationMatrix,
@@ -14,7 +15,7 @@ import { useToast } from "../components/toast";
 import { FriendlyError } from "../components/friendly-error";
 
 export const loader = async ({ request }) => {
-  const { session, admin } = await authenticate.admin(request);
+  const { session, admin } = await authenticatePage(request, "pricing");
   let customisationStatus = { found: false, totalVariants: 0 };
   let systemChecks = [];
   let variantsPreview = [];
@@ -41,7 +42,7 @@ export const loader = async ({ request }) => {
 };
 
 export const action = async ({ request }) => {
-  const { admin, session } = await authenticate.admin(request);
+  const { admin, session } = await authenticatePage(request, "pricing");
   const formData = await request.formData();
   const intent = formData.get("intent");
 

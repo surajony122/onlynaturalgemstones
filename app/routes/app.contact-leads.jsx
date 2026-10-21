@@ -5,19 +5,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { useFetcher, useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
+import { authenticatePage } from "../utils/teamAccess.server";
 import prisma from "../db.server";
 import { LEAD_STATUS_OPTIONS } from "../utils/leadStatuses";
 import { brand, Icon, Card, PageHeader, PageIn, MultiSelect, RowMenu, useBulkSelect, SelectAllTh, BulkBar, tableWrapStyle, tableStyle, thStyle, tdStyle } from "../components/table-kit";
 import { useToast } from "../components/toast";
 
 export const loader = async ({ request }) => {
-  await authenticate.admin(request);
+  await authenticatePage(request, "contact");
   const rows = await prisma.contactLead.findMany({ orderBy: { createdAt: "desc" }, take: 1000 });
   return { rows: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })) };
 };
 
 export const action = async ({ request }) => {
-  await authenticate.admin(request);
+  await authenticatePage(request, "contact");
   const form = await request.formData();
   const intent = String(form.get("intent") || "");
   const id = String(form.get("id") || "");

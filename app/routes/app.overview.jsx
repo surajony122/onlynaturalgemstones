@@ -15,6 +15,7 @@
  */
 import { Link, useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
+import { authenticatePage } from "../utils/teamAccess.server";
 import prisma from "../db.server";
 import { getAttentionSummary } from "../utils/attention.server";
 import { runAttentionAction } from "../utils/attentionActions.server";
@@ -56,7 +57,7 @@ function lastSevenDays(dates, todayStart) {
 }
 
 export const loader = async ({ request }) => {
-  const { session } = await authenticate.admin(request);
+  const { session } = await authenticatePage(request, "overview");
   const shop = session.shop;
 
   const todayStart = new Date();
@@ -207,7 +208,7 @@ export const loader = async ({ request }) => {
 
 // Retry / Mark-as-resolved buttons on the "Needs attention" panel.
 export const action = async ({ request }) => {
-  const { admin, session } = await authenticate.admin(request);
+  const { admin, session } = await authenticatePage(request, "overview");
   const form = await request.formData();
   if (String(form.get("intent") || "") === "retryUnsent") {
     try {

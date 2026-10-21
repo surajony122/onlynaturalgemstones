@@ -5,12 +5,14 @@
  * because it carries the embedded-app session parameters (host, shop, ...).
  */
 import { redirect } from "react-router";
-import { authenticate } from "../shopify.server";
+import { authenticatePage } from "../utils/teamAccess.server";
 
 export const loader = async ({ request }) => {
-  await authenticate.admin(request);
+  const { access } = await authenticatePage(request, null);
   const url = new URL(request.url);
-  return redirect("/app/overview" + url.search);
+  const order = [["overview", "/app/overview"], ["astro", "/app/astro-leads"], ["wishlist", "/app/wishlist-leads"], ["contact", "/app/contact-leads"], ["invoices", "/app/invoices"], ["pricing", "/app/pricing"], ["gemdetails", "/app/gemstone-details"], ["currency", "/app/currency-countries"], ["designimages", "/app/design-images"], ["whatsapp", "/app/whatsapp-events"], ["documentation", "/app/documentation"]];
+  const first = order.find(([id]) => access.canOpen(id));
+  return redirect((first ? first[1] : "/app/no-access") + url.search);
 };
 
 export default function AppIndex() {

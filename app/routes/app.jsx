@@ -1,14 +1,14 @@
 import { Outlet, useLoaderData, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
-import { authenticate } from "../shopify.server";
+import { authenticatePage } from "../utils/teamAccess.server";
 import { getAttentionSummary } from "../utils/attention.server";
 import { GlobalStyles } from "../components/table-kit";
 import { AppShell } from "../components/app-shell";
 import { ToastProvider } from "../components/toast";
 
 export const loader = async ({ request }) => {
-  await authenticate.admin(request);
+  const { access } = await authenticatePage(request, null);
 
   // Cheap, DB-only "does anything need attention" signal (see
   // attention.server.js) — drives the sidebar's badge counts/health dot
@@ -22,17 +22,17 @@ export const loader = async ({ request }) => {
   }
 
   // eslint-disable-next-line no-undef
-  return { apiKey: process.env.SHOPIFY_API_KEY || "", attention };
+  return { apiKey: process.env.SHOPIFY_API_KEY || "", attention, access: { allowed: access.allowed, isAdmin: access.isAdmin, enforce: access.enforce } };
 };
 
 export default function App() {
-  const { apiKey, attention } = useLoaderData();
+  const { apiKey, attention, access } = useLoaderData();
 
   return (
     <AppProvider embedded apiKey={apiKey}>
       <GlobalStyles />
       <ToastProvider>
-        <AppShell attention={attention}>
+        <AppShell attention={attention} access={access}>
           <Outlet />
         </AppShell>
       </ToastProvider>

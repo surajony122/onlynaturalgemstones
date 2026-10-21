@@ -841,3 +841,31 @@ model ContactLead {
   @@index([createdAt])
   @@index([email, createdAt])
 }
+
+// Team access: which Shopify staff member may open which app pages. Members
+// are recorded when they open the app (or added by email beforehand); an admin
+// assigns pages on the Team access page. "enforce" is off until an admin turns
+// it on, so nobody is locked out while the list is being filled in.
+model TeamMember {
+  id            String    @id @default(cuid())
+  shop          String
+  shopifyUserId String? // Shopify's id for the staff member; filled in when they first open the app
+  email         String?
+  name          String?
+  isOwner       Boolean   @default(false) // the shop's account owner: always full access
+  isAdmin       Boolean   @default(false)
+  pages         String[]  @default([])
+  firstSeenAt   DateTime?
+  lastSeenAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([shop, shopifyUserId])
+  @@index([shop, email])
+}
+
+model TeamSettings {
+  shop      String   @id
+  enforce   Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+}

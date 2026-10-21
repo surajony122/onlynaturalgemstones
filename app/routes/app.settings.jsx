@@ -15,6 +15,7 @@ import { useEffect, useState } from "react";
 import { Link, useFetcher, useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
+import { authenticatePage } from "../utils/teamAccess.server";
 import {
   getRawAppSettingsRow,
   saveAppSettings,
@@ -61,7 +62,7 @@ import { brand, Icon, Card, PageHeader, PageIn } from "../components/table-kit";
 import { useToast } from "../components/toast";
 
 export const loader = async ({ request }) => {
-  const { session, admin } = await authenticate.admin(request);
+  const { session, admin } = await authenticatePage(request, "settings");
   const row = await getRawAppSettingsRow(session.shop);
   const settings = await getAppSettings(session.shop);
 
@@ -209,7 +210,7 @@ const REVEALABLE_FIELDS = [
 ];
 
 export const action = async ({ request }) => {
-  const { session, admin } = await authenticate.admin(request);
+  const { session, admin } = await authenticatePage(request, "settings");
   const formData = await request.formData();
   const intent = formData.get("intent");
 

@@ -28,6 +28,7 @@ import { useEffect, useState } from "react";
 import { Link, useFetcher, useLoaderData, useRevalidator, useSearchParams } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
+import { authenticatePage } from "../utils/teamAccess.server";
 import prisma from "../db.server";
 import { getAppSettings } from "../utils/appSettings.server";
 import { sendWhatsAppForLead } from "../utils/astroAdvice.server";
@@ -60,7 +61,7 @@ import { FriendlyErrorInline } from "../components/friendly-error";
 const PAGE_SIZE = 500;
 
 export const action = async ({ request }) => {
-  const { admin, session } = await authenticate.admin(request);
+  const { admin, session } = await authenticatePage(request, "whatsapp");
   const formData = await request.formData();
   const intent = formData.get("intent");
   const messageId = formData.get("messageId");
@@ -188,7 +189,7 @@ export const action = async ({ request }) => {
 };
 
 export const loader = async ({ request }) => {
-  const { admin } = await authenticate.admin(request);
+  const { admin } = await authenticatePage(request, "whatsapp");
 
   const events = await prisma.whatsAppMessageEvent.findMany({
     orderBy: { receivedAt: "asc" },

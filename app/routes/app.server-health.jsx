@@ -9,6 +9,7 @@
 import { useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
+import { authenticatePage } from "../utils/teamAccess.server";
 import prisma from "../db.server";
 import { getAppSettings } from "../utils/appSettings.server";
 import { withTimeout, checkGmail, checkGoogleSheets, checkInterakt } from "../utils/serviceHealth.server";
@@ -161,7 +162,7 @@ async function checkWebhookReceipts() {
 
 // Fix buttons on the "Needs attention" panel (same ones as the Overview).
 export const action = async ({ request }) => {
-  const { admin, session } = await authenticate.admin(request);
+  const { admin, session } = await authenticatePage(request, "server");
   const form = await request.formData();
   const intent = String(form.get("intent") || "");
   if (intent === "retryUnsent") {
@@ -189,7 +190,7 @@ function fixFor(name) {
 }
 
 export const loader = async ({ request }) => {
-  const { admin, session } = await authenticate.admin(request);
+  const { admin, session } = await authenticatePage(request, "server");
   const settings = await getAppSettings(session.shop);
 
   const [database, shopifyAdmin, readThemes, readProducts, gmail, googleSheets, interakt, recentLeads, orderProcessingNotifications, orderProcessingEmailNotifications, registeredWebhooks, webhookReceipts] = await Promise.all([

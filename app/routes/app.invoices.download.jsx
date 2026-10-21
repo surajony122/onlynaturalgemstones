@@ -13,6 +13,7 @@
  * separately-maintained build.
  */
 import { authenticate } from "../shopify.server";
+import { authenticatePage } from "../utils/teamAccess.server";
 import { getAppSettings } from "../utils/appSettings.server";
 import { buildInvoicePdf } from "../utils/orderInvoice.server";
 
@@ -22,7 +23,7 @@ function toOrderGid(id) {
 }
 
 export const loader = async ({ request }) => {
-  const { admin, session } = await authenticate.admin(request);
+  const { admin, session } = await authenticatePage(request, "invoices");
 
   const url = new URL(request.url);
   const orderGid = toOrderGid(url.searchParams.get("orderId"));

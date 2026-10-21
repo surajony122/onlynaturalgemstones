@@ -44,12 +44,16 @@ export const NAV_GROUPS = [
       { id: "server", href: "/app/server-health", label: "System Health", icon: "server" },
       { id: "whatsapp", href: "/app/whatsapp-events", label: "Logs", icon: "history", badgeKey: "whatsapp" },
       { id: "settings", href: "/app/settings", label: "Settings", icon: "gear" },
+      { id: "team", href: "/app/team", label: "Team access", icon: "users" },
       { id: "documentation", href: "/app/documentation", label: "Documentation", icon: "file-text" },
     ],
   },
 ];
 
 const ALL_ITEMS = NAV_GROUPS.flatMap((g) => g.items.map((it) => ({ ...it, group: g.label })));
+
+// Which menu items a person may see (Team access). No `access` = show everything.
+const canSee = (access, id) => (!access ? true : id === "team" ? !!access.isAdmin : access.allowed.includes(id));
 
 function matchPath(pathname, item) {
   if (item.end) return pathname === item.href;
@@ -63,16 +67,16 @@ function currentPageInfo(pathname) {
 
 // ---- Command palette ---------------------------------------------------
 
-function CommandPalette({ open, onClose, onRefresh }) {
+function CommandPalette({ open, onClose, onRefresh, access }) {
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
 
   const results = useMemo(() => {
-    const items = ALL_ITEMS.map((it) => ({ kind: "nav", href: it.href, label: `Go to ${it.label}`, hint: it.group, icon: it.icon }));
+    const items = ALL_ITEMS.filter((it) => canSee(access, it.id)).map((it) => ({ kind: "nav", href: it.href, label: `Go to ${it.label}`, hint: it.group, icon: it.icon }));
     items.push({ kind: "act", label: "Refresh all data", hint: "Action", icon: "refresh", onRun: onRefresh });
     const q = query.trim().toLowerCase();
     return q ? items.filter((i) => i.label.toLowerCase().includes(q) || i.hint.toLowerCase().includes(q)) : items;
-  }, [query, onRefresh]);
+  }, [query, onRefresh, access]);
 
   useEffect(() => {
     if (!open) return;
@@ -201,7 +205,7 @@ function CommandPalette({ open, onClose, onRefresh }) {
 
 // ---- Sidebar ------------------------------------------------------------
 
-function Sidebar({ pathname, badges }) {
+function Sidebar({ pathname, badges, access }) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const revalidator = useRevalidator();
 
@@ -267,10 +271,10 @@ function Sidebar({ pathname, badges }) {
           <span style={{ fontFamily: brand.mono, fontSize: "10.5px", padding: "2px 5px", border: `1px solid ${brand.border}`, borderRadius: "5px", background: "#fff", color: brand.faint }}>⌘K</span>
         </button>
 
-        {NAV_GROUPS.map((g) => (
+        {NAV_GROUPS.filter((g) => g.items.some((it) => canSee(access, it.id))).map((g) => (
           <div key={g.label} style={{ padding: "0 14px 4px" }}>
             <div style={{ fontSize: "10.5px", fontWeight: 600, letterSpacing: "0.09em", textTransform: "uppercase", color: brand.faint, padding: "10px 8px 6px" }}>{g.label}</div>
-            {g.items.map((item) => {
+            {g.items.filter((it) => canSee(access, it.id)).map((item) => {
               const active = matchPath(pathname, item);
               const badge = item.badgeKey ? badges?.[item.badgeKey] : 0;
               return (
@@ -339,7 +343,7 @@ function Sidebar({ pathname, badges }) {
         </div>
       </nav>
 
-      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} onRefresh={() => revalidator.revalidate()} />
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} onRefresh={() => revalidator.revalidate()} access={access} />
     </>
   );
 }
@@ -433,7 +437,7 @@ function Header({ pathname, healthy, attentionCount, setDescEl, setToolsEl }) {
 
 // ---- Shell ------------------------------------------------------------
 
-export function AppShell({ attention, children }) {
+export function AppShell({ attention, access, children }) {
   const { pathname } = useLocation();
   const healthy = attention?.healthy ?? true;
   const attentionCount = attention?.items?.length || 0;
@@ -443,7 +447,7 @@ export function AppShell({ attention, children }) {
 
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: brand.page, fontSize: "14px" }}>
-      <Sidebar pathname={pathname} badges={attention?.badges} />
+      <Sidebar pathname={pathname} badges={attention?.badges} access={access} />
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
         <Header pathname={pathname} healthy={healthy} attentionCount={attentionCount} setDescEl={setDescEl} setToolsEl={setToolsEl} />
         <main style={{ flex: 1, overflowY: "auto", padding: "28px 28px 72px" }}>

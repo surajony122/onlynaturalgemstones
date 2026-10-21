@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useFetcher, useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
+import { authenticatePage } from "../utils/teamAccess.server";
 import {
   CURRENCY_OPTIONS,
   describeContinents,
@@ -22,7 +23,7 @@ import { Card, PageHeader, PageIn, brand } from "../components/table-kit";
 import { useToast } from "../components/toast";
 
 export const loader = async ({ request }) => {
-  const { admin, session } = await authenticate.admin(request);
+  const { admin, session } = await authenticatePage(request, "currency");
   const cfg = await getCurrencyCountryConfig(session.shop);
   let themes = [];
   try { themes = await listThemes(admin); } catch { themes = []; }
@@ -44,7 +45,7 @@ export const loader = async ({ request }) => {
 };
 
 export const action = async ({ request }) => {
-  const { admin, session } = await authenticate.admin(request);
+  const { admin, session } = await authenticatePage(request, "currency");
   const form = await request.formData();
   const intent = form.get("intent");
   let incoming;

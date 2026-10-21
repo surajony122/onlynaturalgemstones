@@ -9,6 +9,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useFetcher, useLoaderData, useRevalidator } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
+import { authenticatePage } from "../utils/teamAccess.server";
 import prisma from "../db.server";
 import { resendAstroLeadEmail, sendWhatsAppForLead } from "../utils/astroAdvice.server";
 import { processWhatsAppQueue, getWhatsAppQueueSummary } from "../utils/whatsappQueue.server";
@@ -138,7 +139,7 @@ function exportAstroLeadsToCsv(leadsToExport) {
 }
 
 export const action = async ({ request }) => {
-  const { admin, session } = await authenticate.admin(request);
+  const { admin, session } = await authenticatePage(request, "astro");
   const formData = await request.formData();
   const intent = formData.get("intent");
 
@@ -250,7 +251,7 @@ export const action = async ({ request }) => {
 };
 
 export const loader = async ({ request }) => {
-  const { session, admin } = await authenticate.admin(request);
+  const { session, admin } = await authenticatePage(request, "astro");
 
   const leads = await prisma.astroLead.findMany({
     orderBy: { createdAt: "desc" },
