@@ -76,7 +76,7 @@ async function checkUrl(url) {
   }
 }
 
-export function backupIndex() {
+function backupIndex() {
   try {
     const dir = path.resolve(process.cwd(), "design-images");
     if (!fs.existsSync(dir)) return { available: false, has: () => false, count: 0 };
