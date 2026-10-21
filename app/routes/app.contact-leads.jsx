@@ -4,7 +4,6 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { useFetcher, useLoaderData } from "react-router";
-import { authenticate } from "../shopify.server";
 import { authenticatePage } from "../utils/teamAccess.server";
 import prisma from "../db.server";
 import { LEAD_STATUS_OPTIONS } from "../utils/leadStatuses";

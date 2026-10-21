@@ -14,7 +14,6 @@
  * new timezone concept just for this page).
  */
 import { Link, useLoaderData } from "react-router";
-import { authenticate } from "../shopify.server";
 import { authenticatePage } from "../utils/teamAccess.server";
 import prisma from "../db.server";
 import { getAttentionSummary } from "../utils/attention.server";

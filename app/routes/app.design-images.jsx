@@ -7,7 +7,6 @@
  */
 import { useLoaderData, useRevalidator } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
-import { authenticate } from "../shopify.server";
 import { authenticatePage } from "../utils/teamAccess.server";
 import { getDesignImageReport } from "../utils/designImages.server";
 import { brand, Card, PageHeader, PageIn, Pill, tableWrapStyle, tableStyle, thStyle, tdStyle } from "../components/table-kit";

@@ -23,7 +23,6 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { Link, useFetcher, useLoaderData, useRevalidator, useSearchParams } from "react-router";
-import { authenticate } from "../shopify.server";
 import { authenticatePage } from "../utils/teamAccess.server";
 import prisma from "../db.server";
 import { getAppSettings } from "../utils/appSettings.server";

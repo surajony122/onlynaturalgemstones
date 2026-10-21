@@ -12,7 +12,6 @@
  * byte-identical to one that would be emailed, never a second
  * separately-maintained build.
  */
-import { authenticate } from "../shopify.server";
 import { authenticatePage } from "../utils/teamAccess.server";
 import { getAppSettings } from "../utils/appSettings.server";
 import { buildInvoicePdf } from "../utils/orderInvoice.server";
