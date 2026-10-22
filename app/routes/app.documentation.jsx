@@ -394,7 +394,7 @@ function PagesTab() {
           purpose="Generate and email a GST tax invoice PDF for any order, on request."
           points={[
             "Seller GSTIN, name, address and per-collection GST rates come from Settings → Invoices, never from Shopify's own tax settings.",
-            "GST is worked out from inside the price the customer paid, so the invoice total always equals what they paid. The table lists the products (with any discount spread across them) and the breakup under it shows Items Subtotal, Discount (with the code), Shipping, Taxable Value, GST and Total.",
+            "GST is worked out from inside the price the customer paid, so the invoice total always equals what they paid. The table lists the products (with any discount spread across them) and the summary under it shows Items Subtotal, Discount (with the code), Shipping, the GST included in the total, and the Total.",
             "Inside India: CGST + SGST when the buyer is in the seller's state, IGST for another state. Outside India the order is an export with payment of IGST: IGST is charged at the same rates and the invoice says “Export with payment of IGST”. The Place of Supply (buyer's state, or country) is printed on the invoice.",
             "The invoice number is your prefix plus the order's number (for example INV-1032). Sending an invoice again reuses the same number.",
             "Orders show 25 per page with Previous / Next and the total number of orders. Each order's Amount column shows the total with subtotal, GST and item count.",
@@ -732,7 +732,7 @@ function FaqTab() {
       </FaqItem>
 
       <FaqItem q="Why is the invoice total different from the item price?">
-        The invoice shows the whole order: the products, then Items Subtotal, any Discount (with its code) and Shipping. The Total equals what the customer paid. The Taxable Value is that total with GST taken out.
+        The invoice shows the whole order: the products, then Items Subtotal, any Discount (with its code) and Shipping. The Total equals what the customer paid, and the GST line shows how much of that total is GST.
       </FaqItem>
 
       <FaqItem q="How are invoice numbers made, and can an invoice be sent twice?">
