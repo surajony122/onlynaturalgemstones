@@ -71,7 +71,7 @@ export const ORDER_INVOICE_PLACEHOLDERS = [
   { token: "payment_mode", description: "The order's actual payment gateway (e.g. Razorpay)" },
   { token: "line_items_rows", description: "Pre-built HTML table rows: item, HSN, qty, rate, CGST, SGST, IGST, amount" },
   { token: "subtotal", description: "Taxable value (items after discount + shipping), before GST" },
-  { token: "price_breakup_rows", description: "Pre-built rows: Items Subtotal, Discount, Shipping (place above the GST and Total rows)" },
+  { token: "price_breakup_rows", description: "Pre-built rows: Items Subtotal, Discount, Shipping (place above the Total row)" },
   { token: "total_gst", description: "GST included in the total, across all lines and shipping" },
   { token: "grand_total", description: "Subtotal + total GST" },
   { token: "total_in_words", description: "Grand total spelled out, e.g. \"Indian Rupee One Only\"" },
@@ -178,10 +178,6 @@ function getDefaultOrderInvoiceTemplate() {
             <td style="border:none;width:45%;vertical-align:top;padding:10px;">
               <table style="width:100%;border-collapse:collapse;">
                 {{price_breakup_rows}}
-                <tr>
-                  <td style="border:none;border-bottom:1px solid #ddd;font-size:10px;padding:9px 0;">GST included in total</td>
-                  <td style="border:none;border-bottom:1px solid #ddd;font-size:10px;padding:9px 0;text-align:right;">{{total_gst}}</td>
-                </tr>
                 <tr>
                   <td style="border:none;font-size:12px;font-weight:bold;padding:10px 0;">Total</td>
                   <td style="border:none;font-size:12px;font-weight:bold;padding:10px 0;text-align:right;">{{grand_total}}</td>
@@ -1071,7 +1067,7 @@ export function computeInvoiceGst(order, settings) {
   const bRow = (label, value) => `<tr><td style="${bTd}">${label}</td><td style="${bTd}text-align:right;">${value}</td></tr>`;
   const breakup = [bRow("Items Subtotal", formatMoney(goodsOriginal, currency))];
   if (discountTotal > 0.005) breakup.push(bRow(`Discount${codes ? ` (${esc(codes)})` : ""}`, "-" + formatMoney(discountTotal, currency)));
-  if (shippingTotal > 0.005) breakup.push(bRow(`Shipping${order.shippingLine?.title ? ` (${esc(order.shippingLine.title)})` : ""}`, formatMoney(shippingTotal, currency)));
+  if (shippingTotal > 0.005) breakup.push(bRow(order.shippingLine?.title ? esc(order.shippingLine.title) : "Shipping", formatMoney(shippingTotal, currency)));
 
   const totalGst = totalCgst + totalSgst + totalIgst;
 
@@ -1277,14 +1273,13 @@ export async function buildInvoicePdf(admin, settings, shop, orderGid) {
     if (trAt >= 0) template = template.slice(0, trAt) + "{{price_breakup_rows}}" + template.slice(trAt);
   }
   // The summary has no "Sub Total" / "Taxable Value" row: remove it from any template that still has one.
-  for (const label of ["Taxable Value (excl. GST)", "Sub Total"]) {
+  for (const label of ["Taxable Value (excl. GST)", "Sub Total", "GST included in total", "Total GST"]) {
     const at = template.indexOf(label);
     if (at < 0) continue;
     const from = template.lastIndexOf("<tr", at);
     const to = template.indexOf("</tr>", at);
     if (from >= 0 && to > at) template = template.slice(0, from) + template.slice(to + "</tr>".length);
   }
-  template = template.replace(/>Total GST</, ">GST included in total<");
   const html = renderOrderInvoiceTemplate(template, {
     brand_header_html: brandHeaderHtml,
     seal_html: sealHtml,
