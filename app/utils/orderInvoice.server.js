@@ -912,6 +912,15 @@ export function computeInvoiceGst(order, settings) {
     // ₹10,300 taxable with ₹309 GST added on top of that.
     const taxableValue = rate > 0 ? grossValue / (1 + rate / 100) : grossValue;
     const gstAmount = grossValue - taxableValue;
+    // What the ROW shows is the product's actual price (before any order
+    // discount); the discount appears in the summary under the table. The
+    // order totals above still use the discounted figures.
+    const fullGross = parseFloat(line.originalTotalSet?.shopMoney?.amount ?? line.discountedTotalSet?.shopMoney?.amount ?? 0) || 0;
+    const dispTaxable = rate > 0 ? fullGross / (1 + rate / 100) : fullGross;
+    const dispGst = fullGross - dispTaxable;
+    const dispCgst = sameState ? dispGst / 2 : 0;
+    const dispSgst = sameState ? dispGst / 2 : 0;
+    const dispIgst = sameState ? 0 : dispGst;
     subtotal += taxableValue;
     goodsTaxable += taxableValue;
     goodsGst += gstAmount;
@@ -1007,7 +1016,7 @@ export function computeInvoiceGst(order, settings) {
         customisationDetailsHtml = `<br><span style="color:#888;font-size:9px;">${detailLines.join("<br>")}</span>`;
       }
     }
-    const lineTotal = taxableValue + gstAmount;
+    const lineTotal = fullGross;
     // toFixed(2) used to round a split rate like 0.125% (half of a 0.25%
     // GST rate) up to "0.13" -- confirmed live. toFixed(4) keeps enough
     // precision for a CGST/SGST half-split, then parseFloat strips
@@ -1037,10 +1046,10 @@ export function computeInvoiceGst(order, settings) {
         // which made the GST math alongside look wrong even though it
         // was correctly computed from the gross price -- it was just
         // never shown against the right base number.
-        `<td style="${td(13)}">${formatMoney(taxableValue, currency)}</td>` +
-        `<td style="${td(12)}">${formatMoney(lineCgst, currency)}<br><span style="color:#888;font-size:9px;">(${pct(cgstPct)}%)</span></td>` +
-        `<td style="${td(12)}">${formatMoney(lineSgst, currency)}<br><span style="color:#888;font-size:9px;">(${pct(sgstPct)}%)</span></td>` +
-        `<td style="${td(12)}">${formatMoney(lineIgst, currency)}<br><span style="color:#888;font-size:9px;">(${pct(igstPct)}%)</span></td>` +
+        `<td style="${td(13)}">${formatMoney(dispTaxable, currency)}</td>` +
+        `<td style="${td(12)}">${formatMoney(dispCgst, currency)}<br><span style="color:#888;font-size:9px;">(${pct(cgstPct)}%)</span></td>` +
+        `<td style="${td(12)}">${formatMoney(dispSgst, currency)}<br><span style="color:#888;font-size:9px;">(${pct(sgstPct)}%)</span></td>` +
+        `<td style="${td(12)}">${formatMoney(dispIgst, currency)}<br><span style="color:#888;font-size:9px;">(${pct(igstPct)}%)</span></td>` +
         `<td style="${td(13)}">${formatMoney(lineTotal, currency)}</td>` +
       `</tr>`,
     );
