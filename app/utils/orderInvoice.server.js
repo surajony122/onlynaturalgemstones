@@ -75,7 +75,7 @@ export const ORDER_INVOICE_PLACEHOLDERS = [
   { token: "total_gst", description: "Total GST amount across all lines" },
   { token: "grand_total", description: "Subtotal + total GST" },
   { token: "total_in_words", description: "Grand total spelled out, e.g. \"Indian Rupee One Only\"" },
-  { token: "tax_treatment_note", description: "Export note for international orders (supply under LUT, no IGST charged); blank for India" },
+  { token: "tax_treatment_note", description: "Export note for international orders (\"Export with payment of IGST\"); blank for India" },
   { token: "place_of_supply", description: "Buyer's state for India, country for exports" },
   { token: "shop_name", description: "Store name" },
   { token: "shop_url", description: "Store URL" },
@@ -808,9 +808,9 @@ export function computeInvoiceGst(order, settings) {
   const customerState = (shipTo?.province || "").trim().toLowerCase();
   // Same-state (CGST+SGST) only ever applies within India -- an
   // international order always falls through to the IGST bucket below,
-  // same as a different-state domestic one, per explicit request: GST
-  // still applies on exports here (this store does not zero-rate them
-  // under LUT), it's just always charged as IGST rather than split.
+  // same as a different-state domestic one. Exports are invoiced as
+  // "export with payment of IGST" (the store pays IGST and claims the
+  // refund): GST is charged at the line's own rate, always as IGST.
   const sameState = isDomestic && sellerState && customerState && sellerState === customerState;
 
   // The gemstone line and the "Gemstone Customisation" charge line each
@@ -902,9 +902,7 @@ export function computeInvoiceGst(order, settings) {
       : null;
 
     let rate;
-    if (!isDomestic) {
-      rate = 0;
-    } else if (isCustomisation) {
+    if (isCustomisation) {
       rate = linkedGemstoneId && gemstoneOverrideByVariantId[linkedGemstoneId] !== undefined
         ? gemstoneOverrideByVariantId[linkedGemstoneId]
         : rateCustomisation;
@@ -1057,7 +1055,7 @@ export function computeInvoiceGst(order, settings) {
   // product row -- it shows in the breakup under the table.
   const shippingTotal = money(order.totalShippingPriceSet);
   if (shippingTotal > 0.005) {
-    const shipRate = isDomestic ? rateLoose : 0;
+    const shipRate = rateLoose;
     const shipTaxable = shipRate > 0 ? shippingTotal / (1 + shipRate / 100) : shippingTotal;
     const shipGst = shippingTotal - shipTaxable;
     subtotal += shipTaxable;
@@ -1081,8 +1079,8 @@ export function computeInvoiceGst(order, settings) {
     lineItemsRowsHtml: itemRows.join(""),
     priceBreakupRowsHtml: breakup.join(""),
     // Indian standard: same state = CGST+SGST, other state = IGST,
-    // export = zero-rated under LUT (no GST charged).
-    taxTreatmentNote: isDomestic ? "" : "Supply meant for export under LUT without payment of IGST.",
+    // export = IGST charged (refund claimed later).
+    taxTreatmentNote: isDomestic ? "" : "Export with payment of IGST.",
     placeOfSupply: isDomestic ? (shipTo?.province || "") : (shipTo?.country || "Outside India"),
     isDomestic,
     sameState,

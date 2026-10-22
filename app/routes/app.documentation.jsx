@@ -395,7 +395,7 @@ function PagesTab() {
           points={[
             "Seller GSTIN, name, address and per-collection GST rates come from Settings → Invoices, never from Shopify's own tax settings.",
             "GST is worked out from inside the price the customer paid, so the invoice total always equals what they paid. The table lists the products (with any discount spread across them) and the breakup under it shows Items Subtotal, Discount (with the code), Shipping, Taxable Value, GST and Total.",
-            "Inside India: CGST + SGST when the buyer is in the seller's state, IGST for another state. Outside India the order is treated as an export, zero-rated under LUT (no GST charged), with the line “Supply meant for export under LUT without payment of IGST”. The Place of Supply (buyer's state, or country) is printed on the invoice.",
+            "Inside India: CGST + SGST when the buyer is in the seller's state, IGST for another state. Outside India the order is an export with payment of IGST: IGST is charged at the same rates and the invoice says “Export with payment of IGST”. The Place of Supply (buyer's state, or country) is printed on the invoice.",
             "The invoice number is your prefix plus the order's number (for example INV-1032). Sending an invoice again reuses the same number.",
             "Orders show 25 per page with Previous / Next and the total number of orders. Each order's Amount column shows the total with subtotal, GST and item count.",
             "Tick orders to Send invoices (up to 10 at a time) or Download PDFs. A row's “…” menu has Send / Resend invoice and Download PDF.",
@@ -727,8 +727,8 @@ function FaqTab() {
         click stops further cart reminders to that address. It does not change their Shopify marketing subscription.
       </FaqItem>
 
-      <FaqItem q="Why does an international order's invoice show no GST?">
-        Orders shipped outside India are treated as exports and zero-rated under LUT, the usual Indian rule, so no GST is charged and the invoice says so. Orders inside India show CGST + SGST (buyer in your state) or IGST (another state). If your accountant wants exports invoiced differently, tell your developer; the rule lives in one place.
+      <FaqItem q="How does an international order's invoice show GST?">
+        Orders shipped outside India are invoiced as exports with payment of IGST: IGST is charged at the same rates as any order, as part of the price the customer paid, and the invoice says “Export with payment of IGST”. Orders inside India show CGST + SGST (buyer in your state) or IGST (another state). If you later file an LUT and want exports invoiced without GST, tell your developer; the rule lives in one place.
       </FaqItem>
 
       <FaqItem q="Why is the invoice total different from the item price?">
