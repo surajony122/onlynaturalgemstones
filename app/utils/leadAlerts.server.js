@@ -201,7 +201,7 @@ export async function alertWishlistLead({ admin, shop, settings, leadId, email, 
     const mail = () =>
       teamCopy({
         buildExact: async () => (await import("./wishlist.server")).buildWishlistEmailForTeam(admin, String(email), list.map((p) => p.handle).filter(Boolean), list),
-        strip: { kicker: "New wishlist", title: String(email), rows, viewUrl, viewLabel: "View lead" },
+        strip: { kicker: "New wishlist", title: "A customer saved a wishlist", rows, viewUrl, viewLabel: "View lead" },
         plain,
       });
     return await notifyTeam({ shop, settings, kind: "wishlist", refId: String(email).toLowerCase(), dedupeMs: WISHLIST_REPEAT_MS, subject: "New wishlist: " + email, email: mail });

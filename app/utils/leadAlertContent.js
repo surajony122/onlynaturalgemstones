@@ -156,23 +156,24 @@ export function buildTeamStrip({ kicker, title, rows = [], viewUrl = "", viewLab
       const links = typeof v === "string" ? [] : v.links || [];
       const linkHtml = links.map((l) => ` <a href="${esc(l.href)}" style="color:${GOLD};text-decoration:underline;">${esc(l.label)}</a>`).join(" &middot;");
       return (
-        `<tr><td valign="top" style="padding:3px 10px 3px 0;width:120px;font-size:11px;color:#7b8590;text-transform:uppercase;letter-spacing:0.04em;">${esc(label)}</td>` +
-        `<td valign="top" style="padding:3px 0;font-size:13px;color:#2a2a2a;">${esc(text)}${linkHtml}</td></tr>`
+        `<tr><td valign="top" style="padding:8px 10px 8px 0;width:130px;font-size:11px;color:#7b8590;text-transform:uppercase;letter-spacing:0.04em;">${esc(label)}</td>` +
+        `<td valign="top" style="padding:8px 0;font-size:14px;color:#2a2a2a;">${esc(text)}${linkHtml}</td></tr>`
       );
     })
     .join("");
   const button = viewUrl
-    ? `<a href="${esc(viewUrl)}" style="display:inline-block;background:${GOLD};color:#ffffff;padding:10px 22px;border-radius:4px;font-size:13px;font-weight:bold;text-decoration:none;">${esc(viewLabel)}</a>`
+    ? `<a href="${esc(viewUrl)}" style="display:inline-block;background:${GOLD};color:#ffffff;padding:12px 28px;border-radius:4px;font-size:14px;font-weight:bold;text-decoration:none;">${esc(viewLabel)}</a>`
     : "";
   const html =
-    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f6f1e8;border-bottom:3px solid ${GOLD};"><tr><td align="center" style="padding:14px 12px;">` +
-    `<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;"><tr><td style="font-family:Arial,Helvetica,sans-serif;">` +
-    `<div style="font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:${GOLD};font-weight:bold;">${esc(kicker)} &middot; team copy</div>` +
-    `<div style="margin:5px 0 8px;font-size:17px;font-weight:bold;color:#2a2a2a;">${esc(title)}</div>` +
-    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rowHtml}</table>` +
-    (button ? `<div style="margin:12px 0 4px;">${button}</div>` : "") +
-    `<div style="margin:8px 0 0;font-size:11px;color:#7b8590;">Below is the exact email the customer receives.</div>` +
-    `</td></tr></table></td></tr></table>`;
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;"><tr><td align="center" style="padding:18px 12px 6px;">` +
+    `<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;border:1px solid #e8e1d3;border-top:4px solid ${GOLD};border-radius:6px;"><tr><td style="padding:18px 22px;font-family:Arial,Helvetica,sans-serif;">` +
+    `<div style="font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:${GOLD};font-weight:bold;">Team alert &middot; ${esc(kicker)}</div>` +
+    `<div style="margin:6px 0 12px;font-size:20px;line-height:1.3;font-weight:bold;color:#2a2a2a;">${esc(title)}</div>` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #eee7da;">${rowHtml}</table>` +
+    (button ? `<div style="margin:16px 0 0;">${button}</div>` : "") +
+    `</td></tr></table>` +
+    `<div style="max-width:600px;margin:16px auto 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:#7b8590;text-align:center;border-bottom:1px dashed #d8cfbd;padding-bottom:10px;">&#9660; The email the customer receives &#9660;</div>` +
+    `</td></tr></table>`;
 
   const lines = [kicker + " (team copy)", title, ""];
   for (const [label, v] of shown) lines.push(label + ": " + (typeof v === "string" ? v : v.text));
