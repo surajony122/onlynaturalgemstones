@@ -6,7 +6,7 @@
  * dropdown and a "..." row-actions menu (Send Now / Retry WhatsApp / Delete).
  */
 import { useEffect, useState, useMemo } from "react";
-import { useFetcher, useLoaderData, useRevalidator } from "react-router";
+import { Link, useFetcher, useLoaderData, useRevalidator } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticatePage } from "../utils/teamAccess.server";
 import prisma from "../db.server";
@@ -251,6 +251,8 @@ export const action = async ({ request }) => {
 
 export const loader = async ({ request }) => {
   const { session, admin } = await authenticatePage(request, "astro");
+  // ?lead=<id> is the "View lead" button in the team alert email: show just that lead.
+  const focusLeadId = new URL(request.url).searchParams.get("lead") || null;
 
   const leads = await prisma.astroLead.findMany({
     orderBy: { createdAt: "desc" },
@@ -280,6 +282,7 @@ export const loader = async ({ request }) => {
 
   return {
     whatsappQueue,
+    focusLeadId,
     leads: leads.map((l) => ({
       ...l,
       createdAt: l.createdAt.toISOString(),
@@ -723,7 +726,9 @@ function matchesLeadStatus(lead, filters) {
 }
 
 export default function AstroLeadsPage() {
-  const { leads, whatsappQueue } = useLoaderData();
+  const { leads: allLeads, whatsappQueue, focusLeadId } = useLoaderData();
+  const focusedLead = !!focusLeadId && allLeads.some((l) => l.id === focusLeadId);
+  const leads = focusedLead ? allLeads.filter((l) => l.id === focusLeadId) : allLeads;
   const revalidator = useRevalidator();
   const toast = useToast();
 
@@ -839,6 +844,13 @@ export default function AstroLeadsPage() {
           </button>
         }
       />
+
+      {focusedLead && (
+        <div style={{ margin: "0 0 14px", padding: "10px 14px", border: "1px solid " + brand.border, borderRadius: "10px", background: "#fff", fontSize: "13px", color: brand.body, display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
+          <span>Showing the lead from your alert email.</span>
+          <Link to="." style={{ color: brand.accent, fontWeight: 600 }}>Show all leads</Link>
+        </div>
+      )}
 
       <WhatsAppQueueSection whatsappQueue={whatsappQueue} />
 

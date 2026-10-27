@@ -30,6 +30,7 @@ import { mirrorLeadToSheet, mirrorEmailEventToSheet } from "./googleSheets.serve
 import { getAppSettings } from "./appSettings.server";
 import { sendGemRecommendationWhatsApp } from "./interakt.server";
 import { getGemStoneOverrides, normaliseGemKey, mantraForPlanet } from "./gemStoneDetails.server";
+import { alertGemLead } from "./leadAlerts.server";
 
 // The storefront's real customer-facing domain (not the *.myshopify.com
 // admin domain) — used to build the results-page link embedded in the
@@ -299,6 +300,15 @@ export async function handleAstroAdviceSubmission(admin, shop, data) {
       } catch (updateErr) {
         console.error("[astroAdvice] failed to backfill sync/email status on lead row:", updateErr);
       }
+    }
+
+    // Tell the team by email (only if switched on in Settings -> Team lead alerts). Done last so the alert
+    // can say how the customer's own email / WhatsApp went. It never throws and never delays the customer:
+    // this whole function already runs in the background.
+    try {
+      await alertGemLead({ admin, shop, settings, data, birthDetails, recommendation, trackingId, emailSendStatus, whatsappSendStatus, astroError });
+    } catch (alertErr) {
+      console.error("[astroAdvice] team lead alert failed:", alertErr);
     }
 
     return { shopifySyncStatus, emailSendStatus, whatsappSendStatus };
@@ -1180,6 +1190,38 @@ export async function sendGemRecommendationEmail(admin, settings, data, birthDet
   }
 
   return "OK: sent to " + data.email;
+}
+
+/**
+ * The same email the customer gets (same template, stone cards and footer), rebuilt for the team's copy:
+ * no open-tracking pixel and no tracked links, so the team opening it never counts as the customer
+ * opening or clicking. Returns { subject, html }. Used by leadAlerts.server.js.
+ */
+export async function buildGemRecommendationEmailForTeam(admin, settings, data, birthDetails, recommendation) {
+  const resultsPageUrl = buildResultsPageUrl(data, birthDetails, recommendation);
+  const firstName = (data.name || "").split(" ")[0] || "there";
+  const life = recommendation.life || {};
+  const shopInfo = await getShopFooterInfo(admin);
+  const collectionHandles = [recommendation.life, recommendation.benefic, recommendation.lucky].map((s) => s && s.collection);
+  const collectionImages = await getCollectionImages(admin, collectionHandles);
+  const trackingCtx = { appUrl: "", trackingId: "" };
+  const stoneCardsHtml =
+    stoneCard("Life", life, collectionImages, trackingCtx) +
+    stoneCard("Benefic", recommendation.benefic || {}, collectionImages, trackingCtx) +
+    stoneCard("Lucky", recommendation.lucky || {}, collectionImages, trackingCtx);
+  const rawVars = {
+    customer_first_name: firstName,
+    results_url: resultsPageUrl,
+    shop_name: shopInfo.name,
+    shop_url: shopInfo.url,
+    shop_email: shopInfo.email,
+    shop_logo_url: shopInfo.logoUrl,
+  };
+  const htmlVars = Object.fromEntries(Object.entries(rawVars).map(([key, value]) => [key, esc(value)]));
+  let html = getGemRecommendationEmailTemplate(settings).split("{{stone_cards_html}}").join(stoneCardsHtml).split("{{ stone_cards_html }}").join(stoneCardsHtml);
+  html = renderGemRecommendationEmailTemplate(html, htmlVars);
+  const subject = renderGemRecommendationEmailTemplate(getGemRecommendationEmailSubject(settings), rawVars);
+  return { subject, html };
 }
 
 /**

@@ -799,6 +799,32 @@ export function buildEmailVars(checkout, shopInfo) {
 }
 
 /**
+ * The same reminder the customer would get, rebuilt for the team's copy. The unsubscribe link points at the
+ * shop instead of the customer's real unsubscribe link, so a team member clicking it can't opt the customer
+ * out. Returns { subject, html }. Used by leadAlerts.server.js.
+ */
+export async function buildAbandonedEmailForTeam(admin, settings, checkout) {
+  let info;
+  try {
+    info = await getShopFooterInfo(admin);
+  } catch {
+    info = {};
+  }
+  const shopInfo = {
+    name: info.name || "Only Natural Gemstones",
+    url: info.url || "https://onlynaturalgemstones.com",
+    logoUrl: info.logoUrl || FALLBACK_LOGO_URL,
+    email: info.email || "info@onlynaturalgemstones.com",
+  };
+  const { raw, html: htmlVars } = buildEmailVars(checkout, shopInfo);
+  raw.unsubscribe_url = shopInfo.url;
+  htmlVars.unsubscribe_url = esc(shopInfo.url);
+  const html = renderAbandonedTemplate(getAbandonedCheckoutEmailTemplate(settings), htmlVars);
+  const subject = renderAbandonedTemplate(getAbandonedCheckoutEmailSubject(settings), raw);
+  return { subject, html };
+}
+
+/**
  * Sends the reminder for one (normalised) checkout. Used by the sweep, by
  * "Send a test email" and by Retry. Returns "OK: sent to ..." or an
  * explanation ("skipped: ..." / throws on a mail error).

@@ -7,7 +7,7 @@
  * menu (Send Now / Retry WhatsApp / Delete).
  */
 import { useEffect, useState, useMemo } from "react";
-import { useFetcher, useLoaderData, useRevalidator } from "react-router";
+import { Link, useFetcher, useLoaderData, useRevalidator } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticatePage } from "../utils/teamAccess.server";
 import prisma from "../db.server";
@@ -225,6 +225,8 @@ export const action = async ({ request }) => {
 export const loader = async ({ request }) => {
   const { session, admin } = await authenticatePage(request, "wishlist");
   const settings = await getAppSettings(session.shop);
+  // ?lead=<id> is the "View lead" button in the team alert email: show just that lead.
+  const focusLeadId = new URL(request.url).searchParams.get("lead") || null;
 
   const leads = await prisma.wishlistLead.findMany({
     orderBy: { createdAt: "desc" },
@@ -313,6 +315,7 @@ export const loader = async ({ request }) => {
   return {
     serverNow: Date.now(),
     cronEveryMs: CRON_EVERY_MS,
+    focusLeadId,
     leads: leads.map((l) => {
       const created = l.createdAt.getTime();
       const dueAt = wishlistDueAtMs(l.createdAt, settings);
@@ -666,7 +669,9 @@ function matchesLeadStatus(lead, filters) {
 }
 
 export default function WishlistLeadsPage() {
-  const { leads, serverNow, cronEveryMs } = useLoaderData();
+  const { leads: allLeads, serverNow, cronEveryMs, focusLeadId } = useLoaderData();
+  const focusedLead = !!focusLeadId && allLeads.some((l) => l.id === focusLeadId);
+  const leads = focusedLead ? allLeads.filter((l) => l.id === focusLeadId) : allLeads;
   const now = useServerNow(serverNow);
   const fetcher = useFetcher();
   const toast = useToast();
@@ -838,6 +843,13 @@ export default function WishlistLeadsPage() {
           </>
         }
       />
+
+      {focusedLead && (
+        <div style={{ margin: "0 0 14px", padding: "10px 14px", border: "1px solid " + brand.border, borderRadius: "10px", background: "#fff", fontSize: "13px", color: brand.body, display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
+          <span>Showing the lead from your alert email.</span>
+          <Link to="." style={{ color: brand.accent, fontWeight: 600 }}>Show all leads</Link>
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center", marginBottom: "14px" }}>
         <input type="text" value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Search email, phone, SKU, or item…" style={inputStyle} />

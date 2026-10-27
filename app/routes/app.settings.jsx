@@ -46,6 +46,8 @@ import {
   sendRefundProcessedWhatsApp,
 } from "../utils/interakt.server";
 import { sendTestEmail } from "../utils/testEmails.server";
+import { sendTestLeadAlert, getRecentLeadAlerts } from "../utils/leadAlerts.server";
+import { parseRecipients } from "../utils/leadAlertContent";
 import { checkGmail, checkGoogleSheets, checkInterakt, checkGooglePlaces } from "../utils/serviceHealth.server";
 import { getOrderProcessingEmailTemplate, ORDER_PROCESSING_EMAIL_PLACEHOLDERS, getOrderProcessingEmailSubject } from "../utils/orderProcessingEmail.server";
 import {
@@ -138,6 +140,12 @@ export const loader = async ({ request }) => {
     orderProcessingEmailPlaceholders: ORDER_PROCESSING_EMAIL_PLACEHOLDERS,
     // Abandoned checkout reminder email. Switched off until "true". Blank subject/template mean "use the
     // built-in default", and the editor starts from the real default text, same as the other emails.
+    // Team lead alerts (email): who gets them, and which events. Everything is off until switched on.
+    leadAlertEmails: row?.leadAlertEmails || "",
+    leadAlertAstro: row?.leadAlertAstro || "",
+    leadAlertWishlist: row?.leadAlertWishlist || "",
+    leadAlertCheckout: row?.leadAlertCheckout || "",
+    leadAlertRecent: (await getRecentLeadAlerts(session.shop, 10)).map((r) => ({ ...r, createdAt: new Date(r.createdAt).toISOString() })),
     abandonedCheckoutEnabled: row?.abandonedCheckoutEnabled || "",
     abandonedCheckoutDelayMinutes: row?.abandonedCheckoutDelayMinutes || "",
     abandonedDefaultDelay: DEFAULT_DELAY_MINUTES,
@@ -424,6 +432,33 @@ export const action = async ({ request }) => {
       orderProcessingEmailSubject: val("orderProcessingEmailSubject"),
     });
     return { intent, ok: true };
+  }
+
+  // Team lead alerts (email): who to tell, and for which events. Checks the addresses before saving anything.
+  if (intent === "saveLeadAlerts") {
+    const previous = await getAppSettings(session.shop);
+    const parsed = parseRecipients(val("leadAlertEmails"));
+    if (parsed.invalid.length) {
+      return { intent, ok: false, error: "These do not look like email addresses: " + parsed.invalid.join(", ") };
+    }
+    if (parsed.tooMany) return { intent, ok: false, error: "Please use at most 10 team email addresses." };
+    const checkoutOn = val("leadAlertCheckout") === "true";
+    const checkoutWasOn = String(previous.leadAlertCheckout || "") === "true";
+    await saveAppSettings(session.shop, {
+      leadAlertEmails: parsed.valid.join(", "),
+      leadAlertAstro: val("leadAlertAstro") === "true" ? "true" : "false",
+      leadAlertWishlist: val("leadAlertWishlist") === "true" ? "true" : "false",
+      leadAlertCheckout: checkoutOn ? "true" : "false",
+      // Remember WHEN the checkout alert was switched on: only checkouts started after this are alerted.
+      ...(checkoutOn && !checkoutWasOn ? { leadAlertCheckoutSince: new Date().toISOString() } : {}),
+    });
+    return { intent, ok: true };
+  }
+
+  // Sends one clearly-marked sample alert to the saved team addresses (works even while the switches are off).
+  if (intent === "sendTestLeadAlert") {
+    const status = await sendTestLeadAlert(session.shop);
+    return { intent, ok: status === "sent", status: status === "sent" ? "Sent. Check the team inbox (and spam)." : status };
   }
 
   if (intent === "saveAbandonedCheckoutEmail") {
@@ -1177,6 +1212,21 @@ export default function SettingsPage() {
   const orderProcessingWhatsapp = useSectionSave("saveOrderProcessingWhatsapp", toast);
   const orderProcessingEmail = useSectionSave("saveOrderProcessingEmail", toast);
   const abandonedEmail = useSectionSave("saveAbandonedCheckoutEmail", toast);
+  // Team lead alerts (email): who is told, and about what.
+  const [laEmails, setLaEmails] = useState(data.leadAlertEmails || "");
+  const [laAstro, setLaAstro] = useState(data.leadAlertAstro === "true");
+  const [laWishlist, setLaWishlist] = useState(data.leadAlertWishlist === "true");
+  const [laCheckout, setLaCheckout] = useState(data.leadAlertCheckout === "true");
+  const leadAlerts = useSectionSave("saveLeadAlerts", toast);
+  const testLeadAlertFetcher = useFetcher();
+  const isSendingLeadTest = testLeadAlertFetcher.state !== "idle";
+  const saveLeadAlerts = () =>
+    leadAlerts.save({
+      leadAlertEmails: laEmails,
+      leadAlertAstro: laAstro ? "true" : "false",
+      leadAlertWishlist: laWishlist ? "true" : "false",
+      leadAlertCheckout: laCheckout ? "true" : "false",
+    });
   const refundWhatsapp = useSectionSave("saveRefundWhatsapp", toast);
   const gstInvoice = useSectionSave("saveGstInvoice", toast);
   const wishlistReminder = useSectionSave("saveWishlistReminder", toast);
@@ -1865,6 +1915,79 @@ export default function SettingsPage() {
               </div>
             )}
             <SaveButton isSaving={orderProcessingEmail.isSaving} onClick={saveOrderProcessingEmail} />
+          </TemplateCard>
+
+          <TemplateCard icon={<Icon name="bell" size={15} color={brand.accent} />} title="Team lead alerts — Email">
+            <p style={{ ...abNote, marginTop: 0 }}>
+              Emails your own team when something needs following up. It sends from your Gmail (Settings → Connections), like the other emails, and
+              customers never see it. Everything is off until you tick it and press Save.
+            </p>
+
+            <label style={labelStyle} htmlFor="laEmails">Team email addresses</label>
+            <textarea
+              id="laEmails"
+              style={{ ...fieldStyle, minHeight: "72px", fontFamily: "inherit", resize: "vertical" }}
+              value={laEmails}
+              onChange={(e) => setLaEmails(e.target.value)}
+              placeholder="sales@example.com, support@example.com"
+            />
+            <p style={abNote}>Separate addresses with commas or new lines (up to 10). Everyone listed gets every alert you switch on below.</p>
+
+            <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: "9px", cursor: "pointer" }}>
+              <input type="checkbox" checked={laAstro} onChange={(e) => setLaAstro(e.target.checked)} style={{ width: "16px", height: "16px" }} />
+              Gem recommendation leads
+            </label>
+            <p style={abNote}>One email each time someone gets a recommendation: their contact details, birth details, the three stones, and whether the customer's own email and WhatsApp went out.</p>
+
+            <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: "9px", cursor: "pointer" }}>
+              <input type="checkbox" checked={laWishlist} onChange={(e) => setLaWishlist(e.target.checked)} style={{ width: "16px", height: "16px" }} />
+              Wishlist leads
+            </label>
+            <p style={abNote}>One email when a customer saves a wishlist, with the items. A customer gets at most one alert every 7 days, however often they change their wishlist.</p>
+
+            <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: "9px", cursor: "pointer" }}>
+              <input type="checkbox" checked={laCheckout} onChange={(e) => setLaCheckout(e.target.checked)} style={{ width: "16px", height: "16px" }} />
+              Abandoned checkouts
+            </label>
+            <p style={abNote}>
+              One email per abandoned checkout, once it has been idle for the same time as the customer reminder (default 1 hour), with the cart, the customer and a link to their checkout.
+              It does not depend on the customer reminder being on, and it also covers customers who did not agree to marketing emails (it is for your own follow-up).
+              Only checkouts started <strong>after</strong> you switch it on are alerted.
+            </p>
+
+            <SaveButton isSaving={leadAlerts.isSaving} onClick={saveLeadAlerts} />
+
+            <div style={{ marginTop: "18px", paddingTop: "14px", borderTop: `1px solid ${brand.divider}` }}>
+              <div style={{ fontSize: "13px", fontWeight: 600, color: brand.ink, marginBottom: "4px" }}>Send a test alert</div>
+              <p style={abNote}>Sends one clearly-marked sample email to the addresses you have <strong>saved</strong> above. Save first if you just changed them. It works even while the switches are off.</p>
+              <button
+                type="button"
+                disabled={isSendingLeadTest || !data.leadAlertEmails}
+                onClick={() => testLeadAlertFetcher.submit({ intent: "sendTestLeadAlert" }, { method: "POST" })}
+                style={{ ...secondaryBtn, padding: "9px 16px", fontSize: "12.5px", opacity: isSendingLeadTest || !data.leadAlertEmails ? 0.6 : 1 }}
+              >
+                {isSendingLeadTest ? "Sending…" : "Send a test alert"}
+              </button>
+              <TestResult fetcherData={testLeadAlertFetcher.data} intent="sendTestLeadAlert" />
+            </div>
+
+            {data.leadAlertRecent.length > 0 && (
+              <div style={{ marginTop: "18px", paddingTop: "14px", borderTop: `1px solid ${brand.divider}` }}>
+                <div style={{ fontSize: "13px", fontWeight: 600, color: brand.ink, marginBottom: "8px" }}>Latest alerts</div>
+                {data.leadAlertRecent.map((r) => (
+                  <div key={r.id} style={{ display: "flex", gap: "10px", fontSize: "12px", padding: "6px 0", borderBottom: `1px solid ${brand.divider}`, flexWrap: "wrap" }}>
+                    <span style={{ color: brand.muted, minWidth: "130px" }}>
+                      {new Date(r.createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true })}
+                    </span>
+                    <span style={{ minWidth: "130px", color: brand.body }}>
+                      {{ astro: "Gem recommendation", wishlist: "Wishlist", checkout: "Abandoned checkout", test: "Test" }[r.kind] || r.kind}
+                    </span>
+                    <span style={{ flex: 1, minWidth: "160px", color: brand.body }}>{r.subject || ""}</span>
+                    <span style={{ color: r.status === "sent" ? brand.success : String(r.status).startsWith("failed") ? brand.danger : brand.muted }}>{r.status}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </TemplateCard>
 
           <TemplateCard icon={<Icon name="cart" size={15} color={brand.accent} />} title="Abandoned Checkout — Email">

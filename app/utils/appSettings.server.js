@@ -29,6 +29,12 @@ const FIELDS = [
   "orderProcessingEmailSubject",
   "abandonedCheckoutEnabled",
   "abandonedCheckoutEnabledSince",
+  // Team lead alerts (email) -- see leadAlerts.server.js. No env-var fallback: all off until Settings says so.
+  "leadAlertEmails",
+  "leadAlertAstro",
+  "leadAlertWishlist",
+  "leadAlertCheckout",
+  "leadAlertCheckoutSince",
   "abandonedCheckoutDelayMinutes",
   "abandonedCheckoutEmailSubject",
   "abandonedCheckoutEmailTemplate",

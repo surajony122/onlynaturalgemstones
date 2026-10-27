@@ -23,6 +23,8 @@ import {
   DEFAULT_WISHLIST_EMAIL_INTERVAL_HOURS,
 } from "./appSettings.server";
 
+import { alertWishlistLead } from "./leadAlerts.server";
+
 import {
   mirrorEmailEventToSheet,
   mirrorWishlistLeadToSheet,
@@ -179,6 +181,21 @@ export async function handleWishlistSync(
 
   const settings =
     await getAppSettings(shop);
+
+
+  // Tell the team by email (only if switched on in Settings -> Team lead alerts): once per customer per
+  // 7 days, never blocks this request and never throws.
+  alertWishlistLead({
+    admin,
+    shop,
+    settings,
+    leadId: lead.id,
+    email,
+    phone: data.phone,
+    products,
+  }).catch((err) =>
+    console.error("[wishlist] team alert failed:", err)
+  );
 
 
   const mirrorPromise =
@@ -2279,6 +2296,29 @@ function buildWishlistEmailHtml({
 /**
  * Send wishlist email.
  */
+/**
+ * The same wishlist email the customer gets, rebuilt for the team's copy: no open-tracking pixel and no
+ * tracked links (so the team opening it never counts as the customer). Returns { subject, html }.
+ * Used by leadAlerts.server.js.
+ */
+export async function buildWishlistEmailForTeam(admin, email, handles, products) {
+  const shopInfo = await getShopFooterInfo(admin);
+  shopInfo._appUrl = "";
+  shopInfo._trackingId = "";
+  const viewAllUrl = "https://" + STORE_DOMAIN + "/?shared_wishlist=" + handles.map(encodeURIComponent).join(",");
+  const storeUrl = "https://" + STORE_DOMAIN;
+  const html = buildWishlistEmailHtml({
+    firstName: email.split("@")[0],
+    products,
+    shopInfo,
+    pixelUrl: null,
+    viewAllUrl,
+    storeUrl,
+  });
+  const subject = products.length === 1 ? "You saved something special" : "Your wishlist is waiting for you";
+  return { subject, html };
+}
+
 export async function sendWishlistEmail(
   admin,
   settings,

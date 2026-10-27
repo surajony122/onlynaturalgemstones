@@ -296,6 +296,15 @@ model AppSettings {
   shop                           String   @unique
   gmailUser                      String?
   gmailAppPassword               String?
+  // Team lead alerts (email only, see utils/leadAlerts.server.js). leadAlertEmails is a list of team
+  // addresses (comma / semicolon / new-line separated). The three switches are "true"/"false" and
+  // everything is OFF until the owner switches it on in Settings. leadAlertCheckoutSince is the
+  // ISO time the abandoned-checkout alert was switched on: older checkouts are never alerted.
+  leadAlertEmails                String?
+  leadAlertAstro                 String?
+  leadAlertWishlist              String?
+  leadAlertCheckout              String?
+  leadAlertCheckoutSince         String?
   googleServiceAccountEmail      String?
   googleServiceAccountPrivateKey String?
   astroLeadsSpreadsheetId        String?
@@ -868,4 +877,21 @@ model TeamSettings {
   shop      String   @id
   enforce   Boolean  @default(false)
   updatedAt DateTime @updatedAt
+}
+
+// One row per team alert email the app tried to send (gem recommendation lead, wishlist,
+// abandoned checkout, or a test). Doubles as the "already alerted" memory so nobody is alerted
+// twice for the same thing, and as the log shown under Settings -> Team lead alerts.
+model LeadAlert {
+  id         String   @id @default(cuid())
+  shop       String?
+  kind       String // astro / wishlist / checkout / test
+  refId      String // what it was about: lead tracking id, customer email, or checkout id
+  recipients String
+  subject    String?
+  status     String // sent / failed: ... / skipped: ...
+  createdAt  DateTime @default(now())
+
+  @@index([kind, refId])
+  @@index([createdAt])
 }

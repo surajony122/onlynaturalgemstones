@@ -499,6 +499,7 @@ const SETTINGS_TAB_DOCS = [
       ["Send a test email", "Sends a real sample (wishlist, order processing or astro advice) to an address you type.", "Email"],
       ["Gem Recommendation — Email", "Subject and layout of the recommendation email.", "Email"],
       ["Order Processing — Email", "Subject and layout of the “order being prepared” email.", "Email"],
+      ["Team lead alerts — Email", "An email to your own team (up to 10 addresses) when a customer gets a gem recommendation, saves a wishlist, or leaves a checkout without paying. Each one is the exact email that service sends to the customer, with a small team box on top (contact details, delivery status) and a “View lead” button that opens that lead inside this app (abandoned checkouts open the Abandoned cart emails list). Each event has its own switch (all off until you turn them on). A wishlist alerts once per customer per 7 days; each checkout alerts once, only for checkouts started after you switch it on, using the same idle time as cart reminders. It also covers customers who did not agree to marketing, since it is for your own follow-up. At most 40 alerts an hour. “Send test alert” checks your Gmail connection; the latest alerts are listed underneath.", "Email"],
       ["Abandoned Checkout — Email", "Switch cart reminders on or off, choose how long a checkout must be idle, edit the subject and layout, preview it, and see who would get an email right now.", "Email"],
     ],
   },
@@ -581,7 +582,7 @@ function AutomationsTab() {
 
       <Block icon="clock" title="Scheduled jobs" hint="A free outside scheduler (cron-job.org) calls these addresses. Each needs your CRON_SECRET after ?secret=.">
         <DocTable head={["Address", "What it does", "How often"]} rows={[
-          ["/cron/order-processing-catchup", "Finds orders whose “being prepared” message was missed, and also runs the abandoned-checkout sweep.", "Every 5 minutes"],
+          ["/cron/order-processing-catchup", "Finds orders whose “being prepared” message was missed, and also runs the abandoned-checkout reminder sweep and the team alert for abandoned checkouts.", "Every 5 minutes"],
           ["/cron/wishlist-email", "Sends wishlist reminders that have come due (a backup to the app's own timer).", "Every 5 minutes"],
           ["/cron/whatsapp-queue", "Sends the optional follow-up WhatsApp to recommendation leads once your delay has passed.", "Every 30 minutes (only if follow-ups are on)"],
           ["/cron/health-check", "Runs the System Health checks and emails you a plain summary if something is wrong.", "Once a day"],
