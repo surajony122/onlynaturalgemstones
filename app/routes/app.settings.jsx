@@ -1984,6 +1984,10 @@ export default function SettingsPage() {
                     </span>
                     <span style={{ flex: 1, minWidth: "160px", color: brand.body }}>{r.subject || ""}</span>
                     <span style={{ color: r.status === "sent" ? brand.success : String(r.status).startsWith("failed") ? brand.danger : brand.muted }}>{r.status}</span>
+                    <span style={{ flexBasis: "100%", paddingLeft: "140px", color: brand.muted }}>
+                      {(r.openedBy || []).length ? "Opened by " + r.openedBy.join(", ") : r.status === "sent" ? "Not opened yet" : ""}
+                      {(r.clickedBy || []).length ? " · Clicked View lead: " + r.clickedBy.join(", ") : ""}
+                    </span>
                   </div>
                 ))}
               </div>
