@@ -309,22 +309,42 @@ export async function runAbandonedCheckoutTeamAlerts({ admin, shop, now = new Da
 // ------------------------------------------------------------------ Settings page helpers
 
 /** The Settings test button: a clearly-marked sample alert to every saved team address. */
-export async function sendTestLeadAlert(shop) {
+export async function sendTestLeadAlert(shop, admin) {
   const settings = await getAppSettings(shop);
-  const mail = buildAlertEmail({
+  const viewUrl = adminAppUrl(shop, "astro-leads");
+  const sampleRows = [
+    ["Name", "Test Customer"],
+    ["Phone", phoneValue("+91 98765 43210")],
+    ["Email", emailValue("test.customer@example.com")],
+    ["Ascendant", "Leo"],
+    ["Life stone", "Blue Sapphire (for Saturn)"],
+    ["Customer email", "Sent"],
+  ];
+  // A real sample in the same layout as a live alert: the customer's recommendation email under the team box.
+  const sample = () =>
+    teamCopy({
+      buildExact: async () =>
+        (await import("./astroAdvice.server")).buildGemRecommendationEmailForTeam(
+          admin,
+          settings,
+          { name: "Test Customer", email: "test.customer@example.com", phone: "+91 98765 43210", dob: "1990-08-15", tob: "14:30", placeOfBirth: "New Delhi" },
+          { ascendant: "Leo", moonsign: "Cancer" },
+          {
+            life: { gem: "Blue Sapphire", planet: "Saturn", collection: "blue-sapphire", tagline: "for Good Fortune, Wealth & Success" },
+            benefic: { gem: "Emerald", planet: "Mercury", collection: "emerald", tagline: "for Health, Success & Growth" },
+            lucky: { gem: "Diamond", planet: "Venus", collection: "diamond", tagline: "for Luxury, Love & Elegance" },
+          }
+        ),
+      strip: { kicker: "TEST: new gem recommendation lead", title: "Test Customer", rows: sampleRows, viewUrl, viewLabel: "View lead" },
+      plain: null,
+    });
+  const fallback = () => buildAlertEmail({
     heading: "TEST: team lead alert",
-    intro: "This is a test from Settings -> Team lead alerts. Real alerts look like this, with the lead's details filled in.",
-    rows: [
-      ["Name", "Test Customer"],
-      ["Phone", phoneValue("+91 98765 43210")],
-      ["Email", emailValue("test.customer@example.com")],
-      ["Ascendant", "Leo"],
-      ["Life stone", "Ruby (for Sun)"],
-      ["Customer email", "Sent"],
-    ],
-    link: { label: "View lead", href: adminAppUrl(shop, "astro-leads") },
-    footerNote: "If you can read this, your team address works and the View lead button opens the app. Nothing else was sent.",
+    intro: "This is a test from Settings -> Team lead alerts.",
+    rows: sampleRows,
+    link: { label: "View lead", href: viewUrl },
   });
+  const mail = admin ? async () => { try { return await sample(); } catch { return fallback(); } } : fallback();
   return notifyTeam({ shop, settings, kind: "test", refId: "test-" + Date.now(), subject: "TEST: team lead alert", email: mail, force: true });
 }
 

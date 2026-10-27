@@ -457,7 +457,7 @@ export const action = async ({ request }) => {
 
   // Sends one clearly-marked sample alert to the saved team addresses (works even while the switches are off).
   if (intent === "sendTestLeadAlert") {
-    const status = await sendTestLeadAlert(session.shop);
+    const status = await sendTestLeadAlert(session.shop, admin);
     return { intent, ok: status === "sent", status: status === "sent" ? "Sent. Check the team inbox (and spam)." : status };
   }
 
