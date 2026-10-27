@@ -12,6 +12,7 @@ import { authenticatePage } from "../utils/teamAccess.server";
 import prisma from "../db.server";
 import { resendAstroLeadEmail, sendWhatsAppForLead } from "../utils/astroAdvice.server";
 import { processWhatsAppQueue, getWhatsAppQueueSummary } from "../utils/whatsappQueue.server";
+import { getTeamMailTracking } from "../utils/leadAlerts.server";
 import { getAppSettings } from "../utils/appSettings.server";
 import { leadNeedsRetry } from "../utils/retryRules";
 import BulkRetryBar from "../components/bulk-retry";
@@ -280,6 +281,8 @@ export const loader = async ({ request }) => {
     }
   }
 
+  const teamMail = await getTeamMailTracking("astro", trackingIds);
+
   return {
     whatsappQueue,
     focusLeadId,
@@ -287,6 +290,7 @@ export const loader = async ({ request }) => {
       ...l,
       createdAt: l.createdAt.toISOString(),
       emailStatus: eventsByTrackingId[l.trackingId] || { sent: 0, opened: 0, clicked: 0, clickedLinks: [] },
+      teamMail: (teamMail.get(l.trackingId) || [])[0] || null,
     })),
   };
 };
@@ -602,6 +606,14 @@ function LeadRow({ lead, selected, onToggleSelect }) {
             ))
           : "—"}
         </div>
+        {lead.teamMail && (
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px", marginTop: "7px" }} title={"Team alert email: " + (lead.teamMail.openedBy.length ? "opened by " + lead.teamMail.openedBy.join(", ") : "not opened yet") + (lead.teamMail.clickedBy.length ? "; View lead clicked by " + lead.teamMail.clickedBy.join(", ") : "")}>
+            <span style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: brand.faint, minWidth: "52px" }}>Team</span>
+            <Pill label="Alerted" active color={brand.success} />
+            <Pill label={"Opened" + (lead.teamMail.openedBy.length ? " (" + lead.teamMail.openedBy.map((a) => a.split("@")[0]).join(", ") + ")" : "")} active={lead.teamMail.openedBy.length > 0} color={brand.accent} />
+            <Pill label={"Viewed lead" + (lead.teamMail.clickedBy.length ? " (" + lead.teamMail.clickedBy.map((a) => a.split("@")[0]).join(", ") + ")" : "")} active={lead.teamMail.clickedBy.length > 0} color={brand.accent} />
+          </div>
+        )}
       </td>
       <td style={{ ...tdStyle, minWidth: "90px", textAlign: "right" }}>
         {confirming ? (

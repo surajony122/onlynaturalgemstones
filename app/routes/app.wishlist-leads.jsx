@@ -12,6 +12,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticatePage } from "../utils/teamAccess.server";
 import prisma from "../db.server";
 import { processDueWishlistEmails, resendWishlistLeadEmail, resendWishlistWhatsapp, wishlistDueAtMs } from "../utils/wishlist.server";
+import { getTeamMailTracking } from "../utils/leadAlerts.server";
 import { getAppSettings } from "../utils/appSettings.server";
 import { leadNeedsRetry } from "../utils/retryRules";
 import BulkRetryBar from "../components/bulk-retry";
@@ -312,6 +313,17 @@ export const loader = async ({ request }) => {
     if (!l.emailSendStatus) latestPendingIds.add(l.id);
   }
 
+  // Team alert email per customer (sent once per customer per 7 days): shown on the newest lead saved at or before the alert.
+  const teamMail = await getTeamMailTracking("wishlist", [...new Set(leads.map((l) => String(l.email || "").toLowerCase()).filter(Boolean))]);
+  const teamMailByLead = new Map();
+  for (const [email, alerts] of teamMail) {
+    for (const a of alerts) {
+      const at = new Date(a.createdAt).getTime() + 1000;
+      const trigger = leads.filter((l) => String(l.email || "").toLowerCase() === email && l.createdAt.getTime() <= at).sort((x, y) => y.createdAt - x.createdAt)[0];
+      if (trigger && !teamMailByLead.has(trigger.id)) teamMailByLead.set(trigger.id, a);
+    }
+  }
+
   return {
     serverNow: Date.now(),
     cronEveryMs: CRON_EVERY_MS,
@@ -333,6 +345,7 @@ export const loader = async ({ request }) => {
       productHandles: Array.isArray(l.productHandles) ? l.productHandles : [],
       products,
       emailStatus: eventsByTrackingId[l.trackingId] || { sent: 0, opened: 0, clicked: 0, clickedLinks: [] },
+      teamMail: teamMailByLead.get(l.id) || null,
       };
     }),
   };
@@ -584,6 +597,14 @@ function LeadRow({ lead, selected, onToggleSelect, now }) {
             ))
           : "—"}
         </div>
+        {lead.teamMail && (
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px", marginTop: "7px" }} title={"Team alert email: " + (lead.teamMail.openedBy.length ? "opened by " + lead.teamMail.openedBy.join(", ") : "not opened yet") + (lead.teamMail.clickedBy.length ? "; View lead clicked by " + lead.teamMail.clickedBy.join(", ") : "")}>
+            <span style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: brand.faint, minWidth: "52px" }}>Team</span>
+            <Pill label="Alerted" active color={brand.success} />
+            <Pill label={"Opened" + (lead.teamMail.openedBy.length ? " (" + lead.teamMail.openedBy.map((a) => a.split("@")[0]).join(", ") + ")" : "")} active={lead.teamMail.openedBy.length > 0} color={brand.accent} />
+            <Pill label={"Viewed lead" + (lead.teamMail.clickedBy.length ? " (" + lead.teamMail.clickedBy.map((a) => a.split("@")[0]).join(", ") + ")" : "")} active={lead.teamMail.clickedBy.length > 0} color={brand.accent} />
+          </div>
+        )}
       </td>
       <td style={{ ...tdStyle, minWidth: "90px", textAlign: "right" }}>
         {confirming ? (

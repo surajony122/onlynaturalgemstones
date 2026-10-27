@@ -31,6 +31,7 @@ import { getAppSettings } from "./appSettings.server";
 import { sendGemRecommendationWhatsApp } from "./interakt.server";
 import { getGemStoneOverrides, normaliseGemKey, mantraForPlanet } from "./gemStoneDetails.server";
 import { alertGemLead } from "./leadAlerts.server";
+import { teamizeHtml } from "./leadAlertContent";
 
 // The storefront's real customer-facing domain (not the *.myshopify.com
 // admin domain) — used to build the results-page link embedded in the
@@ -1197,7 +1198,7 @@ export async function sendGemRecommendationEmail(admin, settings, data, birthDet
  * no open-tracking pixel and no tracked links, so the team opening it never counts as the customer
  * opening or clicking. Returns { subject, html }. Used by leadAlerts.server.js.
  */
-export async function buildGemRecommendationEmailForTeam(admin, settings, data, birthDetails, recommendation) {
+export async function buildGemRecommendationEmailForTeam(admin, settings, data, birthDetails, recommendation, team = {}) {
   const resultsPageUrl = buildResultsPageUrl(data, birthDetails, recommendation);
   const firstName = (data.name || "").split(" ")[0] || "there";
   const life = recommendation.life || {};
@@ -1210,8 +1211,8 @@ export async function buildGemRecommendationEmailForTeam(admin, settings, data, 
     stoneCard("Benefic", recommendation.benefic || {}, collectionImages, trackingCtx) +
     stoneCard("Lucky", recommendation.lucky || {}, collectionImages, trackingCtx);
   const rawVars = {
-    customer_first_name: firstName,
-    results_url: resultsPageUrl,
+    customer_first_name: team.line ? "Team" : firstName,
+    results_url: team.viewUrl || resultsPageUrl,
     shop_name: shopInfo.name,
     shop_url: shopInfo.url,
     shop_email: shopInfo.email,
@@ -1220,6 +1221,12 @@ export async function buildGemRecommendationEmailForTeam(admin, settings, data, 
   const htmlVars = Object.fromEntries(Object.entries(rawVars).map(([key, value]) => [key, esc(value)]));
   let html = getGemRecommendationEmailTemplate(settings).split("{{stone_cards_html}}").join(stoneCardsHtml).split("{{ stone_cards_html }}").join(stoneCardsHtml);
   html = renderGemRecommendationEmailTemplate(html, htmlVars);
+  if (team.line) {
+    html = teamizeHtml(html, [
+      [/Based on your birth chart[\s\S]*?below\./, esc(team.line)],
+      [/View My Full Recommendation/, "View lead"],
+    ]);
+  }
   const subject = renderGemRecommendationEmailTemplate(getGemRecommendationEmailSubject(settings), rawVars);
   return { subject, html };
 }

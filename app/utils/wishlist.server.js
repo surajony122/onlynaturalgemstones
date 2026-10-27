@@ -24,6 +24,7 @@ import {
 } from "./appSettings.server";
 
 import { alertWishlistLead } from "./leadAlerts.server";
+import { teamizeHtml } from "./leadAlertContent";
 
 import {
   mirrorEmailEventToSheet,
@@ -2301,13 +2302,13 @@ function buildWishlistEmailHtml({
  * tracked links (so the team opening it never counts as the customer). Returns { subject, html }.
  * Used by leadAlerts.server.js.
  */
-export async function buildWishlistEmailForTeam(admin, email, handles, products) {
+export async function buildWishlistEmailForTeam(admin, email, handles, products, team = {}) {
   const shopInfo = await getShopFooterInfo(admin);
   shopInfo._appUrl = "";
   shopInfo._trackingId = "";
-  const viewAllUrl = "https://" + STORE_DOMAIN + "/?shared_wishlist=" + handles.map(encodeURIComponent).join(",");
+  const viewAllUrl = team.viewUrl || "https://" + STORE_DOMAIN + "/?shared_wishlist=" + handles.map(encodeURIComponent).join(",");
   const storeUrl = "https://" + STORE_DOMAIN;
-  const html = buildWishlistEmailHtml({
+  let html = buildWishlistEmailHtml({
     firstName: email.split("@")[0],
     products,
     shopInfo,
@@ -2315,6 +2316,13 @@ export async function buildWishlistEmailForTeam(admin, email, handles, products)
     viewAllUrl,
     storeUrl,
   });
+  if (team.line) {
+    html = teamizeHtml(html, [
+      [/Hello,\s*<\/p>/, "Hello Team,</p>"],
+      [/Here's everything you've saved[\s\S]*?left off\./, esc(team.line)],
+      [/View Full Wishlist/, "View lead"],
+    ]);
+  }
   const subject = products.length === 1 ? "You saved something special" : "Your wishlist is waiting for you";
   return { subject, html };
 }

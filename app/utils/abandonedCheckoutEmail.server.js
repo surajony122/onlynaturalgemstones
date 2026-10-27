@@ -26,6 +26,7 @@ import nodemailer from "nodemailer";
 import prisma from "../db.server";
 import { getAppSettings } from "./appSettings.server";
 import { esc, getShopFooterInfo, FALLBACK_LOGO_URL } from "./astroAdvice.server";
+import { teamizeHtml } from "./leadAlertContent";
 
 export const DEFAULT_DELAY_MINUTES = 60;
 const MIN_DELAY_MINUTES = 15;
@@ -803,7 +804,7 @@ export function buildEmailVars(checkout, shopInfo) {
  * shop instead of the customer's real unsubscribe link, so a team member clicking it can't opt the customer
  * out. Returns { subject, html }. Used by leadAlerts.server.js.
  */
-export async function buildAbandonedEmailForTeam(admin, settings, checkout) {
+export async function buildAbandonedEmailForTeam(admin, settings, checkout, team = {}) {
   let info;
   try {
     info = await getShopFooterInfo(admin);
@@ -819,7 +820,18 @@ export async function buildAbandonedEmailForTeam(admin, settings, checkout) {
   const { raw, html: htmlVars } = buildEmailVars(checkout, shopInfo);
   raw.unsubscribe_url = shopInfo.url;
   htmlVars.unsubscribe_url = esc(shopInfo.url);
-  const html = renderAbandonedTemplate(getAbandonedCheckoutEmailTemplate(settings), htmlVars);
+  if (team.line) {
+    htmlVars.customer_first_name = "Team";
+    if (team.viewUrl) htmlVars.checkout_url = esc(team.viewUrl);
+  }
+  let html = renderAbandonedTemplate(getAbandonedCheckoutEmailTemplate(settings), htmlVars);
+  if (team.line) {
+    html = teamizeHtml(html, [
+      [/You left something beautiful in your cart\./, "A customer left a cart"],
+      [/Your gemstone is still waiting for you[\s\S]*?gone for good\./, esc(team.line)],
+      [/Complete my order/, "View lead"],
+    ]);
+  }
   const subject = renderAbandonedTemplate(getAbandonedCheckoutEmailSubject(settings), raw);
   return { subject, html };
 }

@@ -41,7 +41,9 @@ async function teamCopy({ buildExact, strip, plain }) {
   try {
     const exact = await buildExact();
     const bar = buildTeamStrip(strip);
-    return { html: insertAfterBody(exact.html, bar.html), text: bar.text + "\n\n(The customer's email is in the HTML version of this message.)" };
+    // The email itself is exactly what the customer receives (only the greeting / wording is the team's); the
+    // lead's details travel in the plain-text version and in the sentence at the top of the email.
+    return { html: exact.html, text: bar.text + "\n\n(The customer's email is in the HTML version of this message.)" };
   } catch (err) {
     console.error("[leadAlerts] could not build the exact customer email, sending the plain alert:", err);
     return buildAlertEmail(plain);
@@ -176,6 +178,7 @@ export async function alertGemLead({ admin, shop, settings, data, birthDetails, 
       ["Customer WhatsApp", shortStatus(whatsappSendStatus)],
     ];
     if (astroError) rows.splice(8, 0, ["Chart", "The chart calculation FAILED for this submission. Please follow up with the customer by hand."]);
+    const teamLine = "New gem recommendation lead: " + [name, d.phone, d.email].filter(Boolean).join(" | ") + ". Below is the email the customer received.";
     const plain = {
       heading: "New gem recommendation lead: " + name,
       intro: "Someone just verified their code and asked for a gemstone recommendation.",
@@ -188,7 +191,7 @@ export async function alertGemLead({ admin, shop, settings, data, birthDetails, 
       astroError || !rec.life
         ? buildAlertEmail(plain)
         : teamCopy({
-            buildExact: async () => (await import("./astroAdvice.server")).buildGemRecommendationEmailForTeam(admin, settings, d, bd, rec),
+            buildExact: async () => (await import("./astroAdvice.server")).buildGemRecommendationEmailForTeam(admin, settings, d, bd, rec, { line: teamLine, viewUrl }),
             strip: { kicker: "New gem recommendation lead", title: name, rows, viewUrl, viewLabel: "View lead" },
             plain,
           });
@@ -226,7 +229,7 @@ export async function alertWishlistLead({ admin, shop, settings, leadId, email, 
     };
     const mail = () =>
       teamCopy({
-        buildExact: async () => (await import("./wishlist.server")).buildWishlistEmailForTeam(admin, String(email), list.map((p) => p.handle).filter(Boolean), list),
+        buildExact: async () => (await import("./wishlist.server")).buildWishlistEmailForTeam(admin, String(email), list.map((p) => p.handle).filter(Boolean), list, { line: "New wishlist: " + [String(email), phone].filter(Boolean).join(" | ") + ". Below is the email the customer receives.", viewUrl }),
         strip: { kicker: "New wishlist", title: "A customer saved a wishlist", rows, viewUrl, viewLabel: "View lead" },
         plain,
       });
@@ -316,7 +319,7 @@ export async function runAbandonedCheckoutTeamAlerts({ admin, shop, now = new Da
       };
       const mail = () =>
         teamCopy({
-          buildExact: async () => (await import("./abandonedCheckoutEmail.server")).buildAbandonedEmailForTeam(admin, settings, c),
+          buildExact: async () => (await import("./abandonedCheckoutEmail.server")).buildAbandonedEmailForTeam(admin, settings, c, { line: "Abandoned checkout " + (c.name || "") + ": " + [c.fullName, c.email].filter(Boolean).join(" | ") + ". Below is the reminder the customer would receive.", viewUrl }),
           strip: { kicker: "Abandoned checkout", title: (c.name || "") + (c.fullName ? " by " + c.fullName : ""), rows, viewUrl, viewLabel: "View lead" },
           plain,
         });
@@ -359,7 +362,8 @@ export async function sendTestLeadAlert(shop, admin) {
             life: { gem: "Blue Sapphire", planet: "Saturn", collection: "blue-sapphire", tagline: "for Good Fortune, Wealth & Success" },
             benefic: { gem: "Emerald", planet: "Mercury", collection: "emerald", tagline: "for Health, Success & Growth" },
             lucky: { gem: "Diamond", planet: "Venus", collection: "diamond", tagline: "for Luxury, Love & Elegance" },
-          }
+          },
+          { line: "TEST: new gem recommendation lead: Test Customer | +91 98765 43210 | test.customer@example.com. Below is the email the customer received.", viewUrl }
         ),
       strip: { kicker: "TEST: new gem recommendation lead", title: "Test Customer", rows: sampleRows, viewUrl, viewLabel: "View lead" },
       plain: null,
@@ -392,4 +396,37 @@ export async function getRecentLeadAlerts(shop, take = 10) {
   } catch {
     return [];
   }
+}
+
+/**
+ * Team-mail tracking for the lead pages: for each lead reference (gem lead trackingId, or wishlist email in
+ * lower case) the team alerts that were SENT for it, newest first, with who opened the email and who clicked
+ * View lead. Returns a Map refId -> [{ id, createdAt, openedBy, clickedBy }]. Never throws.
+ */
+export async function getTeamMailTracking(kind, refIds) {
+  const out = new Map();
+  try {
+    const ids = [...new Set((refIds || []).filter(Boolean))];
+    if (!ids.length) return out;
+    const alerts = await prisma.leadAlert.findMany({
+      where: { kind, refId: { in: ids }, status: "sent" },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, refId: true, createdAt: true },
+    });
+    if (!alerts.length) return out;
+    const events = await prisma.emailEvent.findMany({
+      where: { trackingId: { in: alerts.map((a) => "team:" + a.id) } },
+      select: { trackingId: true, event: true, detail: true },
+    });
+    for (const a of alerts) {
+      const mine = events.filter((e) => e.trackingId === "team:" + a.id);
+      const who = (ev) => [...new Set(mine.filter((e) => e.event === ev).map((e) => String(e.detail || "").split(" | ").pop()).filter(Boolean))];
+      const item = { id: a.id, createdAt: new Date(a.createdAt).toISOString(), openedBy: who("opened"), clickedBy: who("clicked") };
+      if (!out.has(a.refId)) out.set(a.refId, []);
+      out.get(a.refId).push(item);
+    }
+  } catch (err) {
+    console.error("[leadAlerts] could not read team mail tracking:", err);
+  }
+  return out;
 }

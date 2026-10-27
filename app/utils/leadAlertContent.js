@@ -189,3 +189,14 @@ export function insertAfterBody(emailHtml, stripHtml) {
   const at = m.index + m[0].length;
   return html.slice(0, at) + stripHtml + html.slice(at);
 }
+
+/**
+ * The team's copy of a customer email: same layout and data, only the wording changes. Each rule is
+ * [pattern, replacement]; a rule that doesn't match (e.g. a template the owner has edited) is skipped,
+ * so the email still goes out, just with that sentence unchanged.
+ */
+export function teamizeHtml(html, rules) {
+  let out = String(html || "");
+  for (const [pattern, replacement] of rules) out = out.replace(pattern, () => replacement);
+  return out;
+}
