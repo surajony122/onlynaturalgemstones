@@ -46,7 +46,7 @@ import {
   sendRefundProcessedWhatsApp,
 } from "../utils/interakt.server";
 import { sendTestEmail } from "../utils/testEmails.server";
-import { sendTestLeadAlert, getRecentLeadAlerts } from "../utils/leadAlerts.server";
+import { sendTestLeadAlert, getRecentLeadAlerts, getTestWhatsappNote } from "../utils/leadAlerts.server";
 import { parseRecipients } from "../utils/leadAlertContent";
 import { checkGmail, checkGoogleSheets, checkInterakt, checkGooglePlaces } from "../utils/serviceHealth.server";
 import { getOrderProcessingEmailTemplate, ORDER_PROCESSING_EMAIL_PLACEHOLDERS, getOrderProcessingEmailSubject } from "../utils/orderProcessingEmail.server";
@@ -464,7 +464,9 @@ export const action = async ({ request }) => {
   // Sends one clearly-marked sample alert to the saved team addresses (works even while the switches are off).
   if (intent === "sendTestLeadAlert") {
     const status = await sendTestLeadAlert(session.shop, admin);
-    return { intent, ok: status === "sent", status: status === "sent" ? "Sent. Check the team inbox (and spam)." : status };
+    if (status !== "sent") return { intent, ok: false, status };
+    const waNote = await getTestWhatsappNote(session.shop);
+    return { intent, ok: true, status: "Email sent - check the team inbox (and spam). WhatsApp: " + waNote };
   }
 
   if (intent === "saveAbandonedCheckoutEmail") {
@@ -2003,6 +2005,7 @@ export default function SettingsPage() {
                     <span style={{ flexBasis: "100%", paddingLeft: "140px", color: brand.muted }}>
                       {(r.openedBy || []).length ? "Opened by " + r.openedBy.join(", ") : r.status === "sent" ? "Not opened yet" : ""}
                       {(r.clickedBy || []).length ? " · Clicked View lead: " + r.clickedBy.join(", ") : ""}
+                      {r.whatsappStatus ? " · WhatsApp: " + String(r.whatsappStatus).slice(0, 220) : ""}
                     </span>
                   </div>
                 ))}

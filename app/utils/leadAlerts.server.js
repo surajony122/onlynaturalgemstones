@@ -179,6 +179,7 @@ export async function notifyTeam({ shop, settings, kind, refId, subject, email, 
     }
 
     let whatsappStatus = null;
+    if (whatsapp && !waReady && found.phones.length) whatsappStatus = "skipped: no WhatsApp template name saved in Settings -> Team lead alerts";
     if (phones.length) {
       let ok = 0;
       const problems = [];
@@ -439,13 +440,29 @@ export async function sendTestLeadAlert(shop, admin) {
   return notifyTeam({ shop, settings, kind: "test", refId: "test-" + Date.now(), subject: "TEST: team lead alert", email: mail, viewUrl, force: true, whatsapp: { values: ["TEST alert", "Test Customer", "+91 98765 43210", "This is a test alert from ONG Controls.", viewUrl] } });
 }
 
+/**
+ * After the Settings "Send test alert" button: says in plain words what happened on WhatsApp, so a missing message can be explained.
+ */
+export async function getTestWhatsappNote(shop) {
+  try {
+    const settings = await getAppSettings(shop);
+    if (!String(settings.leadAlertWhatsappTemplate || "").trim()) return "not sent - no WhatsApp template name is saved in Settings -> Team lead alerts (WhatsApp template name), or it was not saved.";
+    const found = await getAlertRecipients(shop, settings, "test");
+    if (!found.phones.length) return "not sent - no WhatsApp number is saved under Staff access (enter it with the country code, then press Save alerts).";
+    const row = await prisma.leadAlert.findFirst({ where: { kind: "test" }, orderBy: { createdAt: "desc" }, select: { whatsappStatus: true } });
+    return (row && row.whatsappStatus) || "no result recorded";
+  } catch (err) {
+    return "could not read the result: " + String((err && err.message) || err).slice(0, 120);
+  }
+}
+
 export async function getRecentLeadAlerts(shop, take = 10) {
   try {
     const rows = await prisma.leadAlert.findMany({
       where: { OR: [{ shop }, { shop: null }] },
       orderBy: { createdAt: "desc" },
       take,
-      select: { id: true, kind: true, subject: true, status: true, createdAt: true, recipients: true },
+      select: { id: true, kind: true, subject: true, status: true, whatsappStatus: true, createdAt: true, recipients: true },
     });
     // Who opened / clicked the team email (EmailEvent rows tagged "team:<alert id>"; detail = the team member's address).
     const events = rows.length ? await prisma.emailEvent.findMany({ where: { trackingId: { in: rows.map((r) => "team:" + r.id) } }, select: { trackingId: true, event: true, detail: true } }) : [];
