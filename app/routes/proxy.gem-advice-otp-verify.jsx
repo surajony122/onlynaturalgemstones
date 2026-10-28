@@ -23,6 +23,7 @@
 import { authenticate } from "../shopify.server";
 import { verifyGemAdviceOtpCode } from "../utils/gemAdviceOtp.server";
 import { handleAstroAdviceSubmission } from "../utils/astroAdvice.server";
+import { validateGemAdviceInput } from "../utils/gemAdviceValidation";
 
 export const action = async ({ request }) => {
   const { admin, session } = await authenticate.public.appProxy(request);
@@ -36,6 +37,10 @@ export const action = async ({ request }) => {
   } catch {
     return Response.json({ ok: false, error: "Invalid request body" }, { status: 400 });
   }
+
+  // Checked before the code is used up, so a rejected submission never burns the customer's code.
+  const check = validateGemAdviceInput(data);
+  if (!check.ok) return Response.json({ ok: false, error: check.error });
 
   try {
     const verifyResult = await verifyGemAdviceOtpCode(session.shop, data.phone, data.email, data.otpCode);

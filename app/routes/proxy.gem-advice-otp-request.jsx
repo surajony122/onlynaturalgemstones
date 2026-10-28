@@ -21,6 +21,7 @@ import { getAppSettings } from "../utils/appSettings.server";
 import { sendGemAdviceWhatsAppOtp } from "../utils/interakt.server";
 import { createGemAdviceOtpCode, sendGemAdviceOtpEmail } from "../utils/gemAdviceOtp.server";
 import { handleAstroAdviceSubmission } from "../utils/astroAdvice.server";
+import { validateGemAdviceInput } from "../utils/gemAdviceValidation";
 
 async function saveFallbackLead(admin, shop, data, reason) {
   // Reuses the astro-advice pipeline's own existing "astroError present"
@@ -51,6 +52,10 @@ export const action = async ({ request }) => {
   } catch {
     return Response.json({ ok: false, error: "Invalid request body" }, { status: 400 });
   }
+
+  // The browser already applies these rules; this stops anything sent straight to the server from getting a code (or WhatsApp / email sent).
+  const check = validateGemAdviceInput(data);
+  if (!check.ok) return Response.json({ ok: false, error: check.error });
 
   try {
     const result = await createGemAdviceOtpCode(session.shop, data.phone, data.email);
