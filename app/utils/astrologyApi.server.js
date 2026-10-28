@@ -103,3 +103,54 @@ export async function testAstrologyConnection(settings, fetchImpl = globalThis.f
     return { ok: false, detail: String((err && err.message) || err).slice(0, 200) };
   }
 }
+
+// ------------------------------------------------------------------ one-time import from the website page's own settings
+
+/** Finds the AstrologyAPI login in the text of templates/page.astro-advice.json (a JSON file that starts with a comment block at the top). */
+export function extractAstrologyFromTemplate(content) {
+  try {
+    const json = JSON.parse(String(content || "").replace(/^\s*\/\*[\s\S]*?\*\/\s*/, ""));
+    for (const section of Object.values(json.sections || {})) {
+      const st = (section && section.settings) || {};
+      const userId = String(st.astrologyapi_user_id || "").trim();
+      const apiKey = String(st.astrologyapi_api_key || "").trim();
+      if (userId && apiKey) return { userId, apiKey };
+    }
+  } catch (e) {
+    /* not valid JSON: treated as "not found" */
+  }
+  return null;
+}
+
+/**
+ * Reads the login from the PUBLISHED theme's gem-form template, so it can be saved into Settings without anyone retyping it
+ * (or the key passing through chat / the repository). Used once by the Settings "Import from the website page" button.
+ */
+export async function importAstrologyFromTheme(admin) {
+  try {
+    const res = await admin.graphql(
+      `#graphql
+      query AstrologyLoginFromTheme {
+        themes(first: 1, roles: [MAIN]) {
+          nodes {
+            name
+            files(filenames: ["templates/page.astro-advice.json"], first: 1) {
+              nodes { filename body { ... on OnlineStoreThemeFileBodyText { content } } }
+            }
+          }
+        }
+      }`,
+    );
+    const json = await res.json();
+    if (json.errors) return { ok: false, error: "Shopify said: " + json.errors.map((e) => e.message).join("; ").slice(0, 200) };
+    const theme = json.data && json.data.themes && json.data.themes.nodes && json.data.themes.nodes[0];
+    const file = theme && theme.files && theme.files.nodes && theme.files.nodes[0];
+    const content = file && file.body && file.body.content;
+    if (!content) return { ok: false, error: "Could not read the gem recommendation page settings from the published theme." };
+    const found = extractAstrologyFromTemplate(content);
+    if (!found) return { ok: false, error: "No AstrologyAPI login is set on the website page any more. Enter it in the two boxes by hand." };
+    return { ok: true, userId: found.userId, apiKey: found.apiKey };
+  } catch (err) {
+    return { ok: false, error: String((err && err.message) || err).slice(0, 200) };
+  }
+}

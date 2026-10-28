@@ -47,7 +47,7 @@ import {
 } from "../utils/interakt.server";
 import { sendTestEmail } from "../utils/testEmails.server";
 import { sendTestLeadAlert, getRecentLeadAlerts, getTestWhatsappNote } from "../utils/leadAlerts.server";
-import { testAstrologyConnection } from "../utils/astrologyApi.server";
+import { testAstrologyConnection, importAstrologyFromTheme } from "../utils/astrologyApi.server";
 import { parseRecipients } from "../utils/leadAlertContent";
 import { checkGmail, checkGoogleSheets, checkInterakt, checkGooglePlaces } from "../utils/serviceHealth.server";
 import { getOrderProcessingEmailTemplate, ORDER_PROCESSING_EMAIL_PLACEHOLDERS, getOrderProcessingEmailSubject } from "../utils/orderProcessingEmail.server";
@@ -404,6 +404,13 @@ export const action = async ({ request }) => {
     const astrologyApiKey = val("astrologyApiKey") || existing?.astrologyApiKey || "";
     await saveAppSettings(session.shop, { astrologyUserId: val("astrologyUserId"), astrologyApiKey });
     return { intent, ok: true };
+  }
+
+  if (intent === "importAstrologyFromTheme") {
+    const r = await importAstrologyFromTheme(admin);
+    if (!r.ok) return { intent, ok: false, status: r.error };
+    await saveAppSettings(session.shop, { astrologyUserId: r.userId, astrologyApiKey: r.apiKey });
+    return { intent, ok: true, status: "Imported from the website page and saved. Now press Test connection." };
   }
 
   if (intent === "testAstrology") {
@@ -1242,6 +1249,9 @@ export default function SettingsPage() {
   const interaktApiKeySave = useSectionSave("saveInteraktApiKey", toast, () => setInteraktApiKey(""));
   const astrologySave = useSectionSave("saveAstrology", toast, () => setAstrologyApiKey(""));
   const testAstrologyFetcher = useFetcher();
+  const importAstrologyFetcher = useFetcher();
+  const isImportingAstrology = importAstrologyFetcher.state !== "idle";
+  useEffect(() => { setAstrologyUserId(data.astrologyUserId || ""); }, [data.astrologyUserId]);
   const isTestingAstrology = testAstrologyFetcher.state !== "idle";
   const gemRecommendation = useSectionSave("saveGemRecommendation", toast);
   const gemRecommendationEmail = useSectionSave("saveGemRecommendationEmail", toast);
@@ -1504,6 +1514,19 @@ export default function SettingsPage() {
             page can be copied and used by anyone, so after the website has stopped using it, create a <strong>new</strong> key in your
             AstrologyAPI account and save it here.
           </Explain>
+
+          <div style={{ margin: "0 0 14px" }}>
+            <button
+              type="button"
+              disabled={isImportingAstrology}
+              onClick={() => importAstrologyFetcher.submit({ intent: "importAstrologyFromTheme" }, { method: "POST" })}
+              style={{ ...secondaryBtn, padding: "9px 16px", fontSize: "12.5px", opacity: isImportingAstrology ? 0.6 : 1 }}
+            >
+              {isImportingAstrology ? "Importing…" : "Import from the website page"}
+            </button>
+            <p style={hintStyle}>One click: reads the User ID and API Key that are currently set on the gem recommendation page of your live website and saves them here, so you do not have to type them.</p>
+            <TestResult fetcherData={importAstrologyFetcher.data} intent="importAstrologyFromTheme" />
+          </div>
 
           <label style={labelStyle} htmlFor="astrologyUserId">User ID</label>
           <input id="astrologyUserId" style={fieldStyle} type="text" value={astrologyUserId} onChange={(e) => setAstrologyUserId(e.target.value)} placeholder="your AstrologyAPI User ID" autoComplete="off" />
