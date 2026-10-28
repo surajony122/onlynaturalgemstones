@@ -91,22 +91,56 @@ async function sendMailNow(settings, recipients, { subject, html, text }, track 
 }
 
 /**
- * Sends the team one alert email and records it. Returns a short status string; never throws.
+ * Who gets this kind of alert: the staff set up under Staff access (each person's own email / WhatsApp number and
+ * their own alert switches), plus the older plain list of addresses in Settings -> Team lead alerts. The "test" kind
+ * goes to every contact on file.
+ */
+export async function getAlertRecipients(shop, s, kind) {
+  const emails = [...parseRecipients(s.leadAlertEmails).valid];
+  const phones = [];
+  try {
+    const flag = { astro: "alertAstro", wishlist: "alertWishlist", checkout: "alertCheckout" }[kind];
+    const members = await prisma.teamMember.findMany({ where: { shop: shop || undefined } });
+    for (const m of members) {
+      if (flag && !m[flag]) continue;
+      const e = String(m.alertEmail || "").trim().toLowerCase();
+      if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) emails.push(e);
+      const digits = String(m.alertWhatsapp || "").replace(/\D/g, "");
+      if (digits.length >= 8) phones.push(String(m.alertWhatsapp).trim());
+    }
+  } catch (err) {
+    console.error("[leadAlerts] could not read staff alert contacts:", err);
+  }
+  const seenPhones = new Set();
+  const uniquePhones = phones.filter((p) => { const d = p.replace(/\D/g, ""); if (seenPhones.has(d)) return false; seenPhones.add(d); return true; });
+  return { emails: [...new Set(emails)].slice(0, 25), phones: uniquePhones.slice(0, 25) };
+}
+
+/**
+ * Sends the team one alert (email and / or WhatsApp) and records it. Returns a short status string; never throws.
  *   kind     astro | wishlist | checkout | test
  *   refId    what it is about (used so the same thing is not alerted twice)
  *   email    { html, text }, or an async function returning that. A function only runs once the switch,
  *            de-duplication and cap checks have passed, so nothing is built (no Shopify calls) for an alert that won't send.
+ *   whatsapp { values: [type, name, contact, details, link] } for the staff WhatsApp template, or null
  *   dedupeMs 0 = never alert the same refId again; otherwise "not again within this many ms"
  *   force    skip the on/off switch, the de-duplication and the hourly cap (the Settings test button)
  */
-export async function notifyTeam({ shop, settings, kind, refId, subject, email, viewUrl = "", dedupeMs = 0, force = false }) {
+export async function notifyTeam({ shop, settings, kind, refId, subject, email, whatsapp = null, viewUrl = "", dedupeMs = 0, force = false }) {
   try {
     const s = settings || (await getAppSettings(shop));
     if (!force && !isAlertOn(s, kind)) return "skipped: this alert is switched off";
-    const { valid } = parseRecipients(s.leadAlertEmails);
-    if (!valid.length) return "skipped: no team email addresses saved in Settings";
-    if (!s.gmailUser || !s.gmailAppPassword) return "skipped: Gmail is not connected (Settings -> Connections)";
+    const found = await getAlertRecipients(shop, s, kind);
+    const gmailReady = !!(s.gmailUser && s.gmailAppPassword);
+    const emails = gmailReady ? found.emails : [];
+    const waReady = !!(whatsapp && String(s.leadAlertWhatsappTemplate || "").trim());
+    const phones = waReady ? found.phones : [];
+    if (!emails.length && !phones.length) {
+      if (found.emails.length && !gmailReady) return "skipped: Gmail is not connected (Settings -> Connections)";
+      return "skipped: no team email addresses or WhatsApp numbers (Staff access / Settings)";
+    }
     const ref = String(refId == null ? "" : refId);
+    const who = [...emails, ...phones].join(", ");
 
     if (!force && ref) {
       const since = dedupeMs > 0 ? new Date(Date.now() - dedupeMs) : null;
@@ -120,27 +154,54 @@ export async function notifyTeam({ shop, settings, kind, refId, subject, email, 
     if (!force) {
       const lastHour = await prisma.leadAlert.count({ where: { status: "sent", createdAt: { gte: new Date(Date.now() - 60 * 60 * 1000) } } });
       if (lastHour >= HOURLY_CAP) {
-        const status = `skipped: hourly limit of ${HOURLY_CAP} alert emails reached`;
-        await prisma.leadAlert.create({ data: { shop: shop || null, kind, refId: ref, recipients: valid.join(", "), subject: subject || null, status } }).catch(() => {});
+        const status = `skipped: hourly limit of ${HOURLY_CAP} alerts reached`;
+        await prisma.leadAlert.create({ data: { shop: shop || null, kind, refId: ref, recipients: who, subject: subject || null, status } }).catch(() => {});
         return status;
       }
     }
 
     // The log row is created first: its id is what the open / click tracking in the email refers to.
     const row = await prisma.leadAlert
-      .create({ data: { shop: shop || null, kind, refId: ref, recipients: valid.join(", "), subject: subject || null, status: "sending" } })
+      .create({ data: { shop: shop || null, kind, refId: ref, recipients: who, subject: subject || null, status: "sending" } })
       .catch((e) => { console.error("[leadAlerts] could not log the alert:", e); return null; });
-    let status;
-    try {
-      const mail = typeof email === "function" ? await email() : email;
-      const appUrl = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
-      await sendMailNow(s, valid, { subject, html: mail.html, text: mail.text }, row ? { alertId: row.id, viewUrl, appUrl } : null);
-      status = "sent";
-    } catch (err) {
-      status = "failed: " + String((err && err.message) || err).replace(/\s+/g, " ").slice(0, 200);
-      console.error("[leadAlerts] could not send the " + kind + " alert:", err);
+
+    let emailStatus = null;
+    if (emails.length) {
+      try {
+        const mail = typeof email === "function" ? await email() : email;
+        const appUrl = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+        await sendMailNow(s, emails, { subject, html: mail.html, text: mail.text }, row ? { alertId: row.id, viewUrl, appUrl } : null);
+        emailStatus = "sent";
+      } catch (err) {
+        emailStatus = "failed: " + String((err && err.message) || err).replace(/\s+/g, " ").slice(0, 200);
+        console.error("[leadAlerts] could not send the " + kind + " alert:", err);
+      }
     }
-    if (row) await prisma.leadAlert.update({ where: { id: row.id }, data: { status } }).catch((e) => console.error("[leadAlerts] could not update the alert log:", e));
+
+    let whatsappStatus = null;
+    if (phones.length) {
+      let ok = 0;
+      const problems = [];
+      try {
+        const { sendTeamLeadWhatsApp } = await import("./interakt.server");
+        for (const phone of phones) {
+          try {
+            const r = String(await sendTeamLeadWhatsApp(s, { phone, values: whatsapp.values }));
+            if (/^(ok|sent|success|accepted|queued)/i.test(r) || /"result"\s*:\s*true/i.test(r)) ok += 1;
+            else problems.push(phone.slice(-4) + ": " + r.replace(/\s+/g, " ").slice(0, 120));
+          } catch (err) {
+            problems.push(phone.slice(-4) + ": " + String((err && err.message) || err).slice(0, 120));
+          }
+        }
+      } catch (err) {
+        problems.push(String((err && err.message) || err).slice(0, 120));
+      }
+      whatsappStatus = ok ? "sent " + ok + " of " + phones.length + (problems.length ? " | " + problems.join("; ") : "") : "failed: " + problems.join("; ");
+    }
+
+    const waOk = /^sent/.test(whatsappStatus || "");
+    const status = emailStatus === "sent" || waOk ? "sent" : emailStatus || whatsappStatus || "failed: nothing was sent";
+    if (row) await prisma.leadAlert.update({ where: { id: row.id }, data: { status, whatsappStatus } }).catch((e) => console.error("[leadAlerts] could not update the alert log:", e));
     return status;
   } catch (err) {
     console.error("[leadAlerts] unexpected problem:", err);
@@ -195,7 +256,7 @@ export async function alertGemLead({ admin, shop, settings, data, birthDetails, 
             strip: { kicker: "New gem recommendation lead", title: name, rows, viewUrl, viewLabel: "View lead" },
             plain,
           });
-    return await notifyTeam({ shop, settings, kind: "astro", refId: trackingId, subject: "New gem recommendation lead: " + name, email, viewUrl });
+    return await notifyTeam({ shop, settings, kind: "astro", refId: trackingId, subject: "New gem recommendation lead: " + name, email, viewUrl, whatsapp: { values: ["New gem recommendation lead", name, [d.phone, d.email].filter(Boolean).join(" / ") || "-", [stone(rec.life), d.purpose].filter(Boolean).join(", ") || "-", viewUrl] } });
   } catch (err) {
     console.error("[leadAlerts] gem lead alert failed:", err);
     return "failed: " + String((err && err.message) || err).slice(0, 200);
@@ -233,7 +294,7 @@ export async function alertWishlistLead({ admin, shop, settings, leadId, email, 
         strip: { kicker: "New wishlist", title: "A customer saved a wishlist", rows, viewUrl, viewLabel: "View lead" },
         plain,
       });
-    return await notifyTeam({ shop, settings, kind: "wishlist", refId: String(email).toLowerCase(), dedupeMs: WISHLIST_REPEAT_MS, subject: "New wishlist: " + email, email: mail, viewUrl });
+    return await notifyTeam({ shop, settings, kind: "wishlist", refId: String(email).toLowerCase(), dedupeMs: WISHLIST_REPEAT_MS, subject: "New wishlist: " + email, email: mail, viewUrl, whatsapp: { values: ["New wishlist", String(email), [phone, email].filter(Boolean).join(" / "), list.length + " item" + (list.length === 1 ? "" : "s") + ": " + list.slice(0, 3).map((p) => p.title || p.handle || "Product").join(", "), viewUrl] } });
   } catch (err) {
     console.error("[leadAlerts] wishlist alert failed:", err);
     return "failed: " + String((err && err.message) || err).slice(0, 200);
@@ -323,7 +384,7 @@ export async function runAbandonedCheckoutTeamAlerts({ admin, shop, now = new Da
           strip: { kicker: "Abandoned checkout", title: (c.name || "") + (c.fullName ? " by " + c.fullName : ""), rows, viewUrl, viewLabel: "View lead" },
           plain,
         });
-      const status = await notifyTeam({ shop, settings, kind: "checkout", refId: c.id, subject: "Abandoned checkout " + (c.name || "") + (total ? " (" + total + ")" : ""), email: mail, viewUrl });
+      const status = await notifyTeam({ shop, settings, kind: "checkout", refId: c.id, subject: "Abandoned checkout " + (c.name || "") + (total ? " (" + total + ")" : ""), email: mail, viewUrl, whatsapp: { values: ["Abandoned checkout " + (c.name || ""), c.fullName || c.email || "-", c.email || "-", (total ? total + ": " : "") + lines.slice(0, 3).join(", "), viewUrl] } });
       if (status === "sent") alerted += 1;
       else if (String(status).startsWith("failed")) failed += 1;
       else if (String(status).startsWith("skipped: hourly")) break;
@@ -375,7 +436,7 @@ export async function sendTestLeadAlert(shop, admin) {
     link: { label: "View lead", href: viewUrl },
   });
   const mail = admin ? async () => { try { return await sample(); } catch { return fallback(); } } : fallback();
-  return notifyTeam({ shop, settings, kind: "test", refId: "test-" + Date.now(), subject: "TEST: team lead alert", email: mail, viewUrl, force: true });
+  return notifyTeam({ shop, settings, kind: "test", refId: "test-" + Date.now(), subject: "TEST: team lead alert", email: mail, viewUrl, force: true, whatsapp: { values: ["TEST alert", "Test Customer", "+91 98765 43210", "This is a test alert from ONG Controls.", viewUrl] } });
 }
 
 export async function getRecentLeadAlerts(shop, take = 10) {

@@ -47,6 +47,11 @@ export const loader = async ({ request }) => {
       isOwner: m.isOwner,
       isAdmin: m.isAdmin,
       pages: m.pages || [],
+      alertEmail: m.alertEmail || "",
+      alertWhatsapp: m.alertWhatsapp || "",
+      alertAstro: !!m.alertAstro,
+      alertWishlist: !!m.alertWishlist,
+      alertCheckout: !!m.alertCheckout,
       lastSeenAt: m.lastSeenAt ? m.lastSeenAt.toISOString() : null,
     })),
   };
@@ -101,6 +106,21 @@ export const action = async ({ request }) => {
     const id = String(form.get("id") || "");
     const target = id ? await prisma.teamMember.findFirst({ where: { id, shop } }) : null;
     if (!target) return { ok: false, intent, error: "That person was not found." };
+    if (intent === "saveAlerts") {
+      // an admin can set anyone's alert contacts; everyone else only their own
+      if (!viewerIsAdmin && !(access.member && target.id === access.member.id)) return { ok: false, intent, error: "Only an admin can change someone else's alerts." };
+      const alertEmail = String(form.get("alertEmail") || "").trim().toLowerCase();
+      const alertWhatsapp = String(form.get("alertWhatsapp") || "").trim();
+      if (alertEmail && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(alertEmail)) return { ok: false, intent, error: "That alert email address is not valid." };
+      const digits = alertWhatsapp.replace(/\D/g, "");
+      if (alertWhatsapp && (digits.length < 8 || digits.length > 15)) return { ok: false, intent, error: "Enter the WhatsApp number with country code, for example +91 98765 43210." };
+      const on = (k) => String(form.get(k)) === "true";
+      await prisma.teamMember.update({
+        where: { id: target.id },
+        data: { alertEmail: alertEmail || null, alertWhatsapp: alertWhatsapp || null, alertAstro: on("alertAstro"), alertWishlist: on("alertWishlist"), alertCheckout: on("alertCheckout") },
+      });
+      return { ok: true, intent, message: "Alert settings saved." };
+    }
     if (intent === "saveMember") {
       if (target.isOwner) return { ok: false, intent, error: "The shop owner always has full access." };
       if (!viewerIsAdmin && target.isAdmin) return { ok: false, intent, error: "Only an admin can change an admin's access." };
@@ -127,6 +147,7 @@ export const action = async ({ request }) => {
 const PAGE_OPTIONS = TEAM_PAGES.map((pg) => ({ value: pg.id, label: pg.label }));
 
 const smallBtn = { padding: "6px 12px", borderRadius: "8px", border: `1px solid ${brand.border}`, background: "#fff", color: brand.body, fontSize: "12px", fontWeight: 600, cursor: "pointer" };
+const alertInput = { width: "100%", boxSizing: "border-box", padding: "6px 9px", borderRadius: "8px", border: `1px solid ${brand.border}`, fontSize: "12.5px", color: brand.ink, background: "#fff" };
 const primaryBtn = { ...smallBtn, border: `1px solid ${brand.accent}`, background: brand.accent, color: "#fff" };
 
 function MemberRow({ m, isMe, enforce, viewerIsAdmin }) {
@@ -142,6 +163,16 @@ function MemberRow({ m, isMe, enforce, viewerIsAdmin }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [res]);
   const busy = fetcher.state !== "idle";
+  // Lead alerts (email / WhatsApp). Own save button: it is about contact details, not page access.
+  const [aEmail, setAEmail] = useState(m.alertEmail);
+  const [aWa, setAWa] = useState(m.alertWhatsapp);
+  const [aAstro, setAAstro] = useState(m.alertAstro);
+  const [aWish, setAWish] = useState(m.alertWishlist);
+  const [aCheck, setACheck] = useState(m.alertCheckout);
+  useEffect(() => { setAEmail(m.alertEmail); setAWa(m.alertWhatsapp); setAAstro(m.alertAstro); setAWish(m.alertWishlist); setACheck(m.alertCheckout); }, [m.alertEmail, m.alertWhatsapp, m.alertAstro, m.alertWishlist, m.alertCheckout]);
+  const alertsDirty = aEmail !== m.alertEmail || aWa !== m.alertWhatsapp || aAstro !== m.alertAstro || aWish !== m.alertWishlist || aCheck !== m.alertCheckout;
+  const canEditAlerts = viewerIsAdmin || isMe;
+  const saveAlerts = () => fetcher.submit({ intent: "saveAlerts", id: m.id, alertEmail: aEmail, alertWhatsapp: aWa, alertAstro: String(aAstro), alertWishlist: String(aWish), alertCheckout: String(aCheck) }, { method: "post" });
   // the owner is always locked; people who may manage the team but are not admins cannot edit admins or themselves
   const locked = m.isOwner || (!viewerIsAdmin && (m.isAdmin || isMe));
   const dirty = isAdmin !== m.isAdmin || [...pages].sort().join(",") !== [...m.pages].sort().join(",");
@@ -170,6 +201,23 @@ function MemberRow({ m, isMe, enforce, viewerIsAdmin }) {
           <>
             <MultiSelect label="pages" emptyLabel="No pages" options={PAGE_OPTIONS} selected={pages} onChange={setPages} />
           </>
+        )}
+      </td>
+      <td style={{ ...tdStyle, minWidth: "260px" }}>
+        <input type="email" value={aEmail} onChange={(e) => setAEmail(e.target.value)} disabled={!canEditAlerts || busy} placeholder="Alert email" style={alertInput} />
+        <input type="tel" value={aWa} onChange={(e) => setAWa(e.target.value)} disabled={!canEditAlerts || busy} placeholder="WhatsApp, e.g. +91 98765 43210" style={{ ...alertInput, marginTop: "5px" }} />
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px", marginTop: "7px" }}>
+          {[["Gem leads", aAstro, setAAstro], ["Wishlists", aWish, setAWish], ["Abandoned checkouts", aCheck, setACheck]].map(([label, val, set]) => (
+            <label key={label} style={{ display: "inline-flex", alignItems: "center", gap: "5px", fontSize: "12px", color: brand.body, cursor: canEditAlerts ? "pointer" : "default" }}>
+              <input type="checkbox" checked={val} onChange={(e) => set(e.target.checked)} disabled={!canEditAlerts || busy} />
+              {label}
+            </label>
+          ))}
+        </div>
+        {canEditAlerts && (
+          <button type="button" onClick={saveAlerts} disabled={busy || !alertsDirty} style={{ ...smallBtn, marginTop: "8px", opacity: busy || !alertsDirty ? 0.5 : 1 }}>
+            {busy ? "Saving…" : "Save alerts"}
+          </button>
         )}
       </td>
       <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>
@@ -255,13 +303,14 @@ export default function TeamPage() {
             <tr>
               <th style={thStyle}>Person</th>
               <th style={thStyle}>Pages they can open</th>
+              <th style={thStyle}>Lead alerts (email / WhatsApp)</th>
               <th style={thStyle}></th>
               <th style={thStyle}></th>
             </tr>
           </thead>
           <tbody>
             {members.length === 0 ? (
-              <tr><td style={tdStyle} colSpan={4}>No one yet. People appear here when they open the app.</td></tr>
+              <tr><td style={tdStyle} colSpan={5}>No one yet. People appear here when they open the app.</td></tr>
             ) : (
               members.map((m) => <MemberRow key={m.id} m={m} isMe={m.id === me} enforce={enforce} viewerIsAdmin={viewerIsAdmin} />)
             )}

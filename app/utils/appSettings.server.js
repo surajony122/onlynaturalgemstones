@@ -35,6 +35,7 @@ const FIELDS = [
   "leadAlertWishlist",
   "leadAlertCheckout",
   "leadAlertCheckoutSince",
+  "leadAlertWhatsappTemplate",
   "abandonedCheckoutDelayMinutes",
   "abandonedCheckoutEmailSubject",
   "abandonedCheckoutEmailTemplate",

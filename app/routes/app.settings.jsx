@@ -142,6 +142,7 @@ export const loader = async ({ request }) => {
     // built-in default", and the editor starts from the real default text, same as the other emails.
     // Team lead alerts (email): who gets them, and which events. Everything is off until switched on.
     leadAlertEmails: row?.leadAlertEmails || "",
+    leadAlertWhatsappTemplate: row?.leadAlertWhatsappTemplate || "",
     leadAlertAstro: row?.leadAlertAstro || "",
     leadAlertWishlist: row?.leadAlertWishlist || "",
     leadAlertCheckout: row?.leadAlertCheckout || "",
@@ -442,10 +443,15 @@ export const action = async ({ request }) => {
       return { intent, ok: false, error: "These do not look like email addresses: " + parsed.invalid.join(", ") };
     }
     if (parsed.tooMany) return { intent, ok: false, error: "Please use at most 10 team email addresses." };
+    const waTemplate = String(val("leadAlertWhatsappTemplate") || "").trim();
+    if (waTemplate && !/^[a-z0-9_]{1,512}$/.test(waTemplate)) {
+      return { intent, ok: false, error: "The WhatsApp template name uses lowercase letters, numbers and underscores only, exactly as it is named in Interakt." };
+    }
     const checkoutOn = val("leadAlertCheckout") === "true";
     const checkoutWasOn = String(previous.leadAlertCheckout || "") === "true";
     await saveAppSettings(session.shop, {
       leadAlertEmails: parsed.valid.join(", "),
+      leadAlertWhatsappTemplate: waTemplate,
       leadAlertAstro: val("leadAlertAstro") === "true" ? "true" : "false",
       leadAlertWishlist: val("leadAlertWishlist") === "true" ? "true" : "false",
       leadAlertCheckout: checkoutOn ? "true" : "false",
@@ -1214,6 +1220,7 @@ export default function SettingsPage() {
   const abandonedEmail = useSectionSave("saveAbandonedCheckoutEmail", toast);
   // Team lead alerts (email): who is told, and about what.
   const [laEmails, setLaEmails] = useState(data.leadAlertEmails || "");
+  const [laWaTemplate, setLaWaTemplate] = useState(data.leadAlertWhatsappTemplate || "");
   const [laAstro, setLaAstro] = useState(data.leadAlertAstro === "true");
   const [laWishlist, setLaWishlist] = useState(data.leadAlertWishlist === "true");
   const [laCheckout, setLaCheckout] = useState(data.leadAlertCheckout === "true");
@@ -1223,6 +1230,7 @@ export default function SettingsPage() {
   const saveLeadAlerts = () =>
     leadAlerts.save({
       leadAlertEmails: laEmails,
+      leadAlertWhatsappTemplate: laWaTemplate,
       leadAlertAstro: laAstro ? "true" : "false",
       leadAlertWishlist: laWishlist ? "true" : "false",
       leadAlertCheckout: laCheckout ? "true" : "false",
@@ -1917,13 +1925,13 @@ export default function SettingsPage() {
             <SaveButton isSaving={orderProcessingEmail.isSaving} onClick={saveOrderProcessingEmail} />
           </TemplateCard>
 
-          <TemplateCard icon={<Icon name="bell" size={15} color={brand.accent} />} title="Team lead alerts — Email">
+          <TemplateCard icon={<Icon name="bell" size={15} color={brand.accent} />} title="Team lead alerts — Email &amp; WhatsApp">
             <p style={{ ...abNote, marginTop: 0 }}>
-              Emails your own team when something needs following up. It sends from your Gmail (Settings → Connections), like the other emails, and
-              customers never see it. Everything is off until you tick it and press Save.
+              Tells your own team when something needs following up. Emails send from your Gmail (Settings → Connections), like the other emails, and
+              customers never see them. <strong>Who gets what is set per person under Staff access</strong> (their own email, WhatsApp number and which alerts they want). The switches below turn each alert on for everyone. Everything is off until you tick it and press Save.
             </p>
 
-            <label style={labelStyle} htmlFor="laEmails">Team email addresses</label>
+            <label style={labelStyle} htmlFor="laEmails">Extra email addresses (optional)</label>
             <textarea
               id="laEmails"
               style={{ ...fieldStyle, minHeight: "72px", fontFamily: "inherit", resize: "vertical" }}
@@ -1931,7 +1939,15 @@ export default function SettingsPage() {
               onChange={(e) => setLaEmails(e.target.value)}
               placeholder="sales@example.com, support@example.com"
             />
-            <p style={abNote}>Separate addresses with commas or new lines (up to 10). Everyone listed gets every alert you switch on below.</p>
+            <p style={abNote}>For addresses that are not on your staff list. Separate with commas or new lines (up to 10). Everyone listed gets every alert you switch on below.</p>
+
+            <label style={labelStyle} htmlFor="laWa">WhatsApp template name (leave empty to keep WhatsApp alerts off)</label>
+            <input id="laWa" type="text" style={fieldStyle} value={laWaTemplate} onChange={(e) => setLaWaTemplate(e.target.value)} placeholder="team_new_lead" />
+            <p style={abNote}>
+              The name of an approved WhatsApp <strong>Utility</strong> template in Interakt, with 5 body variables:
+              {" "}<code>New lead alert: {"{{1}}"} · Name: {"{{2}}"} · Contact: {"{{3}}"} · Details: {"{{4}}"} · Open this lead in the ONG Controls app: {"{{5}}"}</code>.
+              Staff with a WhatsApp number under Staff access then get a message for each alert they chose.
+            </p>
 
             <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: "9px", cursor: "pointer" }}>
               <input type="checkbox" checked={laAstro} onChange={(e) => setLaAstro(e.target.checked)} style={{ width: "16px", height: "16px" }} />
@@ -1959,12 +1975,12 @@ export default function SettingsPage() {
 
             <div style={{ marginTop: "18px", paddingTop: "14px", borderTop: `1px solid ${brand.divider}` }}>
               <div style={{ fontSize: "13px", fontWeight: 600, color: brand.ink, marginBottom: "4px" }}>Send a test alert</div>
-              <p style={abNote}>Sends one clearly-marked sample email to the addresses you have <strong>saved</strong> above. Save first if you just changed them. It works even while the switches are off.</p>
+              <p style={abNote}>Sends one clearly-marked sample to every contact on file (extra addresses above, and each person's email and WhatsApp under Staff access). Save first if you just changed something. It works even while the switches are off.</p>
               <button
                 type="button"
-                disabled={isSendingLeadTest || !data.leadAlertEmails}
+                disabled={isSendingLeadTest}
                 onClick={() => testLeadAlertFetcher.submit({ intent: "sendTestLeadAlert" }, { method: "POST" })}
-                style={{ ...secondaryBtn, padding: "9px 16px", fontSize: "12.5px", opacity: isSendingLeadTest || !data.leadAlertEmails ? 0.6 : 1 }}
+                style={{ ...secondaryBtn, padding: "9px 16px", fontSize: "12.5px", opacity: isSendingLeadTest ? 0.6 : 1 }}
               >
                 {isSendingLeadTest ? "Sending…" : "Send a test alert"}
               </button>

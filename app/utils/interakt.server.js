@@ -166,7 +166,7 @@ export function splitPhoneForInterakt(phone, countryIso) {
  * want a status string back to save on the lead row, same pattern as
  * sendGemRecommendationEmail/sendWishlistEmail.
  */
-async function sendInteraktTemplateMessage(apiKey, payload) {
+export async function sendInteraktTemplateMessage(apiKey, payload) {
   if (!apiKey) return { ok: false, status: "skipped: Interakt API key not set (Settings page or INTERAKT_API_KEY env var)" };
 
   try {
@@ -690,6 +690,42 @@ export async function sendWhatsAppLoginOtp(settings, { phone, countryCode, phone
  *  {{1}} the 4-digit code (body)
  *  Button {{1}} the same 4-digit code
  */
+/**
+ * Staff lead alert on WhatsApp (Staff access -> a person's WhatsApp number). Uses a UTILITY template the owner
+ * creates in Interakt; its name is Settings -> Team lead alerts -> WhatsApp template (blank = off).
+ *
+ * Suggested template (English), 5 body variables, no header/footer/buttons:
+ *   New lead alert: {{1}}
+ *   Name: {{2}}
+ *   Contact: {{3}}
+ *   Details: {{4}}
+ *   Open this lead in the ONG Controls app: {{5}}
+ *
+ * {{5}} is a pure URL (WhatsApp keeps a link only when the whole variable is the link). Variables can't contain
+ * line breaks, tabs or runs of spaces, so every value is flattened and trimmed here.
+ */
+export async function sendTeamLeadWhatsApp(settings, { phone, values }) {
+  const template = String(settings.leadAlertWhatsappTemplate || "").trim();
+  if (!template) return "skipped: no WhatsApp alert template name saved";
+  if (!settings.interaktApiKey) return "skipped: Interakt API key not set";
+  const split = splitPhoneForInterakt(phone);
+  if (!split) return "skipped: no usable WhatsApp number";
+  const flat = (v, max) => String(v == null ? "" : v).replace(/[\r\n\t]+/g, " ").replace(/ {2,}/g, " ").trim().slice(0, max) || "-";
+  const payload = {
+    countryCode: split.countryCode,
+    phoneNumber: split.phoneNumber,
+    type: "Template",
+    callbackData: "team-lead-alert",
+    template: {
+      name: template,
+      languageCode: "en",
+      bodyValues: [flat(values[0], 60), flat(values[1], 80), flat(values[2], 120), flat(values[3], 300), flat(values[4], 400)],
+    },
+  };
+  const result = await sendInteraktTemplateMessage(settings.interaktApiKey, payload);
+  return result.status + (result.rawResponse ? " | raw: " + result.rawResponse : "");
+}
+
 export async function sendGemAdviceWhatsAppOtp(settings, { phone, code }) {
   if (!settings.interaktApiKey) {
     return "skipped: Interakt API key not set (Settings page or INTERAKT_API_KEY env var)";

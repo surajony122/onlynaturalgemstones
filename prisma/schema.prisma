@@ -305,6 +305,8 @@ model AppSettings {
   leadAlertWishlist              String?
   leadAlertCheckout              String?
   leadAlertCheckoutSince         String?
+  // Interakt template name for staff WhatsApp lead alerts. Blank = WhatsApp alerts are off.
+  leadAlertWhatsappTemplate      String?
   googleServiceAccountEmail      String?
   googleServiceAccountPrivateKey String?
   astroLeadsSpreadsheetId        String?
@@ -864,6 +866,12 @@ model TeamMember {
   isOwner       Boolean   @default(false) // the shop's account owner: always full access
   isAdmin       Boolean   @default(false)
   pages         String[]  @default([])
+  // Team lead alerts: where this person is told about new leads (Staff access page). Blank = not contacted that way.
+  alertEmail    String?
+  alertWhatsapp String?
+  alertAstro    Boolean   @default(false)
+  alertWishlist Boolean   @default(false)
+  alertCheckout Boolean   @default(false)
   firstSeenAt   DateTime?
   lastSeenAt    DateTime?
   createdAt     DateTime  @default(now())
@@ -890,6 +898,7 @@ model LeadAlert {
   recipients String
   subject    String?
   status     String // sent / failed: ... / skipped: ...
+  whatsappStatus String? // the WhatsApp part of the same alert: sent N / failed: ... (null = no WhatsApp numbers, or template off)
   createdAt  DateTime @default(now())
 
   @@index([kind, refId])
