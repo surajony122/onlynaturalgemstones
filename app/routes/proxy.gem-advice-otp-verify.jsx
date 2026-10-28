@@ -24,6 +24,8 @@ import { authenticate } from "../shopify.server";
 import { verifyGemAdviceOtpCode } from "../utils/gemAdviceOtp.server";
 import { handleAstroAdviceSubmission } from "../utils/astroAdvice.server";
 import { validateGemAdviceInput } from "../utils/gemAdviceValidation";
+import { getAppSettings } from "../utils/appSettings.server";
+import { fetchAstrologyForSubmission } from "../utils/astrologyApi.server";
 
 export const action = async ({ request }) => {
   const { admin, session } = await authenticate.public.appProxy(request);
@@ -51,9 +53,19 @@ export const action = async ({ request }) => {
       return Response.json(verifyResult);
     }
 
-    // Code verified -- hand off to the exact same, unchanged pipeline
-    // the old flow used after its (insecure) client-side check passed.
-    const result = await handleAstroAdviceSubmission(admin, session.shop, data);
+    // Code verified. The chart is now calculated HERE, on the server, with the AstrologyAPI login saved in Settings -- so the login is
+    // never in the page, AstrologyAPI is only called for visitors who passed the one-time code, and the browser cannot send in a
+    // chart of its own. If no login is saved yet, carry on exactly as before with whatever the browser sent.
+    const settings = await getAppSettings(session.shop);
+    const astro = await fetchAstrologyForSubmission(settings, data);
+    let submission = data;
+    if (!astro.skipped) {
+      const { astroBirthDetails, astroGemSuggestion, astroChartSvg, astroError, ...rest } = data;
+      submission = astro.ok
+        ? { ...rest, astroBirthDetails: astro.astroBirthDetails, astroGemSuggestion: astro.astroGemSuggestion, astroChartSvg: astro.astroChartSvg }
+        : { ...rest, astroError: astro.error };
+    }
+    const result = await handleAstroAdviceSubmission(admin, session.shop, submission);
     return Response.json(result);
   } catch (err) {
     console.error("[proxy.gem-advice-otp-verify] unhandled error, falling back:", err);

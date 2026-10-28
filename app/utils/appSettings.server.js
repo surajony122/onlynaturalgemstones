@@ -36,6 +36,8 @@ const FIELDS = [
   "leadAlertCheckout",
   "leadAlertCheckoutSince",
   "leadAlertWhatsappTemplate",
+  "astrologyUserId",
+  "astrologyApiKey",
   "abandonedCheckoutDelayMinutes",
   "abandonedCheckoutEmailSubject",
   "abandonedCheckoutEmailTemplate",
@@ -94,6 +96,8 @@ const ENV_FALLBACK = {
   whatsappIntervalUnit: "WHATSAPP_INTERVAL_UNIT",
   interaktWebhookSecret: "INTERAKT_WEBHOOK_SECRET",
   googlePlacesApiKey: "GOOGLE_PLACES_API_KEY",
+  astrologyUserId: "ASTROLOGY_API_USER_ID",
+  astrologyApiKey: "ASTROLOGY_API_KEY",
 };
 
 // How long AFTER a lead's first (automatic, instant-on-submit) WhatsApp

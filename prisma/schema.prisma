@@ -307,6 +307,9 @@ model AppSettings {
   leadAlertCheckoutSince         String?
   // Interakt template name for staff WhatsApp lead alerts. Blank = WhatsApp alerts are off.
   leadAlertWhatsappTemplate      String?
+  // AstrologyAPI login. When both are saved the chart is calculated on the server (after the OTP) and the key is not put in the page.
+  astrologyUserId                String?
+  astrologyApiKey                String?
   googleServiceAccountEmail      String?
   googleServiceAccountPrivateKey String?
   astroLeadsSpreadsheetId        String?

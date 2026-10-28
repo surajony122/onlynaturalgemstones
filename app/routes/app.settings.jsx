@@ -47,6 +47,7 @@ import {
 } from "../utils/interakt.server";
 import { sendTestEmail } from "../utils/testEmails.server";
 import { sendTestLeadAlert, getRecentLeadAlerts, getTestWhatsappNote } from "../utils/leadAlerts.server";
+import { testAstrologyConnection } from "../utils/astrologyApi.server";
 import { parseRecipients } from "../utils/leadAlertContent";
 import { checkGmail, checkGoogleSheets, checkInterakt, checkGooglePlaces } from "../utils/serviceHealth.server";
 import { getOrderProcessingEmailTemplate, ORDER_PROCESSING_EMAIL_PLACEHOLDERS, getOrderProcessingEmailSubject } from "../utils/orderProcessingEmail.server";
@@ -99,9 +100,15 @@ export const loader = async ({ request }) => {
       sheets: sheetsStatus,
       interakt: interaktStatus,
       places: placesStatus,
+      astrology:
+        settings.astrologyUserId && settings.astrologyApiKey
+          ? { ok: true, detail: "Saved - the recommendation chart is calculated on the server, after the one-time code." }
+          : { ok: null, detail: "Not saved yet - the form still calls AstrologyAPI from the visitor's browser, with the key visible in the page." },
     },
     gmailUser: row?.gmailUser || "",
     gmailAppPasswordSet: !!row?.gmailAppPassword,
+    astrologyUserId: row?.astrologyUserId || "",
+    astrologyApiKeySet: !!row?.astrologyApiKey,
     googleServiceAccountEmail: row?.googleServiceAccountEmail || "",
     googleServiceAccountPrivateKeySet: !!row?.googleServiceAccountPrivateKey,
     astroLeadsSpreadsheetId: row?.astroLeadsSpreadsheetId || "",
@@ -200,6 +207,8 @@ export const loader = async ({ request }) => {
       astroLeadsSpreadsheetId: !!process.env.ASTRO_LEADS_SPREADSHEET_ID,
       interaktApiKey: !!process.env.INTERAKT_API_KEY,
       googlePlacesApiKey: !!process.env.GOOGLE_PLACES_API_KEY,
+      astrologyUserId: !!process.env.ASTROLOGY_API_USER_ID,
+      astrologyApiKey: !!process.env.ASTROLOGY_API_KEY,
     },
   };
 };
@@ -215,6 +224,7 @@ const REVEALABLE_FIELDS = [
   "interaktApiKey",
   "interaktWebhookSecret",
   "googlePlacesApiKey",
+  "astrologyApiKey",
 ];
 
 export const action = async ({ request }) => {
@@ -387,6 +397,19 @@ export const action = async ({ request }) => {
   if (intent === "saveWishlistTiming") {
     await saveAppSettings(session.shop, { wishlistEmailIntervalHours: val("wishlistEmailIntervalHours") });
     return { intent, ok: true };
+  }
+
+  if (intent === "saveAstrology") {
+    const existing = await getRawAppSettingsRow(session.shop);
+    const astrologyApiKey = val("astrologyApiKey") || existing?.astrologyApiKey || "";
+    await saveAppSettings(session.shop, { astrologyUserId: val("astrologyUserId"), astrologyApiKey });
+    return { intent, ok: true };
+  }
+
+  if (intent === "testAstrology") {
+    const fresh = await getAppSettings(session.shop);
+    const r = await testAstrologyConnection(fresh);
+    return { intent, ok: r.ok, status: r.detail };
   }
 
   if (intent === "saveInteraktApiKey") {
@@ -1136,6 +1159,8 @@ export default function SettingsPage() {
   const [sheetsRelaySecret, setSheetsRelaySecret] = useState("");
   const [wishlistInterval, setWishlistInterval] = useState(data.wishlistEmailIntervalHours);
   const [interaktApiKey, setInteraktApiKey] = useState("");
+  const [astrologyUserId, setAstrologyUserId] = useState(data.astrologyUserId || "");
+  const [astrologyApiKey, setAstrologyApiKey] = useState("");
   const [interaktTemplateName, setInteraktTemplateName] = useState(data.interaktTemplateName);
   const [gemAdviceOtpTemplateName, setGemAdviceOtpTemplateName] = useState(data.gemAdviceOtpTemplateName);
   const [gemRecommendationEmailTemplate, setGemRecommendationEmailTemplate] = useState(
@@ -1215,6 +1240,9 @@ export default function SettingsPage() {
   // object of just that section's own fields.
   const wishlistTiming = useSectionSave("saveWishlistTiming", toast);
   const interaktApiKeySave = useSectionSave("saveInteraktApiKey", toast, () => setInteraktApiKey(""));
+  const astrologySave = useSectionSave("saveAstrology", toast, () => setAstrologyApiKey(""));
+  const testAstrologyFetcher = useFetcher();
+  const isTestingAstrology = testAstrologyFetcher.state !== "idle";
   const gemRecommendation = useSectionSave("saveGemRecommendation", toast);
   const gemRecommendationEmail = useSectionSave("saveGemRecommendationEmail", toast);
   const orderProcessingWhatsapp = useSectionSave("saveOrderProcessingWhatsapp", toast);
@@ -1328,6 +1356,7 @@ export default function SettingsPage() {
 
   const saveWishlistTiming = () => wishlistTiming.save({ wishlistEmailIntervalHours: wishlistInterval });
   const saveInteraktApiKey = () => interaktApiKeySave.save({ interaktApiKey });
+  const saveAstrology = () => astrologySave.save({ astrologyUserId, astrologyApiKey });
   const saveGemRecommendation = () => gemRecommendation.save({ interaktTemplateName, gemAdviceOtpTemplateName });
   // Same "don't freeze today's default as a permanent customization"
   // reasoning as saveOrderProcessingEmail.
@@ -1466,6 +1495,43 @@ export default function SettingsPage() {
             </p>
           )}
           <SaveButton isSaving={interaktApiKeySave.isSaving} onClick={saveInteraktApiKey} />
+        </ServiceCard>
+
+        <ServiceCard icon={<Icon name="key" size={19} color={brand.accent} />} title="Chart calculation (AstrologyAPI)" status={data.serviceStatus.astrology}>
+          <Explain summary="Why this is here, and how to switch over">
+            The gem recommendation chart comes from AstrologyAPI. Once the User ID and API Key below are saved, the app calculates the chart itself,
+            right after the visitor's one-time code is verified, and the key no longer has to be on the website page. A key that sits in a web
+            page can be copied and used by anyone, so after the website has stopped using it, create a <strong>new</strong> key in your
+            AstrologyAPI account and save it here.
+          </Explain>
+
+          <label style={labelStyle} htmlFor="astrologyUserId">User ID</label>
+          <input id="astrologyUserId" style={fieldStyle} type="text" value={astrologyUserId} onChange={(e) => setAstrologyUserId(e.target.value)} placeholder="your AstrologyAPI User ID" autoComplete="off" />
+          {!data.astrologyUserId && data.envFallback.astrologyUserId && <p style={hintStyle}>Currently falling back to the ASTROLOGY_API_USER_ID env var on Render.</p>}
+
+          <SecretField
+            id="astrologyApiKey"
+            label="API Key"
+            fieldName="astrologyApiKey"
+            isSet={data.astrologyApiKeySet}
+            value={astrologyApiKey}
+            onChange={setAstrologyApiKey}
+            placeholder="your AstrologyAPI API Key"
+            envFallbackHint={data.envFallback.astrologyApiKey ? "Currently falling back to the ASTROLOGY_API_KEY env var on Render." : null}
+          />
+          <SaveButton isSaving={astrologySave.isSaving} onClick={saveAstrology} />
+
+          <div style={{ marginTop: "14px" }}>
+            <button
+              type="button"
+              disabled={isTestingAstrology}
+              onClick={() => testAstrologyFetcher.submit({ intent: "testAstrology" }, { method: "POST" })}
+              style={{ ...secondaryBtn, padding: "9px 16px", fontSize: "12.5px", opacity: isTestingAstrology ? 0.6 : 1 }}
+            >
+              {isTestingAstrology ? "Testing…" : "Test connection (uses 1 AstrologyAPI call)"}
+            </button>
+            <TestResult fetcherData={testAstrologyFetcher.data} intent="testAstrology" />
+          </div>
         </ServiceCard>
 
         <ServiceCard icon={<Icon name="mail" size={19} color={brand.accent} />} title="Email sending (Gmail)" status={data.serviceStatus.gmail}>
