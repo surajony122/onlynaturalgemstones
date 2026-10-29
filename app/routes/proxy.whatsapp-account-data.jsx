@@ -15,7 +15,7 @@
  *               or { ok: false, error } (e.g. expired/invalid token)
  */
 import { authenticate } from "../shopify.server";
-import { buildCustomerAdminData, buildWishlistAndRecommendation, findCustomerGidByPhone } from "../utils/customerAccountData.server";
+import { buildCustomerAdminData, buildWishlistAndRecommendation, buildWishlistAndRecommendationFromShopify, findCustomerGidByPhone } from "../utils/customerAccountData.server";
 import { resolvePhoneFromToken } from "../utils/whatsappOtpAuth.server";
 
 export const action = async ({ request }) => {
@@ -40,8 +40,9 @@ export const action = async ({ request }) => {
   let addresses = [];
   let orders = [];
   let email = null;
+  let customerGid = null;
   try {
-    const customerGid = await findCustomerGidByPhone(admin, phone);
+    customerGid = await findCustomerGidByPhone(admin, phone);
 
     if (customerGid) {
       const adminData = await buildCustomerAdminData(admin, customerGid);
@@ -54,10 +55,39 @@ export const action = async ({ request }) => {
     console.error("[proxy.whatsapp-account-data] failed to resolve customer by phone:", err);
   }
 
-  // No Shopify customer record yet doesn't mean "nothing to show" — a
-  // wishlist/recommendation lead can exist purely in this app's own
+  // Primary source: the customer's own Shopify record (wishlist tags /
+  // custom.astro_advice metafield), the same source the Shopify customer
+  // account pages use, so this page matches what the merchant sees on the
+  // customer in Shopify admin.
+  let wishlist = { items: [] };
+  let recommendation = null;
+  if (customerGid) {
+    try {
+      const fromShopify = await buildWishlistAndRecommendationFromShopify(admin, customerGid, session.shop);
+      if (fromShopify) {
+        wishlist = fromShopify.wishlist || wishlist;
+        recommendation = fromShopify.recommendation || null;
+      }
+    } catch (err) {
+      console.error("[proxy.whatsapp-account-data] failed to read wishlist/recommendation from Shopify:", err);
+    }
+  }
+
+  // Backup source: this app's own database, only for whichever half Shopify
+  // had nothing for. No Shopify customer record yet doesn't mean "nothing
+  // to show" — a wishlist/recommendation lead can exist purely in the
   // database, keyed by phone, with no matching Shopify customer at all.
-  const { wishlist, recommendation } = await buildWishlistAndRecommendation(admin, session.shop, { email, phone });
+  const needWishlist = !(wishlist && wishlist.items && wishlist.items.length);
+  const needRecommendation = !recommendation;
+  if (needWishlist || needRecommendation) {
+    try {
+      const db = await buildWishlistAndRecommendation(admin, session.shop, { email, phone });
+      if (needWishlist) wishlist = db.wishlist || wishlist;
+      if (needRecommendation) recommendation = db.recommendation || null;
+    } catch (err) {
+      console.error("[proxy.whatsapp-account-data] database fallback failed:", err);
+    }
+  }
 
   return Response.json({ ok: true, wishlist, recommendation, orders, profile, addresses });
 };
